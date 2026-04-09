@@ -269,6 +269,23 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
+        # Build a lookup of ALL name spans on the page indexed by their full ID
+        # Pattern confirmed: ct100_ContentPlaceHolder1_ListViewl_ctrl{N}_lvOR_ctrl{M}_lblNames
+        all_name_spans = {}
+        for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvOR_ctrl\d+_lblNames", re.IGNORECASE)):
+            all_name_spans[s["id"].lower()] = s.get_text(strip=True)
+
+        # Build lookup for legal description spans
+        all_legal_spans = {}
+        for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvLegal", re.IGNORECASE)):
+            all_legal_spans[s["id"].lower()] = s.get_text(strip=True)
+
+        # Build lookup for date spans
+        all_date_spans = {}
+        for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileDate", re.IGNORECASE)):
+            all_date_spans[s["id"].lower()] = s.get_text(strip=True)
+
+        # Find all file number spans
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
         if not file_spans:
             file_spans = [s for s in soup.find_all("span") if re.match(r"RP-\d+", s.get_text(strip=True))]
@@ -282,47 +299,31 @@ class ClerkScraper:
                     continue
 
                 span_id = span.get("id", "")
-                ctrl_match = re.search(r"(ListViewl_ctrl\d+)", span_id, re.IGNORECASE)
-                ctrl_prefix = ctrl_match.group(1) if ctrl_match else ""
 
-                def find_span_text(pattern):
-                    el = soup.find("span", id=re.compile(pattern, re.IGNORECASE))
-                    return re.sub(r"\s+", " ", el.get_text(strip=True)) if el else ""
+                # Extract the base prefix e.g. "ct100_contentplaceholder1_listviewl_ctrl5"
+                ctrl_match = re.search(r"(.*listviewl_ctrl\d+)", span_id, re.IGNORECASE)
+                if not ctrl_match:
+                    continue
+                prefix = ctrl_match.group(1).lower()
 
-                # File date
-                file_date = find_span_text(ctrl_prefix + r"_lblFileDate")
+                # Get file date using exact prefix
+                file_date = all_date_spans.get(f"{prefix}_lblfiledate", "")
 
-                # Grantor = ctrl0 (the one filing the lien)
-                grantor = find_span_text(ctrl_prefix + r"_lvOR_ctrl0_lblNames")
+                # Get grantor = lvOR_ctrl0_lblNames
+                grantor = all_name_spans.get(f"{prefix}_lvor_ctrl0_lblnames", "")
 
-                # Grantee = ctrl1 (the property owner)
-                # Some records may have multiple grantees (ctrl1, ctrl2, etc)
-                # We take the first grantee as the owner
-                grantee = find_span_text(ctrl_prefix + r"_lvOR_ctrl1_lblNames")
+                # Get grantee = lvOR_ctrl1_lblNames (first grantee = property owner)
+                owner = all_name_spans.get(f"{prefix}_lvor_ctrl1_lblnames", "")
 
-                # If no grantee found at ctrl1, try getting all names and take second
-                if not grantee:
-                    all_names = soup.find_all(
-                        "span",
-                        id=re.compile(ctrl_prefix + r"_lvOR_ctrl\d+_lblNames", re.IGNORECASE)
-                    )
-                    if len(all_names) >= 2:
-                        grantee = all_names[1].get_text(strip=True)
-                    elif len(all_names) == 1:
-                        grantee = all_names[0].get_text(strip=True)
+                # If no ctrl1, use ctrl0 as owner
+                if not owner:
+                    owner = grantor
 
-                # Owner is the grantee (property owner being sued/liened)
-                owner = grantee if grantee else grantor
-
-                # Legal description
-                subdiv     = find_span_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSubDivAdd")
-                section_el = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSection$", re.IGNORECASE))
-                lot_el     = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblLot$", re.IGNORECASE))
-                block_el   = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblBlock$", re.IGNORECASE))
-
-                section = section_el.get_text(strip=True) if section_el else ""
-                lot     = lot_el.get_text(strip=True)     if lot_el     else ""
-                block   = block_el.get_text(strip=True)   if block_el   else ""
+                # Get legal description parts
+                subdiv  = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsubdivadd", "")
+                section = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsection", "")
+                lot     = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lbllot", "")
+                block   = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblblock", "")
 
                 legal_parts = []
                 if subdiv:          legal_parts.append(subdiv)
@@ -331,7 +332,7 @@ class ClerkScraper:
                 if block.strip():   legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                # Direct link to document
+                # Direct document link
                 clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
                 # Normalise date
