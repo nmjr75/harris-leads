@@ -213,6 +213,20 @@ class ClerkScraper:
     def _fmt(self, dt: datetime) -> str:
         return dt.strftime("%m/%d/%Y")
 
+    async def _get_frame(self, page):
+        """Return the frame containing the search form — handles iframe or main page."""
+        # Check if form is inside an iframe
+        for frame in page.frames:
+            try:
+                el = await frame.query_selector("#ct100_ContentPlaceHolder1_txtInstrument")
+                if el:
+                    log.info(f"  Form found in frame: {frame.url}")
+                    return frame
+            except Exception:
+                pass
+        # Fallback to main page
+        return page
+
     async def _search_one(self, page, doc_type: str) -> list:
         cat, cat_label = DOC_TYPE_MAP.get(doc_type, (doc_type, doc_type))
         records = []
@@ -221,14 +235,25 @@ class ClerkScraper:
             try:
                 await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
                 await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
+                await asyncio.sleep(2)
 
-                # Wait for Instrument Type field to be visible then fill it
-                await page.wait_for_selector("#ct100_ContentPlaceHolder1_txtInstrument", state="visible", timeout=self.NAV_TIMEOUT)
-                await page.fill("#ct100_ContentPlaceHolder1_txtInstrument", doc_type)
-                await page.fill("#ct100_ContentPlaceHolder1_txtFrom", self._fmt(self.start_date))
-                await page.fill("#ct100_ContentPlaceHolder1_txtTo", self._fmt(self.end_date))
-                await page.click("#ct100_ContentPlaceHolder1_btnSearch")
+                # Get the correct frame (main page or iframe)
+                frame = await self._get_frame(page)
+
+                # Wait for form field to be ready
+                await frame.wait_for_selector(
+                    "#ct100_ContentPlaceHolder1_txtInstrument",
+                    state="visible",
+                    timeout=self.NAV_TIMEOUT
+                )
+
+                # Fill the form fields
+                await frame.fill("#ct100_ContentPlaceHolder1_txtInstrument", doc_type)
+                await frame.fill("#ct100_ContentPlaceHolder1_txtFrom", self._fmt(self.start_date))
+                await frame.fill("#ct100_ContentPlaceHolder1_txtTo", self._fmt(self.end_date))
+                await frame.click("#ct100_ContentPlaceHolder1_btnSearch")
                 await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
+                await asyncio.sleep(2)
 
                 # Collect all pages
                 page_num = 0
