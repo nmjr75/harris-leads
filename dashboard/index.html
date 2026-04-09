@@ -65,8 +65,7 @@
         <th onclick="sortBy('filed')">Filed</th>
         <th onclick="sortBy('doc_type')">Type</th>
         <th onclick="sortBy('cat_label')">Category</th>
-        <th onclick="sortBy('owner')">Owner (Grantee)</th>
-        <th onclick="sortBy('grantee')">Filer (Grantor)</th>
+        <th onclick="sortBy('owner')">Owner</th>
         <th>Flags</th>
         <th onclick="sortBy('legal')">Legal Description</th>
         <th onclick="sortBy('prop_address')">Property Address</th>
@@ -121,7 +120,7 @@ function getFiltered(){
     if(addr==='yes'&&!r.prop_address)return false;
     if(addr==='no'&&r.prop_address)return false;
     if(q){
-      const hay=[r.owner,r.grantee,r.legal,r.prop_address,r.mail_address,r.doc_num,r.cat_label].join(' ').toLowerCase();
+      const hay=[r.owner,r.legal,r.prop_address,r.mail_address,r.doc_num,r.cat_label].join(' ').toLowerCase();
       if(!hay.includes(q))return false;
     }
     return true;
@@ -157,7 +156,6 @@ function render(){
       '<td><span class="doc-type">'+r.doc_type+'</span></td>'+
       '<td>'+(r.cat_label||'—')+'</td>'+
       '<td>'+(r.owner||'—')+'</td>'+
-      '<td>'+(r.grantee||'—')+'</td>'+
       '<td>'+(flags||'—')+'</td>'+
       '<td style="font-size:.75rem">'+(r.legal||'—')+'</td>'+
       '<td>'+(prop||'—')+'</td>'+
@@ -178,7 +176,7 @@ function resetFilters(){
 
 function exportCSV(){
   const recs=getFiltered();
-  const cols=['score','filed','doc_type','cat_label','owner','grantee','legal','prop_address','prop_city','prop_zip','mail_address','mail_city','mail_zip','amount','doc_num','flags','clerk_url'];
+  const cols=['score','filed','doc_type','cat_label','owner','legal','prop_address','prop_city','prop_zip','mail_address','mail_city','mail_zip','amount','doc_num','flags','clerk_url'];
   const lines=[cols.join(',')];
   recs.forEach(r=>{
     lines.push(cols.map(c=>{
