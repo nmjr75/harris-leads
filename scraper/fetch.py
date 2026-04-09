@@ -222,11 +222,12 @@ class ClerkScraper:
                 await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
                 await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
 
-                # Use exact field IDs discovered from portal
-                await page.fill("#ctl100_ContentPlaceHolder1_txtInstrument", doc_type)
-                await page.fill("#ctl100_ContentPlaceHolder1_txtFrom", self._fmt(self.start_date))
-                await page.fill("#ctl100_ContentPlaceHolder1_txtTo", self._fmt(self.end_date))
-                await page.click("#ctl100_ContentPlaceHolder1_btnSearch")
+                # Wait for Instrument Type field to be visible then fill it
+                await page.wait_for_selector("#ct100_ContentPlaceHolder1_txtInstrument", state="visible", timeout=self.NAV_TIMEOUT)
+                await page.fill("#ct100_ContentPlaceHolder1_txtInstrument", doc_type)
+                await page.fill("#ct100_ContentPlaceHolder1_txtFrom", self._fmt(self.start_date))
+                await page.fill("#ct100_ContentPlaceHolder1_txtTo", self._fmt(self.end_date))
+                await page.click("#ct100_ContentPlaceHolder1_btnSearch")
                 await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
 
                 # Collect all pages
@@ -239,7 +240,6 @@ class ClerkScraper:
                     log.info(f"    {doc_type} page {page_num}: {len(batch)} rows")
                     records.extend(batch)
 
-                    # Check for NEXT button
                     next_btn = page.locator("input[value='NEXT']")
                     if await next_btn.count() == 0:
                         break
@@ -258,7 +258,6 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
-        # Find results table with File Number and File Date columns
         table = None
         for t in soup.find_all("table"):
             header_text = t.get_text().lower()
@@ -284,7 +283,6 @@ class ClerkScraper:
             if not file_num or not file_num.startswith("RP-"):
                 continue
 
-            # Parse Grantor and Grantee from Names cell
             grantor = ""
             grantee = ""
             if names_cell:
@@ -298,7 +296,6 @@ class ClerkScraper:
 
             legal = legal_cell.get_text(separator=" ", strip=True) if legal_cell else ""
 
-            # Get document link
             clerk_url = ""
             if link_cell:
                 a = link_cell.find("a", href=True)
@@ -306,7 +303,6 @@ class ClerkScraper:
                     href = a["href"]
                     clerk_url = href if href.startswith("http") else CLERK_BASE + href
 
-            # Normalise date
             filed_norm = ""
             for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
                 try:
