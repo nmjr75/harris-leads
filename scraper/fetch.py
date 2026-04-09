@@ -285,45 +285,37 @@ class ClerkScraper:
                 ctrl_match = re.search(r"(ListViewl_ctrl\d+)", span_id, re.IGNORECASE)
                 ctrl_prefix = ctrl_match.group(1) if ctrl_match else ""
 
-                def find_text(pattern):
+                def find_span_text(pattern):
                     el = soup.find("span", id=re.compile(pattern, re.IGNORECASE))
                     return re.sub(r"\s+", " ", el.get_text(strip=True)) if el else ""
 
                 # File date
-                file_date = find_text(ctrl_prefix + r"_lblFileDate")
+                file_date = find_span_text(ctrl_prefix + r"_lblFileDate")
 
-                # Get ALL name spans for this record
-                all_name_spans = soup.find_all(
-                    "span",
-                    id=re.compile(ctrl_prefix + r"_lvOR_ctrl\d+_lblNames", re.IGNORECASE)
-                )
+                # Grantor = ctrl0 (the one filing the lien)
+                grantor = find_span_text(ctrl_prefix + r"_lvOR_ctrl0_lblNames")
 
-                grantor  = ""
-                grantees = []
+                # Grantee = ctrl1 (the property owner)
+                # Some records may have multiple grantees (ctrl1, ctrl2, etc)
+                # We take the first grantee as the owner
+                grantee = find_span_text(ctrl_prefix + r"_lvOR_ctrl1_lblNames")
 
-                for name_span in all_name_spans:
-                    name_text = name_span.get_text(strip=True)
-                    if not name_text:
-                        continue
-                    parent_td = name_span.find_parent("td")
-                    if parent_td:
-                        row_text = parent_td.get_text(separator=" ", strip=True)
-                        if "grantor" in row_text.lower():
-                            grantor = name_text
-                        elif "grantee" in row_text.lower():
-                            grantees.append(name_text)
-                    else:
-                        if not grantor:
-                            grantor = name_text
-                        else:
-                            grantees.append(name_text)
+                # If no grantee found at ctrl1, try getting all names and take second
+                if not grantee:
+                    all_names = soup.find_all(
+                        "span",
+                        id=re.compile(ctrl_prefix + r"_lvOR_ctrl\d+_lblNames", re.IGNORECASE)
+                    )
+                    if len(all_names) >= 2:
+                        grantee = all_names[1].get_text(strip=True)
+                    elif len(all_names) == 1:
+                        grantee = all_names[0].get_text(strip=True)
 
-                # Owner = first grantee (the property owner)
-                owner        = grantees[0] if grantees else grantor
-                grantor_name = grantor
+                # Owner is the grantee (property owner being sued/liened)
+                owner = grantee if grantee else grantor
 
                 # Legal description
-                subdiv    = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSubDivAdd")
+                subdiv     = find_span_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSubDivAdd")
                 section_el = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSection$", re.IGNORECASE))
                 lot_el     = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblLot$", re.IGNORECASE))
                 block_el   = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblBlock$", re.IGNORECASE))
@@ -358,7 +350,7 @@ class ClerkScraper:
                     "cat":          cat,
                     "cat_label":    cat_label,
                     "owner":        owner,
-                    "grantee":      grantor_name,
+                    "grantee":      grantor,
                     "amount":       "",
                     "legal":        legal,
                     "clerk_url":    clerk_url,
