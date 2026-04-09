@@ -269,21 +269,14 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
-        # Build a lookup of ALL name spans on the page indexed by their full ID
-        # Pattern confirmed: ct100_ContentPlaceHolder1_ListViewl_ctrl{N}_lvOR_ctrl{M}_lblNames
-        all_name_spans = {}
-        for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvOR_ctrl\d+_lblNames", re.IGNORECASE)):
-            all_name_spans[s["id"].lower()] = s.get_text(strip=True)
-
-        # Build lookup for legal description spans
-        all_legal_spans = {}
-        for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvLegal", re.IGNORECASE)):
-            all_legal_spans[s["id"].lower()] = s.get_text(strip=True)
-
-        # Build lookup for date spans
-        all_date_spans = {}
-        for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileDate", re.IGNORECASE)):
-            all_date_spans[s["id"].lower()] = s.get_text(strip=True)
+        # Build case-insensitive lookups of ALL relevant spans on the page
+        # Key = lowercase ID, Value = (original_id, text)
+        name_spans  = {s["id"].lower(): s.get_text(strip=True)
+                       for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvOR_ctrl\d+_lblNames", re.IGNORECASE))}
+        legal_spans = {s["id"].lower(): s.get_text(strip=True)
+                       for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvLegal_ctrl\d+_lbl", re.IGNORECASE))}
+        date_spans  = {s["id"].lower(): s.get_text(strip=True)
+                       for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileDate", re.IGNORECASE))}
 
         # Find all file number spans
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
@@ -300,30 +293,24 @@ class ClerkScraper:
 
                 span_id = span.get("id", "")
 
-                # Extract the base prefix e.g. "ct100_contentplaceholder1_listviewl_ctrl5"
-                ctrl_match = re.search(r"(.*listviewl_ctrl\d+)", span_id, re.IGNORECASE)
+                # Extract prefix in lowercase for consistent lookup
+                # e.g. "ct100_contentplaceholder1_listviewl_ctrl5"
+                ctrl_match = re.search(r"(.*?listviewl_ctrl\d+)", span_id, re.IGNORECASE)
                 if not ctrl_match:
                     continue
                 prefix = ctrl_match.group(1).lower()
 
-                # Get file date using exact prefix
-                file_date = all_date_spans.get(f"{prefix}_lblfiledate", "")
-
-                # Get grantor = lvOR_ctrl0_lblNames
-                grantor = all_name_spans.get(f"{prefix}_lvor_ctrl0_lblnames", "")
-
-                # Get grantee = lvOR_ctrl1_lblNames (first grantee = property owner)
-                owner = all_name_spans.get(f"{prefix}_lvor_ctrl1_lblnames", "")
-
-                # If no ctrl1, use ctrl0 as owner
+                # Look up all fields using lowercase keys
+                file_date = date_spans.get(f"{prefix}_lblfiledate", "")
+                grantor   = name_spans.get(f"{prefix}_lvor_ctrl0_lblnames", "")
+                owner     = name_spans.get(f"{prefix}_lvor_ctrl1_lblnames", "")
                 if not owner:
                     owner = grantor
 
-                # Get legal description parts
-                subdiv  = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsubdivadd", "")
-                section = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsection", "")
-                lot     = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lbllot", "")
-                block   = all_legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblblock", "")
+                subdiv  = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsubdivadd", "")
+                section = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsection", "")
+                lot     = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lbllot", "")
+                block   = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblblock", "")
 
                 legal_parts = []
                 if subdiv:          legal_parts.append(subdiv)
@@ -332,10 +319,8 @@ class ClerkScraper:
                 if block.strip():   legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                # Direct document link
                 clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
-                # Normalise date
                 filed_norm = ""
                 for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
                     try:
