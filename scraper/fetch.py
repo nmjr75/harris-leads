@@ -1,7 +1,6 @@
 """
 Harris County Motivated Seller Lead Scraper
-Pulls distress records from Harris County Clerk portal + HCAD bulk parcel data.
-Correct portal: https://cclerk.hctx.net/applications/websearch/RP.aspx
+Portal: https://cclerk.hctx.net/applications/websearch/RP.aspx
 """
 
 import asyncio
@@ -44,9 +43,7 @@ LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "7"))
 
 CLERK_SEARCH_URL = "https://cclerk.hctx.net/applications/websearch/RP.aspx"
 CLERK_BASE       = "https://cclerk.hctx.net"
-
-HCAD_BULK_BASE     = "https://pdata.hcad.org/download/"
-HCAD_DOWNLOAD_PAGE = "https://pdata.hcad.org/download/index.html"
+HCAD_BULK_BASE   = "https://pdata.hcad.org/download/"
 
 DOC_TYPE_MAP = {
     "L/P":    ("LP",      "Lis Pendens"),
@@ -74,31 +71,21 @@ LLC_PATTERN = re.compile(
 def compute_flags_and_score(record: dict, all_records: list) -> tuple:
     flags = []
     score = 30
-
     cat          = record.get("cat", "")
     amount       = record.get("amount") or 0
     owner        = record.get("owner", "") or ""
     filed        = record.get("filed", "") or ""
     prop_address = record.get("prop_address", "") or ""
 
-    if cat == "LP":
-        flags.append("Lis pendens")
-    if cat == "NOFC":
-        flags.append("Pre-foreclosure / trustee sale")
-    if cat == "JUD":
-        flags.append("Judgment lien")
-    if cat == "TAXLIEN":
-        flags.append("Federal tax lien")
-    if cat == "LIEN":
-        flags.append("Lien (HOA / state tax / other)")
-    if cat == "LEVY":
-        flags.append("Levy on real estate")
-    if cat == "PROBATE":
-        flags.append("Probate / estate")
-    if cat == "BNKRCY":
-        flags.append("Bankruptcy")
-    if LLC_PATTERN.search(owner):
-        flags.append("LLC / corp owner")
+    if cat == "LP":      flags.append("Lis pendens")
+    if cat == "NOFC":    flags.append("Pre-foreclosure / trustee sale")
+    if cat == "JUD":     flags.append("Judgment lien")
+    if cat == "TAXLIEN": flags.append("Federal tax lien")
+    if cat == "LIEN":    flags.append("Lien (HOA / state tax / other)")
+    if cat == "LEVY":    flags.append("Levy on real estate")
+    if cat == "PROBATE": flags.append("Probate / estate")
+    if cat == "BNKRCY":  flags.append("Bankruptcy")
+    if LLC_PATTERN.search(owner): flags.append("LLC / corp owner")
 
     try:
         filed_dt = datetime.strptime(filed, "%Y-%m-%d")
@@ -117,10 +104,8 @@ def compute_flags_and_score(record: dict, all_records: list) -> tuple:
 
     try:
         amt = float(str(amount).replace(",", "").replace("$", ""))
-        if amt > 100_000:
-            score += 15
-        elif amt > 50_000:
-            score += 10
+        if amt > 100_000:   score += 15
+        elif amt > 50_000:  score += 10
     except Exception:
         pass
 
@@ -237,50 +222,52 @@ class ClerkScraper:
                 await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
                 await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
 
-                # Fill Instrument Type - using real field ID from portal
-                await page.fill(
-                    "input[id*='txtFileNo'], input[name*='txtFileNo']",
-                    doc_type
-                )
+                # Clear all fields first
+                await page.evaluate("""() => {
+                    document.querySelectorAll('input[type=text]').forEach(i => i.value = '');
+                }""")
+
+                # Fill Instrument Type field (highlighted blue on the form)
+                await page.locator("input").filter(has_text="").nth(0).fill("")
+                
+                # Use the label to find the right field
+                instrument_field = page.locator("input#ctl00_ContentPlaceHolder1_txtFileNo")
+                if await instrument_field.count() == 0:
+                    # fallback: find by placeholder or position near "Instrument Type" label
+                    instrument_field = page.locator("input[id*='FileNo'], input[id*='Instrument'], input[id*='filmCd']").first
+                
+                await instrument_field.fill(doc_type)
 
                 # Fill Date From
-                await page.fill(
-                    "input[id*='txtFrom'], input[name*='txtFrom']",
-                    self._fmt(self.start_date)
-                )
+                date_from = page.locator("input[id*='txtFrom'], input[placeholder='MM/DD/YYYY']").first
+                await date_from.fill(self._fmt(self.start_date))
 
-                # Fill Date To
-                await page.fill(
-                    "input[id*='txtTo'], input[name*='txtTo']",
-                    self._fmt(self.end_date)
-                )
+                # Fill Date To  
+                date_to = page.locator("input[id*='txtTo'], input[placeholder='MM/DD/YYYY']").nth(1)
+                await date_to.fill(self._fmt(self.end_date))
 
                 # Click SEARCH button
-                await page.click(
-                    "input[value='SEARCH'], input[id*='btnSearch'], input[name*='btnSearch']"
-                )
+                await page.locator("input[value='SEARCH'], input[value='Search'], button:has-text('Search')").first.click()
                 await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
 
-                # Paginate and collect all pages
+                # Collect all pages
+                page_num = 0
                 while True:
+                    page_num += 1
                     html  = await page.content()
                     soup  = BeautifulSoup(html, "lxml")
-                    batch = self._parse_table(soup, doc_type, cat, cat_label)
+                    batch = self._parse_results(soup, doc_type, cat, cat_label)
+                    log.info(f"    {doc_type} page {page_num}: {len(batch)} rows")
                     records.extend(batch)
 
-                    next_link = soup.find("a", string=re.compile(r"Next|>", re.I))
-                    if not next_link:
+                    # Check for NEXT button
+                    next_btn = page.locator("input[value='NEXT'], button:has-text('NEXT'), a:has-text('Next')")
+                    if await next_btn.count() == 0:
                         break
-                    href = next_link.get("href", "")
-                    if "__doPostBack" in href:
-                        m = re.search(r"__doPostBack\('([^']+)','([^']+)'\)", href)
-                        if m:
-                            await page.evaluate(f"__doPostBack('{m.group(1)}','{m.group(2)}')")
-                            await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
-                            continue
-                    break
+                    await next_btn.first.click()
+                    await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
 
-                log.info(f"  {doc_type}: {len(records)} records")
+                log.info(f"  {doc_type}: {len(records)} total records")
                 return records
 
             except Exception as e:
@@ -289,74 +276,92 @@ class ClerkScraper:
 
         return records
 
-    def _parse_table(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
+    def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
+        """
+        Parse the results table with columns:
+        File Number | File Date | Type / Vol Page | Names | Legal Description | Pgs | Film Code
+        """
         records = []
+
+        # Find the main results table (has File Number, File Date headers)
         table = None
         for t in soup.find_all("table"):
-            rows = t.find_all("tr")
-            if len(rows) > 1:
+            header_text = t.get_text().lower()
+            if "file number" in header_text and "file date" in header_text:
                 table = t
                 break
+
         if not table:
             return records
 
-        rows    = table.find_all("tr")
-        headers = []
-
+        rows = table.find_all("tr")
         for row in rows:
-            cells = row.find_all(["th", "td"])
-            text  = [c.get_text(strip=True) for c in cells]
-
-            if not headers:
-                headers = [t.lower() for t in text]
-                continue
-            if len(text) < 2:
+            cells = row.find_all("td")
+            if len(cells) < 4:
                 continue
 
-            def get(*keys):
-                for k in keys:
-                    for i, h in enumerate(headers):
-                        if k in h and i < len(text):
-                            v = text[i]
-                            if v:
-                                return v
-                return ""
+            # Column layout from portal:
+            # 0: File Number
+            # 1: File Date
+            # 2: Type / Vol Page
+            # 3: Names (Grantor + Grantee)
+            # 4: Legal Description
+            # 5: Pgs
+            # 6: Film Code (link)
 
-            doc_num = get("file", "instrument", "doc")
-            filed   = get("date", "filed", "record")
-            grantor = get("grantor")
-            grantee = get("grantee")
-            legal   = get("legal", "description", "subdivision")
-            amount  = get("amount", "consideration")
+            file_num  = cells[0].get_text(strip=True) if len(cells) > 0 else ""
+            file_date = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+            names_cell = cells[3] if len(cells) > 3 else None
+            legal_cell = cells[4] if len(cells) > 4 else None
+            link_cell  = cells[6] if len(cells) > 6 else None
 
+            if not file_num:
+                continue
+
+            # Parse names cell — contains "Grantor:NAME" and "Grantee:NAME" lines
+            grantor = ""
+            grantee = ""
+            if names_cell:
+                names_text = names_cell.get_text(separator="\n", strip=True)
+                for line in names_text.split("\n"):
+                    line = line.strip()
+                    if line.lower().startswith("grantor:"):
+                        grantor = line[8:].strip()
+                    elif line.lower().startswith("grantee:"):
+                        if not grantee:  # take first grantee
+                            grantee = line[8:].strip()
+
+            # Legal description
+            legal = ""
+            if legal_cell:
+                legal = legal_cell.get_text(separator=" ", strip=True)
+
+            # Film code link
             clerk_url = ""
-            for cell in cells:
-                a = cell.find("a", href=True)
+            if link_cell:
+                a = link_cell.find("a", href=True)
                 if a:
                     href = a["href"]
-                    clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
-                    break
+                    clerk_url = href if href.startswith("http") else CLERK_BASE + href
 
-            if not doc_num and not grantor:
-                continue
-
+            # Normalise date
             filed_norm = ""
             for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
                 try:
-                    filed_norm = datetime.strptime(filed, fmt).strftime("%Y-%m-%d")
+                    filed_norm = datetime.strptime(file_date, fmt).strftime("%Y-%m-%d")
                     break
                 except Exception:
                     pass
 
             records.append({
-                "doc_num":      doc_num,
+                "doc_num":      file_num,
                 "doc_type":     doc_type,
-                "filed":        filed_norm or filed,
+                "filed":        filed_norm or file_date,
                 "cat":          cat,
                 "cat_label":    cat_label,
                 "owner":        grantor,
                 "grantee":      grantee,
-                "amount":       amount,
+                "amount":       "",
                 "legal":        legal,
                 "clerk_url":    clerk_url,
                 "prop_address": "",
@@ -389,20 +394,21 @@ class ClerkScraper:
             )
             page = await ctx.new_page()
 
+            # Log all input fields on first load so we can debug if needed
             await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
             await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
-
-            field_info = await page.evaluate("""() => {
-                const inputs = Array.from(document.querySelectorAll('input'));
-                return inputs.map(i => ({id: i.id, name: i.name, placeholder: i.placeholder, type: i.type}));
+            fields = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('input')).map(i => ({
+                    id: i.id, name: i.name, type: i.type, placeholder: i.placeholder
+                }));
             }""")
-            log.info(f"Form fields found: {field_info}")
+            log.info(f"Portal fields: {json.dumps(fields, indent=2)}")
 
             for doc_type in TARGET_TYPES:
-                log.info(f"Searching for: {doc_type}")
+                log.info(f"Searching: {doc_type}")
                 recs = await self._search_one(page, doc_type)
                 self.results.extend(recs)
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
 
             await browser.close()
 
@@ -505,7 +511,6 @@ async def main():
 
     today = datetime.now().strftime("%Y%m%d")
     export_ghl_csv(deduped, f"data/ghl_export_{today}.csv")
-
     log.info(f"Done. Total: {len(deduped)} | With address: {with_address}")
 
 
