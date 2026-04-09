@@ -270,6 +270,7 @@ class ClerkScraper:
         records = []
 
         # Find all file number spans
+        # Confirmed exact ID pattern: ct100_ContentPlaceHolder1_ListViewl_ctrl{N}_lblFileNo
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
         if not file_spans:
             file_spans = [s for s in soup.find_all("span") if re.match(r"RP-\d+", s.get_text(strip=True))]
@@ -282,60 +283,30 @@ class ClerkScraper:
                 if not file_num.startswith("RP-"):
                     continue
 
+                # Get exact span ID as it appears in HTML
+                # e.g. ct100_ContentPlaceHolder1_ListViewl_ctrl0_lblFileNo
                 span_id = span.get("id", "")
-                ctrl_match = re.search(r"(ListViewl_ctrl\d+)", span_id, re.IGNORECASE)
-                ctrl_prefix = ctrl_match.group(1) if ctrl_match else ""
 
-                def find_text(pattern):
-                    el = soup.find("span", id=re.compile(pattern, re.IGNORECASE))
+                # Build exact sibling IDs by replacing lblFileNo with other field names
+                # This preserves exact casing from the actual HTML
+                base = span_id.replace("_lblFileNo", "")
+                # base = ct100_ContentPlaceHolder1_ListViewl_ctrl{N}
+
+                def get(field_id):
+                    el = soup.find(id=field_id)
                     return re.sub(r"\s+", " ", el.get_text(strip=True)) if el else ""
 
-                # File date
-                file_date = find_text(ctrl_prefix + r"_lblFileDate")
+                # All IDs confirmed from browser console testing
+                file_date = get(f"{base}_lblFileDate")
+                grantor   = get(f"{base}_lvOR_ctrl0_lblNames")
+                owner     = get(f"{base}_lvOR_ctrl1_lblNames")
+                if not owner:
+                    owner = grantor
 
-                # Get ALL name spans for this specific record only
-                # Confirmed pattern: ListViewl_ctrl{N}_lvOR_ctrl{M}_lblNames
-                # ctrl0 = Grantor, ctrl1 = first Grantee (owner)
-                record_name_spans = soup.find_all(
-                    "span",
-                    id=re.compile(
-                        r"^.*?" + re.escape(ctrl_prefix) + r"_lvOR_ctrl\d+_lblNames$",
-                        re.IGNORECASE
-                    )
-                )
-
-                grantor = ""
-                owner   = ""
-
-                if record_name_spans:
-                    grantor = record_name_spans[0].get_text(strip=True)
-                    if len(record_name_spans) >= 2:
-                        owner = record_name_spans[1].get_text(strip=True)
-                    else:
-                        owner = grantor
-
-                # Legal description
-                subdiv_el  = soup.find("span", id=re.compile(
-                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblSubDivAdd$",
-                    re.IGNORECASE
-                ))
-                section_el = soup.find("span", id=re.compile(
-                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblSection$",
-                    re.IGNORECASE
-                ))
-                lot_el     = soup.find("span", id=re.compile(
-                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblLot$",
-                    re.IGNORECASE
-                ))
-                block_el   = soup.find("span", id=re.compile(
-                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblBlock$",
-                    re.IGNORECASE
-                ))
-
-                subdiv  = subdiv_el.get_text(strip=True)  if subdiv_el  else ""
-                section = section_el.get_text(strip=True) if section_el else ""
-                lot     = lot_el.get_text(strip=True)     if lot_el     else ""
-                block   = block_el.get_text(strip=True)   if block_el   else ""
+                subdiv  = get(f"{base}_lvLegal_ctrl0_lblSubDivAdd")
+                section = get(f"{base}_lvLegal_ctrl0_lblSection")
+                lot     = get(f"{base}_lvLegal_ctrl0_lblLot")
+                block   = get(f"{base}_lvLegal_ctrl0_lblBlock")
 
                 legal_parts = []
                 if subdiv:          legal_parts.append(subdiv)
