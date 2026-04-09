@@ -1,6 +1,7 @@
 """
 Harris County Motivated Seller Lead Scraper
 Pulls distress records from Harris County Clerk portal + HCAD bulk parcel data.
+Correct portal: https://cclerk.hctx.net/applications/websearch/RP.aspx
 """
 
 import asyncio
@@ -20,27 +21,18 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
-# ---------------------------------------------------------------------------
-# Optional Playwright import (graceful fallback for local testing w/o install)
-# ---------------------------------------------------------------------------
 try:
     from playwright.async_api import async_playwright, TimeoutError as PwTimeout
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
-# ---------------------------------------------------------------------------
-# Optional dbfread import
-# ---------------------------------------------------------------------------
 try:
     from dbfread import DBF
     DBFREAD_AVAILABLE = True
 except ImportError:
     DBFREAD_AVAILABLE = False
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -48,83 +40,75 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
 LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "7"))
-CLERK_BASE = "https://cclerk.hctx.net"
-CLERK_SEARCH_URL = f"{CLERK_BASE}/publicrecords.aspx"
 
-# Harris County Appraisal District bulk data (HCAD)
+CLERK_SEARCH_URL = "https://cclerk.hctx.net/applications/websearch/RP.aspx"
+CLERK_BASE       = "https://cclerk.hctx.net"
+
+HCAD_BULK_BASE     = "https://pdata.hcad.org/download/"
 HCAD_DOWNLOAD_PAGE = "https://pdata.hcad.org/download/index.html"
-HCAD_BULK_BASE = "https://pdata.hcad.org/download/"
 
-# Document type codes → categories
 DOC_TYPE_MAP = {
     # Lis Pendens
-    "LP":       ("LP",       "Lis Pendens"),
-    "RELLP":    ("RELLP",    "Release Lis Pendens"),
+    "L/P":    ("LP",      "Lis Pendens"),
     # Foreclosure
-    "NOFC":     ("NOFC",     "Notice of Foreclosure"),
-    # Tax Deed
-    "TAXDEED":  ("TAXDEED",  "Tax Deed"),
+    "NOTICE": ("NOFC",    "Notice of Tax Foreclosure / Trustee Sale"),
+    "TRSALE": ("NOFC",    "Trustee Sale"),
+    # Federal & State Tax Liens
+    "T/L":    ("TAXLIEN", "Notice of Federal Tax Lien"),
+    "LIEN":   ("LIEN",    "Lien (HOA / State Tax / Child Support / Other)"),
     # Judgments
-    "JUD":      ("JUD",      "Judgment"),
-    "CCJ":      ("JUD",      "Certified Judgment"),
-    "DRJUD":    ("JUD",      "Domestic Relations Judgment"),
-    # Liens – Corp/IRS/Federal
-    "LNCORPTX": ("TAXLIEN",  "Corp Tax Lien"),
-    "LNIRS":    ("TAXLIEN",  "IRS Lien"),
-    "LNFED":    ("TAXLIEN",  "Federal Lien"),
-    # Liens – General
-    "LN":       ("LIEN",     "Lien"),
-    "LNMECH":   ("LIEN",     "Mechanic Lien"),
-    "LNHOA":    ("LIEN",     "HOA Lien"),
-    "MEDLN":    ("LIEN",     "Medicaid Lien"),
+    "JUDGE":  ("JUD",     "Judgment"),
+    "A/J":    ("JUD",     "Abstract of Judgment"),
+    # Levy
+    "LEVY":   ("LEVY",    "Notice of Levy on Real Estate"),
     # Probate
-    "PRO":      ("PROBATE",  "Probate Document"),
-    # Notice of Commencement
-    "NOC":      ("NOC",      "Notice of Commencement"),
+    "PROB":   ("PROBATE", "Probate Proceedings"),
+    "AFFT":   ("PROBATE", "Affidavit of Heirship / Small Estate"),
+    "WILL":   ("PROBATE", "Certified Copy of Probated Will"),
+    # Bankruptcy
+    "BNKRCY": ("BNKRCY",  "Bankruptcy"),
+    # Releases
+    "REL":    ("REL",     "Release (Lien / Judgment / Tax Lien / DOT)"),
 }
 
 TARGET_TYPES = list(DOC_TYPE_MAP.keys())
 
-# ---------------------------------------------------------------------------
-# Seller score helpers
-# ---------------------------------------------------------------------------
 LLC_PATTERN = re.compile(
     r"\b(LLC|L\.L\.C|INC|CORP|TRUST|ESTATE|HOLDINGS|PROPERTIES|PARTNERS|LP|LTD)\b",
     re.IGNORECASE,
 )
 
-def compute_flags_and_score(record: dict, all_records: list) -> tuple[list[str], int]:
+def compute_flags_and_score(record: dict, all_records: list) -> tuple:
     flags = []
-    score = 30  # base
+    score = 30
 
-    cat = record.get("cat", "")
+    cat      = record.get("cat", "")
     doc_type = record.get("doc_type", "")
-    amount = record.get("amount") or 0
-    owner = record.get("owner", "") or ""
-    filed = record.get("filed", "") or ""
+    amount   = record.get("amount") or 0
+    owner    = record.get("owner", "") or ""
+    filed    = record.get("filed", "") or ""
     prop_address = record.get("prop_address", "") or ""
 
-    # Flag logic
-    if cat in ("LP", "RELLP"):
+    if cat == "LP":
         flags.append("Lis pendens")
-    if cat == "NOFC" or doc_type in ("NOFC", "LP"):
-        flags.append("Pre-foreclosure")
-    if cat in ("JUD",):
+    if cat == "NOFC":
+        flags.append("Pre-foreclosure / trustee sale")
+    if cat == "JUD":
         flags.append("Judgment lien")
     if cat == "TAXLIEN":
-        flags.append("Tax lien")
-    if doc_type == "LNMECH":
-        flags.append("Mechanic lien")
+        flags.append("Federal tax lien")
+    if cat == "LIEN":
+        flags.append("Lien (HOA / state tax / other)")
+    if cat == "LEVY":
+        flags.append("Levy on real estate")
     if cat == "PROBATE":
         flags.append("Probate / estate")
+    if cat == "BNKRCY":
+        flags.append("Bankruptcy")
     if LLC_PATTERN.search(owner):
         flags.append("LLC / corp owner")
 
-    # "New this week" – filed within last 7 days
     try:
         filed_dt = datetime.strptime(filed, "%Y-%m-%d")
         if (datetime.now() - filed_dt).days <= 7:
@@ -133,18 +117,13 @@ def compute_flags_and_score(record: dict, all_records: list) -> tuple[list[str],
     except Exception:
         pass
 
-    # Score from flags
-    for f in flags:
-        score += 10
+    score += len(flags) * 10
 
-    # LP + Foreclosure combo bonus
-    doc_nums = [r.get("doc_num") for r in all_records]
-    owner_records = [r for r in all_records if r.get("owner") == owner and owner]
-    owner_cats = {r.get("cat") for r in owner_records}
-    if "LP" in owner_cats and "NOFC" in owner_cats:
-        score += 20
+    if owner:
+        owner_cats = {r.get("cat") for r in all_records if r.get("owner") == owner}
+        if "LP" in owner_cats and "NOFC" in owner_cats:
+            score += 20
 
-    # Amount bonuses
     try:
         amt = float(str(amount).replace(",", "").replace("$", ""))
         if amt > 100_000:
@@ -154,54 +133,38 @@ def compute_flags_and_score(record: dict, all_records: list) -> tuple[list[str],
     except Exception:
         pass
 
-    # Has address bonus
     if prop_address.strip():
         score += 5
 
-    score = min(score, 100)
-    return flags, score
+    return flags, min(score, 100)
 
 
-# ---------------------------------------------------------------------------
-# HCAD Parcel Data Download
-# ---------------------------------------------------------------------------
 class HCADParcelLoader:
-    """
-    Downloads HCAD bulk parcel data and builds an owner-name lookup.
-    Tries CSV first (faster), falls back to DBF.
-    """
-
-    KNOWN_CSV_URL = "https://pdata.hcad.org/download/2024/Real_acct_owner.zip"
-    # Fallback patterns to try
     FALLBACK_YEARS = [2024, 2023, 2025]
 
     def __init__(self):
-        self.lookup: dict[str, dict] = {}  # normalised_name -> parcel info
+        self.lookup: dict = {}
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; HarrisLeadBot/1.0)"})
+        self.session.headers.update({"User-Agent": "Mozilla/5.0"})
 
-    # ------------------------------------------------------------------
-    def _norm_name(self, name: str) -> str:
+    def _norm(self, name: str) -> str:
         return re.sub(r"\s+", " ", name.upper().strip())
 
-    def _index_owner(self, name: str, info: dict):
+    def _index(self, name: str, info: dict):
         if not name:
             return
-        n = self._norm_name(name)
+        n = self._norm(name)
         self.lookup[n] = info
-        # Also index "LAST, FIRST" -> "FIRST LAST"
         if "," in n:
             parts = [p.strip() for p in n.split(",", 1)]
-            alt = f"{parts[1]} {parts[0]}"
-            self.lookup[alt] = info
+            self.lookup[f"{parts[1]} {parts[0]}"] = info
 
     def lookup_owner(self, name: str) -> Optional[dict]:
         if not name:
             return None
-        n = self._norm_name(name)
+        n = self._norm(name)
         if n in self.lookup:
             return self.lookup[n]
-        # Try partial: last-name first word
         parts = n.split()
         if parts:
             for key in self.lookup:
@@ -209,22 +172,19 @@ class HCADParcelLoader:
                     return self.lookup[key]
         return None
 
-    # ------------------------------------------------------------------
-    def _try_download_zip(self, url: str) -> Optional[bytes]:
+    def _download(self, url: str) -> Optional[bytes]:
         for attempt in range(3):
             try:
                 log.info(f"  Downloading {url} (attempt {attempt+1})")
                 r = self.session.get(url, timeout=120, stream=True)
                 if r.status_code == 200:
                     return r.content
-                log.warning(f"  HTTP {r.status_code} for {url}")
             except Exception as e:
                 log.warning(f"  Download error: {e}")
             time.sleep(3)
         return None
 
-    def _load_from_csv_bytes(self, data: bytes) -> int:
-        """Parse zip containing CSV file."""
+    def _parse_csv_zip(self, data: bytes) -> int:
         count = 0
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
@@ -234,257 +194,150 @@ class HCADParcelLoader:
                 with zf.open(csv_files[0]) as f:
                     reader = csv.DictReader(io.TextIOWrapper(f, encoding="latin-1"))
                     for row in reader:
-                        owner = (
-                            row.get("OWN1") or row.get("OWNER") or
-                            row.get("owner_name") or row.get("OWNERNAME") or ""
-                        ).strip()
+                        owner = (row.get("OWN1") or row.get("OWNER") or "").strip()
                         info = {
-                            "prop_address": (row.get("SITEADDR") or row.get("SITE_ADDR") or row.get("site_addr") or "").strip(),
-                            "prop_city":    (row.get("SITE_CITY") or row.get("site_city") or "Houston").strip(),
+                            "prop_address": (row.get("SITEADDR") or row.get("SITE_ADDR") or "").strip(),
+                            "prop_city":    (row.get("SITE_CITY") or "Houston").strip(),
                             "prop_state":   "TX",
-                            "prop_zip":     (row.get("SITE_ZIP") or row.get("site_zip") or "").strip(),
-                            "mail_address": (row.get("MAILADR1") or row.get("ADDR_1") or row.get("mail_addr") or "").strip(),
+                            "prop_zip":     (row.get("SITE_ZIP") or "").strip(),
+                            "mail_address": (row.get("MAILADR1") or row.get("ADDR_1") or "").strip(),
                             "mail_city":    (row.get("MAILCITY") or row.get("CITY") or "").strip(),
                             "mail_state":   (row.get("STATE") or "TX").strip(),
                             "mail_zip":     (row.get("MAILZIP") or row.get("ZIP") or "").strip(),
                         }
-                        self._index_owner(owner, info)
+                        self._index(owner, info)
                         count += 1
         except Exception as e:
             log.warning(f"  CSV parse error: {e}")
         return count
 
-    def _load_from_dbf_bytes(self, data: bytes) -> int:
-        """Parse zip containing DBF file (requires dbfread)."""
-        if not DBFREAD_AVAILABLE:
-            log.warning("dbfread not installed, skipping DBF parse")
-            return 0
-        count = 0
-        try:
-            with zipfile.ZipFile(io.BytesIO(data)) as zf:
-                dbf_files = [n for n in zf.namelist() if n.lower().endswith(".dbf")]
-                if not dbf_files:
-                    return 0
-                # Extract to temp
-                tmpdir = Path("/tmp/hcad_dbf")
-                tmpdir.mkdir(exist_ok=True)
-                zf.extractall(tmpdir)
-                for dbf_name in dbf_files:
-                    dbf_path = tmpdir / Path(dbf_name).name
-                    table = DBF(str(dbf_path), encoding="latin-1", ignore_missing_memofile=True)
-                    for row in table:
-                        r = dict(row)
-                        owner = (
-                            r.get("OWN1") or r.get("OWNER") or
-                            r.get("OWNERNAME") or ""
-                        )
-                        if isinstance(owner, bytes):
-                            owner = owner.decode("latin-1", errors="replace")
-                        owner = str(owner).strip()
-                        info = {
-                            "prop_address": str(r.get("SITEADDR") or r.get("SITE_ADDR") or "").strip(),
-                            "prop_city":    str(r.get("SITE_CITY") or "Houston").strip(),
-                            "prop_state":   "TX",
-                            "prop_zip":     str(r.get("SITE_ZIP") or "").strip(),
-                            "mail_address": str(r.get("MAILADR1") or r.get("ADDR_1") or "").strip(),
-                            "mail_city":    str(r.get("MAILCITY") or r.get("CITY") or "").strip(),
-                            "mail_state":   str(r.get("STATE") or "TX").strip(),
-                            "mail_zip":     str(r.get("MAILZIP") or r.get("ZIP") or "").strip(),
-                        }
-                        self._index_owner(owner, info)
-                        count += 1
-        except Exception as e:
-            log.warning(f"  DBF parse error: {e}")
-        return count
-
     def load(self) -> int:
-        """Attempt to load parcel data. Returns number of records loaded."""
         log.info("Loading HCAD parcel data...")
-
-        # Try known CSV zip first
         for year in self.FALLBACK_YEARS:
-            url = f"https://pdata.hcad.org/download/{year}/Real_acct_owner.zip"
-            data = self._try_download_zip(url)
+            url = f"{HCAD_BULK_BASE}{year}/Real_acct_owner.zip"
+            data = self._download(url)
             if data:
-                n = self._load_from_csv_bytes(data)
+                n = self._parse_csv_zip(data)
                 if n > 0:
-                    log.info(f"  Loaded {n:,} parcels from CSV ({year})")
+                    log.info(f"  Loaded {n:,} parcels ({year})")
                     return n
-                # Try DBF fallback
-                n = self._load_from_dbf_bytes(data)
-                if n > 0:
-                    log.info(f"  Loaded {n:,} parcels from DBF ({year})")
-                    return n
-
-        # Try to discover current URL from download page
-        try:
-            r = requests.get(HCAD_DOWNLOAD_PAGE, timeout=30)
-            soup = BeautifulSoup(r.text, "lxml")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if "Real_acct" in href and href.endswith(".zip"):
-                    full = href if href.startswith("http") else HCAD_BULK_BASE + href.lstrip("/")
-                    data = self._try_download_zip(full)
-                    if data:
-                        n = self._load_from_csv_bytes(data) or self._load_from_dbf_bytes(data)
-                        if n > 0:
-                            log.info(f"  Loaded {n:,} parcels from discovered URL: {full}")
-                            return n
-        except Exception as e:
-            log.warning(f"  Could not scrape HCAD download page: {e}")
-
-        log.warning("  Could not load HCAD parcel data. Address enrichment will be skipped.")
+        log.warning("  Could not load HCAD data. Address enrichment skipped.")
         return 0
 
 
-# ---------------------------------------------------------------------------
-# Harris County Clerk Scraper (Playwright)
-# ---------------------------------------------------------------------------
 class ClerkScraper:
-    """
-    Scrapes https://cclerk.hctx.net/publicrecords.aspx via Playwright.
-    Performs date-range search for each target document type.
-    """
-
-    SEARCH_TIMEOUT = 60_000   # ms
-    NAV_TIMEOUT   = 90_000
+    NAV_TIMEOUT    = 60_000
+    SEARCH_TIMEOUT = 60_000
 
     def __init__(self, start_date: datetime, end_date: datetime):
         self.start_date = start_date
         self.end_date   = end_date
-        self.results: list[dict] = []
+        self.results: list = []
 
-    def _fmt_date(self, dt: datetime) -> str:
+    def _fmt(self, dt: datetime) -> str:
         return dt.strftime("%m/%d/%Y")
 
-    # ------------------------------------------------------------------
-    async def _search_doc_type(self, page, doc_type: str) -> list[dict]:
-        records = []
+    async def _search_one(self, page, doc_type: str) -> list:
         cat, cat_label = DOC_TYPE_MAP.get(doc_type, (doc_type, doc_type))
+        records = []
 
         for attempt in range(3):
             try:
                 await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
                 await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
 
-                # Select "Document Type" search option if available
-                try:
-                    await page.select_option("select[name*='SearchType'], #ddlSearchType", "DT")
-                except Exception:
-                    pass
+                # Fill Instrument Type
+                await page.fill(
+                    "input[id*='InstrumentType'], input[name*='InstrumentType'], #txtInstrumentType",
+                    doc_type
+                )
 
-                # Fill document type field
-                for sel in ["#txtDocType", "input[name*='DocType']", "input[id*='DocType']"]:
-                    try:
-                        await page.fill(sel, doc_type)
-                        break
-                    except Exception:
-                        pass
+                # Fill Date From
+                await page.fill(
+                    "input[id*='DateFrom'], input[name*='DateFrom'], #txtDateFrom",
+                    self._fmt(self.start_date)
+                )
 
-                # Fill date range
-                for sel in ["#txtFromDate", "input[name*='FromDate']", "input[id*='From']"]:
-                    try:
-                        await page.fill(sel, self._fmt_date(self.start_date))
-                        break
-                    except Exception:
-                        pass
-                for sel in ["#txtToDate", "input[name*='ToDate']", "input[id*='To']"]:
-                    try:
-                        await page.fill(sel, self._fmt_date(self.end_date))
-                        break
-                    except Exception:
-                        pass
+                # Fill Date To
+                await page.fill(
+                    "input[id*='DateTo'], input[name*='DateTo'], #txtDateTo",
+                    self._fmt(self.end_date)
+                )
 
-                # Submit search
-                for sel in ["#btnSearch", "input[type='submit']", "button[type='submit']"]:
-                    try:
-                        await page.click(sel)
-                        break
-                    except Exception:
-                        pass
-
+                # Click SEARCH
+                await page.click(
+                    "input[value='SEARCH'], button:has-text('SEARCH'), #btnSearch"
+                )
                 await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
 
-                # Collect results across pages
+                # Paginate and collect
                 while True:
-                    html = await page.content()
-                    soup = BeautifulSoup(html, "lxml")
-                    page_records = self._parse_results_table(soup, doc_type, cat, cat_label)
-                    records.extend(page_records)
+                    html  = await page.content()
+                    soup  = BeautifulSoup(html, "lxml")
+                    batch = self._parse_table(soup, doc_type, cat, cat_label)
+                    records.extend(batch)
 
-                    # Try "Next" pagination
-                    next_btn = soup.find("a", string=re.compile(r"Next|>", re.I))
-                    if not next_btn:
+                    next_link = soup.find("a", string=re.compile(r"Next|>", re.I))
+                    if not next_link:
                         break
-                    # Click next via __doPostBack or href
-                    href = next_btn.get("href", "")
+                    href = next_link.get("href", "")
                     if "__doPostBack" in href:
-                        match = re.search(r"__doPostBack\('([^']+)','([^']+)'\)", href)
-                        if match:
-                            et, ea = match.group(1), match.group(2)
-                            await page.evaluate(f"__doPostBack('{et}','{ea}')")
+                        m = re.search(r"__doPostBack\('([^']+)','([^']+)'\)", href)
+                        if m:
+                            await page.evaluate(f"__doPostBack('{m.group(1)}','{m.group(2)}')")
                             await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
                             continue
-                    if href:
-                        await page.click(f"a[href='{href}']")
-                        await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
-                        continue
                     break
 
-                log.info(f"  {doc_type}: found {len(records)} records")
+                log.info(f"  {doc_type}: {len(records)} records")
                 return records
 
-            except PwTimeout:
-                log.warning(f"  Timeout on {doc_type} (attempt {attempt+1})")
             except Exception as e:
-                log.warning(f"  Error on {doc_type} attempt {attempt+1}: {e}")
-            await asyncio.sleep(3)
+                log.warning(f"  {doc_type} attempt {attempt+1} error: {e}")
+                await asyncio.sleep(3)
 
         return records
 
-    # ------------------------------------------------------------------
-    def _parse_results_table(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list[dict]:
+    def _parse_table(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
-        table = soup.find("table", id=re.compile(r"(grid|result|tbl)", re.I))
-        if not table:
-            # Try first data table
-            tables = soup.find_all("table")
-            for t in tables:
-                if t.find("tr") and len(t.find_all("tr")) > 1:
-                    table = t
-                    break
+        table = None
+        for t in soup.find_all("table"):
+            rows = t.find_all("tr")
+            if len(rows) > 1:
+                table = t
+                break
         if not table:
             return records
 
-        rows = table.find_all("tr")
+        rows    = table.find_all("tr")
         headers = []
+
         for row in rows:
             cells = row.find_all(["th", "td"])
-            if not headers:
-                if any(c.get("class") or c.name == "th" for c in cells):
-                    headers = [c.get_text(strip=True).lower() for c in cells]
-                    continue
-            if len(cells) < 3:
-                continue
-            text = [c.get_text(strip=True) for c in cells]
+            text  = [c.get_text(strip=True) for c in cells]
 
-            # Try to map columns
-            def get(keys):
+            if not headers:
+                headers = [t.lower() for t in text]
+                continue
+            if len(text) < 2:
+                continue
+
+            def get(*keys):
                 for k in keys:
                     for i, h in enumerate(headers):
                         if k in h and i < len(text):
-                            return text[i]
-                # Fallback positional
+                            v = text[i]
+                            if v:
+                                return v
                 return ""
 
-            doc_num  = get(["doc num", "document no", "docnum", "doc_num", "instrument"])
-            filed    = get(["filed", "file date", "date", "record date"])
-            grantor  = get(["grantor", "owner", "grantors"])
-            grantee  = get(["grantee", "grantees"])
-            legal    = get(["legal", "description"])
-            amount   = get(["amount", "consideration", "value"])
+            doc_num = get("file", "instrument", "doc")
+            filed   = get("date", "filed", "record")
+            grantor = get("grantor")
+            grantee = get("grantee")
+            legal   = get("legal", "description", "subdivision")
+            amount  = get("amount", "consideration")
 
-            # Build clerk URL (try to find hyperlink in doc_num cell)
             clerk_url = ""
             for cell in cells:
                 a = cell.find("a", href=True)
@@ -494,9 +347,8 @@ class ClerkScraper:
                     break
 
             if not doc_num and not grantor:
-                continue  # skip empty rows
+                continue
 
-            # Normalise filed date
             filed_norm = ""
             for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
                 try:
@@ -506,17 +358,16 @@ class ClerkScraper:
                     pass
 
             records.append({
-                "doc_num":    doc_num,
-                "doc_type":   doc_type,
-                "filed":      filed_norm or filed,
-                "cat":        cat,
-                "cat_label":  cat_label,
-                "owner":      grantor,
-                "grantee":    grantee,
-                "amount":     amount,
-                "legal":      legal,
-                "clerk_url":  clerk_url,
-                # Address fields filled by parcel enrichment later
+                "doc_num":      doc_num,
+                "doc_type":     doc_type,
+                "filed":        filed_norm or filed,
+                "cat":          cat,
+                "cat_label":    cat_label,
+                "owner":        grantor,
+                "grantee":      grantee,
+                "amount":       amount,
+                "legal":        legal,
+                "clerk_url":    clerk_url,
                 "prop_address": "",
                 "prop_city":    "Houston",
                 "prop_state":   "TX",
@@ -531,10 +382,9 @@ class ClerkScraper:
 
         return records
 
-    # ------------------------------------------------------------------
-    async def run(self) -> list[dict]:
+    async def run(self) -> list:
         if not PLAYWRIGHT_AVAILABLE:
-            log.error("Playwright not installed. Run: pip install playwright && playwright install chromium")
+            log.error("Playwright not installed.")
             return []
 
         async with async_playwright() as pw:
@@ -542,103 +392,33 @@ class ClerkScraper:
                 headless=True,
                 args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
-            ctx = await browser.new_context(
+            ctx  = await browser.new_context(
                 user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
                 viewport={"width": 1280, "height": 900},
             )
             page = await ctx.new_page()
 
+            await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
+            await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
+
+            field_info = await page.evaluate("""() => {
+                const inputs = Array.from(document.querySelectorAll('input'));
+                return inputs.map(i => ({id: i.id, name: i.name, placeholder: i.placeholder, type: i.type}));
+            }""")
+            log.info(f"Form fields found: {field_info}")
+
             for doc_type in TARGET_TYPES:
-                log.info(f"Searching clerk for doc type: {doc_type}")
-                recs = await self._search_doc_type(page, doc_type)
+                log.info(f"Searching for: {doc_type}")
+                recs = await self._search_one(page, doc_type)
                 self.results.extend(recs)
-                await asyncio.sleep(1)   # polite delay
+                await asyncio.sleep(1)
 
             await browser.close()
 
         return self.results
 
 
-# ---------------------------------------------------------------------------
-# Fallback: Static HTTP scraper (for environments without Playwright)
-# ---------------------------------------------------------------------------
-class StaticClerkScraper:
-    """
-    Uses requests + BeautifulSoup + __doPostBack POST for clerk portal.
-    Less reliable than Playwright but works as fallback.
-    """
-
-    VIEWSTATE_RE = re.compile(r'id="__VIEWSTATE"\s+value="([^"]*)"')
-    VSTGEN_RE    = re.compile(r'id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"')
-    EVENT_VAL_RE = re.compile(r'id="__EVENTVALIDATION"\s+value="([^"]*)"')
-
-    def __init__(self, start_date: datetime, end_date: datetime):
-        self.start_date = start_date
-        self.end_date   = end_date
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (compatible; HarrisLeadBot/1.0)",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        })
-        self.results: list[dict] = []
-
-    def _fmt_date(self, dt: datetime) -> str:
-        return dt.strftime("%m/%d/%Y")
-
-    def _extract_hidden(self, html: str) -> dict:
-        vs  = self.VIEWSTATE_RE.search(html)
-        vsg = self.VSTGEN_RE.search(html)
-        ev  = self.EVENT_VAL_RE.search(html)
-        return {
-            "__VIEWSTATE":          vs.group(1)  if vs  else "",
-            "__VIEWSTATEGENERATOR": vsg.group(1) if vsg else "",
-            "__EVENTVALIDATION":    ev.group(1)  if ev  else "",
-        }
-
-    def _search(self, doc_type: str) -> list[dict]:
-        cat, cat_label = DOC_TYPE_MAP.get(doc_type, (doc_type, doc_type))
-        records = []
-
-        for attempt in range(3):
-            try:
-                r = self.session.get(CLERK_SEARCH_URL, timeout=30)
-                hidden = self._extract_hidden(r.text)
-
-                payload = {
-                    **hidden,
-                    "__EVENTTARGET":   "",
-                    "__EVENTARGUMENT": "",
-                    "ddlSearchType":   "DT",
-                    "txtDocType":      doc_type,
-                    "txtFromDate":     self._fmt_date(self.start_date),
-                    "txtToDate":       self._fmt_date(self.end_date),
-                    "btnSearch":       "Search",
-                }
-
-                r2 = self.session.post(CLERK_SEARCH_URL, data=payload, timeout=30)
-                soup = BeautifulSoup(r2.text, "lxml")
-                recs = ClerkScraper(self.start_date, self.end_date)._parse_results_table(
-                    soup, doc_type, cat, cat_label
-                )
-                records.extend(recs)
-                log.info(f"  {doc_type}: {len(recs)} records (static)")
-                return records
-            except Exception as e:
-                log.warning(f"  Static scrape error {doc_type} attempt {attempt+1}: {e}")
-                time.sleep(3)
-        return records
-
-    def run(self) -> list[dict]:
-        for doc_type in TARGET_TYPES:
-            recs = self._search(doc_type)
-            self.results.extend(recs)
-        return self.results
-
-
-# ---------------------------------------------------------------------------
-# GHL CSV Export
-# ---------------------------------------------------------------------------
-def export_ghl_csv(records: list[dict], path: str):
+def export_ghl_csv(records: list, path: str):
     fieldnames = [
         "First Name", "Last Name",
         "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
@@ -652,12 +432,10 @@ def export_ghl_csv(records: list[dict], path: str):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for rec in records:
-            owner = rec.get("owner", "") or ""
-            # Split owner name
-            parts = owner.strip().split()
-            first = parts[0] if len(parts) >= 2 else ""
-            last  = " ".join(parts[1:]) if len(parts) >= 2 else owner
-
+            owner  = rec.get("owner", "") or ""
+            parts  = owner.strip().split()
+            first  = parts[0] if len(parts) >= 2 else ""
+            last   = " ".join(parts[1:]) if len(parts) >= 2 else owner
             writer.writerow({
                 "First Name":             first,
                 "Last Name":              last,
@@ -679,88 +457,65 @@ def export_ghl_csv(records: list[dict], path: str):
                 "Source":                 "Harris County Clerk",
                 "Public Records URL":     rec.get("clerk_url", ""),
             })
-    log.info(f"GHL CSV exported → {path}")
+    log.info(f"GHL CSV saved to {path}")
 
 
-# ---------------------------------------------------------------------------
-# Main orchestrator
-# ---------------------------------------------------------------------------
 async def main():
     end_date   = datetime.now()
     start_date = end_date - timedelta(days=LOOKBACK_DAYS)
-    log.info(f"Harris County Motivated Seller Scraper")
-    log.info(f"Date range: {start_date.date()} → {end_date.date()}")
+    log.info("Harris County Motivated Seller Scraper")
+    log.info(f"Date range: {start_date.date()} to {end_date.date()}")
 
-    # ---- 1. Load HCAD parcel data ----------------------------------------
-    parcel_loader = HCADParcelLoader()
-    parcel_count  = parcel_loader.load()
+    parcel = HCADParcelLoader()
+    parcel.load()
 
-    # ---- 2. Scrape clerk portal -------------------------------------------
-    if PLAYWRIGHT_AVAILABLE:
-        log.info("Using Playwright scraper")
-        scraper = ClerkScraper(start_date, end_date)
-        raw_records = await scraper.run()
-    else:
-        log.info("Playwright unavailable – using static HTTP scraper")
-        static_scraper = StaticClerkScraper(start_date, end_date)
-        raw_records = static_scraper.run()
+    scraper = ClerkScraper(start_date, end_date)
+    raw     = await scraper.run()
+    log.info(f"Raw records: {len(raw)}")
 
-    log.info(f"Total raw records from clerk: {len(raw_records)}")
-
-    # ---- 3. Deduplicate by doc_num ----------------------------------------
-    seen = set()
-    deduped = []
-    for rec in raw_records:
+    seen, deduped = set(), []
+    for rec in raw:
         key = (rec.get("doc_num", ""), rec.get("doc_type", ""))
         if key not in seen:
             seen.add(key)
             deduped.append(rec)
-    log.info(f"After dedup: {len(deduped)} records")
+    log.info(f"After dedup: {len(deduped)}")
 
-    # ---- 4. Enrich with parcel data --------------------------------------
     with_address = 0
     for rec in deduped:
-        parcel = parcel_loader.lookup_owner(rec.get("owner", ""))
-        if parcel:
-            rec.update(parcel)
-            if parcel.get("prop_address"):
+        p = parcel.lookup_owner(rec.get("owner", ""))
+        if p:
+            rec.update(p)
+            if p.get("prop_address"):
                 with_address += 1
 
-    log.info(f"Records with address: {with_address}")
-
-    # ---- 5. Score & flag --------------------------------------------------
     for rec in deduped:
         flags, score = compute_flags_and_score(rec, deduped)
         rec["flags"] = flags
         rec["score"] = score
 
-    # Sort by score desc
     deduped.sort(key=lambda r: r.get("score", 0), reverse=True)
 
-    # ---- 6. Build output payload -----------------------------------------
     payload = {
-        "fetched_at":    datetime.utcnow().isoformat() + "Z",
-        "source":        "Harris County Clerk (cclerk.hctx.net)",
-        "date_range":    {"from": start_date.strftime("%Y-%m-%d"), "to": end_date.strftime("%Y-%m-%d")},
-        "total":         len(deduped),
-        "with_address":  with_address,
-        "records":       deduped,
+        "fetched_at":   datetime.utcnow().isoformat() + "Z",
+        "source":       "Harris County Clerk (cclerk.hctx.net)",
+        "date_range":   {"from": start_date.strftime("%Y-%m-%d"), "to": end_date.strftime("%Y-%m-%d")},
+        "total":        len(deduped),
+        "with_address": with_address,
+        "records":      deduped,
     }
 
-    # ---- 7. Save JSON -------------------------------------------------------
     for out_path in ["dashboard/records.json", "data/records.json"]:
         p = Path(out_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, default=str)
-        log.info(f"Saved → {out_path}")
+        log.info(f"Saved to {out_path}")
 
-    # ---- 8. GHL CSV export -----------------------------------------------
     today = datetime.now().strftime("%Y%m%d")
     export_ghl_csv(deduped, f"data/ghl_export_{today}.csv")
 
-    log.info("Done.")
-    return payload
+    log.info(f"Done. Total: {len(deduped)} | With address: {with_address}")
 
 
 if __name__ == "__main__":
