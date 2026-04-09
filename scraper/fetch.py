@@ -269,7 +269,6 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
-        # Find all file number spans
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
         if not file_spans:
             file_spans = [s for s in soup.find_all("span") if re.match(r"RP-\d+", s.get_text(strip=True))]
@@ -293,29 +292,19 @@ class ClerkScraper:
                 # File date
                 file_date = find_text(ctrl_prefix + r"_lblFileDate")
 
-                # Get ALL name entries — grantor and grantees
-                # Pattern: lvOR_ctrl0_lblNames, lvOR_ctrl1_lblNames etc
+                # Get ALL name spans for this record
                 all_name_spans = soup.find_all(
                     "span",
                     id=re.compile(ctrl_prefix + r"_lvOR_ctrl\d+_lblNames", re.IGNORECASE)
                 )
 
-                grantor = ""
+                grantor  = ""
                 grantees = []
 
                 for name_span in all_name_spans:
-                    name_id   = name_span.get("id", "")
                     name_text = name_span.get_text(strip=True)
                     if not name_text:
                         continue
-
-                    # Find the corresponding row label (Grantor/Grantee)
-                    row_span = soup.find(
-                        "span",
-                        id=re.compile(name_id.replace("lblNames", "lv0R_row").replace("lblNames", "row"), re.IGNORECASE)
-                    )
-
-                    # Check sibling row span for Grantor/Grantee label
                     parent_td = name_span.find_parent("td")
                     if parent_td:
                         row_text = parent_td.get_text(separator=" ", strip=True)
@@ -324,24 +313,17 @@ class ClerkScraper:
                         elif "grantee" in row_text.lower():
                             grantees.append(name_text)
                     else:
-                        # fallback — first name is grantor, rest are grantees
                         if not grantor:
                             grantor = name_text
                         else:
                             grantees.append(name_text)
 
-                # Owner = first grantee (property owner being sued/liened)
-                owner   = grantees[0] if grantees else grantor
+                # Owner = first grantee (the property owner)
+                owner        = grantees[0] if grantees else grantor
                 grantor_name = grantor
 
-                # Legal description — get actual values not labels
-                # lblSubDivAdd = subdivision name
-                # lblSection = section number value
-                # lblLot = lot number value
-                # lblBlock = block number value
-                subdiv  = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSubDivAdd")
-
-                # Get section, lot, block VALUES (not the label spans)
+                # Legal description
+                subdiv    = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSubDivAdd")
                 section_el = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSection$", re.IGNORECASE))
                 lot_el     = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblLot$", re.IGNORECASE))
                 block_el   = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblBlock$", re.IGNORECASE))
@@ -350,16 +332,14 @@ class ClerkScraper:
                 lot     = lot_el.get_text(strip=True)     if lot_el     else ""
                 block   = block_el.get_text(strip=True)   if block_el   else ""
 
-                # Build legal as single clean line — only include parts that have real values
                 legal_parts = []
-                if subdiv:              legal_parts.append(subdiv)
-                if section.strip():     legal_parts.append(f"Sec: {section.strip()}")
-                if lot.strip():         legal_parts.append(f"Lot: {lot.strip()}")
-                if block.strip():       legal_parts.append(f"Block: {block.strip()}")
+                if subdiv:          legal_parts.append(subdiv)
+                if section.strip(): legal_parts.append(f"Sec: {section.strip()}")
+                if lot.strip():     legal_parts.append(f"Lot: {lot.strip()}")
+                if block.strip():   legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                # Clerk URL — build direct link from file number
-                # Format: https://cclerk.hctx.net/applications/websearch/RPImage.aspx?ID=RP-2026-132595
+                # Direct link to document
                 clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
                 # Normalise date
