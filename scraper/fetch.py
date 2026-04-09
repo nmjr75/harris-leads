@@ -270,9 +270,7 @@ class ClerkScraper:
         records = []
 
         # Find all file number spans
-        # Confirmed ID pattern: ct100_ContentPlaceHolder1_ListViewl_ctrl{N}_lblFileNo
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
-
         if not file_spans:
             file_spans = [s for s in soup.find_all("span") if re.match(r"RP-\d+", s.get_text(strip=True))]
 
@@ -285,8 +283,6 @@ class ClerkScraper:
                     continue
 
                 span_id = span.get("id", "")
-
-                # Extract the ctrl index e.g. ctrl5 from the file number span ID
                 ctrl_match = re.search(r"(ListViewl_ctrl\d+)", span_id, re.IGNORECASE)
                 ctrl_prefix = ctrl_match.group(1) if ctrl_match else ""
 
@@ -294,55 +290,77 @@ class ClerkScraper:
                     el = soup.find("span", id=re.compile(pattern, re.IGNORECASE))
                     return re.sub(r"\s+", " ", el.get_text(strip=True)) if el else ""
 
-                def find_link(pattern):
-                    el = soup.find("a", id=re.compile(pattern, re.IGNORECASE))
-                    if el and el.get("href"):
-                        href = el["href"]
-                        return href if href.startswith("http") else CLERK_BASE + href
-                    return ""
-
                 # File date
                 file_date = find_text(ctrl_prefix + r"_lblFileDate")
 
-                # Names — confirmed span: lvOR_ctrl0_lblNames
-                names_txt = find_text(ctrl_prefix + r"_lvOR_ctrl\d+_lblNames")
+                # Get ALL name entries — grantor and grantees
+                # Pattern: lvOR_ctrl0_lblNames, lvOR_ctrl1_lblNames etc
+                all_name_spans = soup.find_all(
+                    "span",
+                    id=re.compile(ctrl_prefix + r"_lvOR_ctrl\d+_lblNames", re.IGNORECASE)
+                )
 
-                # Legal description — combine subdivision + sec + lot + block
+                grantor = ""
+                grantees = []
+
+                for name_span in all_name_spans:
+                    name_id   = name_span.get("id", "")
+                    name_text = name_span.get_text(strip=True)
+                    if not name_text:
+                        continue
+
+                    # Find the corresponding row label (Grantor/Grantee)
+                    row_span = soup.find(
+                        "span",
+                        id=re.compile(name_id.replace("lblNames", "lv0R_row").replace("lblNames", "row"), re.IGNORECASE)
+                    )
+
+                    # Check sibling row span for Grantor/Grantee label
+                    parent_td = name_span.find_parent("td")
+                    if parent_td:
+                        row_text = parent_td.get_text(separator=" ", strip=True)
+                        if "grantor" in row_text.lower():
+                            grantor = name_text
+                        elif "grantee" in row_text.lower():
+                            grantees.append(name_text)
+                    else:
+                        # fallback — first name is grantor, rest are grantees
+                        if not grantor:
+                            grantor = name_text
+                        else:
+                            grantees.append(name_text)
+
+                # Owner = first grantee (property owner being sued/liened)
+                owner   = grantees[0] if grantees else grantor
+                grantor_name = grantor
+
+                # Legal description — get actual values not labels
+                # lblSubDivAdd = subdivision name
+                # lblSection = section number value
+                # lblLot = lot number value
+                # lblBlock = block number value
                 subdiv  = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSubDivAdd")
-                section = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSection")
-                lot     = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblLot")
-                block   = find_text(ctrl_prefix + r"_lvLegal_ctrl\d+_lblBlock")
 
-                # Build legal description as single line
+                # Get section, lot, block VALUES (not the label spans)
+                section_el = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblSection$", re.IGNORECASE))
+                lot_el     = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblLot$", re.IGNORECASE))
+                block_el   = soup.find("span", id=re.compile(ctrl_prefix + r"_lvLegal_ctrl\d+_lblBlock$", re.IGNORECASE))
+
+                section = section_el.get_text(strip=True) if section_el else ""
+                lot     = lot_el.get_text(strip=True)     if lot_el     else ""
+                block   = block_el.get_text(strip=True)   if block_el   else ""
+
+                # Build legal as single clean line — only include parts that have real values
                 legal_parts = []
-                if subdiv:  legal_parts.append(subdiv)
-                if section: legal_parts.append(f"Sec: {section}")
-                if lot:     legal_parts.append(f"Lot: {lot}")
-                if block:   legal_parts.append(f"Block: {block}")
+                if subdiv:              legal_parts.append(subdiv)
+                if section.strip():     legal_parts.append(f"Sec: {section.strip()}")
+                if lot.strip():         legal_parts.append(f"Lot: {lot.strip()}")
+                if block.strip():       legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                # Film code link
-                clerk_url = find_link(ctrl_prefix + r"_lnkFilmCode")
-                if not clerk_url:
-                    parent = span.find_parent("tr")
-                    if parent:
-                        a = parent.find("a", href=True)
-                        if a:
-                            href = a["href"]
-                            clerk_url = href if href.startswith("http") else CLERK_BASE + href
-
-                # Parse grantor/grantee from names
-                grantor = ""
-                grantee = ""
-                for line in names_txt.replace("\t", " ").split("Grantee"):
-                    line = line.strip()
-                    if not grantor and line:
-                        grantor = re.sub(r"(?i)^grantor\s*:?\s*", "", line).strip()
-                    elif line and not grantee:
-                        grantee = re.sub(r"(?i)^:\s*", "", line).strip()
-
-                if not grantor:
-                    grantor = names_txt.strip()
+                # Clerk URL — build direct link from file number
+                # Format: https://cclerk.hctx.net/applications/websearch/RPImage.aspx?ID=RP-2026-132595
+                clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
                 # Normalise date
                 filed_norm = ""
@@ -359,8 +377,8 @@ class ClerkScraper:
                     "filed":        filed_norm or file_date,
                     "cat":          cat,
                     "cat_label":    cat_label,
-                    "owner":        grantor,
-                    "grantee":      grantee,
+                    "owner":        owner,
+                    "grantee":      grantor_name,
                     "amount":       "",
                     "legal":        legal,
                     "clerk_url":    clerk_url,
