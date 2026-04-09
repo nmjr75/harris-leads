@@ -229,7 +229,7 @@ class ClerkScraper:
                     timeout=self.NAV_TIMEOUT
                 )
 
-                # Fill using querySelectorAll - confirmed working from browser testing
+                # Fill using querySelectorAll - confirmed working
                 await page.evaluate(f"""
                     document.querySelectorAll('[id*="txtInstrument"]')[0].value = '{doc_type}';
                     document.querySelectorAll('[id*="txtFrom"]')[0].value = '{self._fmt(self.start_date)}';
@@ -271,180 +271,103 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
-        # Results are in the first table on the page
-        # Confirmed structure: File Number | File Date | Type | Vol Page | Names | Legal | Pgs | Film Code
-        table = soup.find("table", id="itemPlaceHolderContainer")
-        if not table:
-            # fallback - find first table with RP- file numbers
-            for t in soup.find_all("table"):
-                if "RP-" in t.get_text():
-                    table = t
-                    break
+        # Find all file number spans - confirmed ID pattern: ct100_ContentPlaceHolder1_ListViewl_ctrl0_lblFileNo
+        # Note: ListViewl uses lowercase letter L not number 1
+        file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
 
-        if not table:
-            return records
+        if not file_spans:
+            # fallback - any span containing RP- file numbers
+            file_spans = [s for s in soup.find_all("span") if re.match(r"RP-\d+", s.get_text(strip=True))]
 
-        # Each record spans multiple rows grouped by file number
-        # Parse all spans with lblFileNo, lblFileDate, lblNames etc
-        # Find all file number spans
-        file_spans = table.find_all("span", id=re.compile(r"lblFileNo|lblFilNum|lblRPNum"))
+        log.info(f"    Found {len(file_spans)} file number spans")
 
-        if file_spans:
-            # New approach: find by span IDs
-            for span in file_spans:
-                try:
-                    # Get the base ID prefix e.g. ct100_ContentPlaceHolder1_ListView1_ctrl0
-                    base_id = re.sub(r"lblFileNo.*", "", span.get("id", ""))
-                    ctrl_id = re.sub(r"_lblFileNo.*", "", span.get("id", ""))
-
-                    file_num = span.get_text(strip=True)
-                    if not file_num.startswith("RP-"):
-                        continue
-
-                    # Find related fields by ctrl ID
-                    date_span  = table.find("span", id=re.compile(ctrl_id + r".*lblFileDate|.*lblDate"))
-                    names_span = table.find("span", id=re.compile(ctrl_id + r".*lblNames|.*lblName"))
-                    legal_span = table.find("span", id=re.compile(ctrl_id + r".*lblLegal|.*lblDesc"))
-                    link_tag   = table.find("a",    id=re.compile(ctrl_id + r".*lnkFilm|.*lnkView"))
-
-                    file_date = date_span.get_text(strip=True)  if date_span  else ""
-                    names     = names_span.get_text(strip=True) if names_span else ""
-                    legal     = legal_span.get_text(strip=True) if legal_span else ""
-                    clerk_url = ""
-                    if link_tag and link_tag.get("href"):
-                        href = link_tag["href"]
-                        clerk_url = href if href.startswith("http") else CLERK_BASE + href
-
-                    # Parse grantor/grantee from names text
-                    grantor = ""
-                    grantee = ""
-                    for line in names.split("\n"):
-                        line = line.strip()
-                        if line.lower().startswith("grantor:"):
-                            grantor = line[8:].strip()
-                        elif line.lower().startswith("grantee:") and not grantee:
-                            grantee = line[8:].strip()
-
-                    if not grantor:
-                        grantor = names
-
-                    filed_norm = ""
-                    for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
-                        try:
-                            filed_norm = datetime.strptime(file_date, fmt).strftime("%Y-%m-%d")
-                            break
-                        except Exception:
-                            pass
-
-                    records.append({
-                        "doc_num":      file_num,
-                        "doc_type":     doc_type,
-                        "filed":        filed_norm or file_date,
-                        "cat":          cat,
-                        "cat_label":    cat_label,
-                        "owner":        grantor,
-                        "grantee":      grantee,
-                        "amount":       "",
-                        "legal":        legal,
-                        "clerk_url":    clerk_url,
-                        "prop_address": "",
-                        "prop_city":    "Houston",
-                        "prop_state":   "TX",
-                        "prop_zip":     "",
-                        "mail_address": "",
-                        "mail_city":    "",
-                        "mail_state":   "TX",
-                        "mail_zip":     "",
-                        "flags":        [],
-                        "score":        0,
-                    })
-                except Exception as e:
-                    log.warning(f"  Row parse error: {e}")
+        for span in file_spans:
+            try:
+                file_num = span.get_text(strip=True)
+                if not file_num.startswith("RP-"):
                     continue
 
-        else:
-            # Fallback: parse rows directly looking for RP- numbers
-            current = {}
-            for row in table.find_all("tr"):
-                text = row.get_text(separator="|", strip=True)
-                cells = row.find_all("td")
+                # Extract ctrl index from span ID e.g. ctrl0, ctrl1, ctrl2
+                span_id  = span.get("id", "")
+                ctrl_match = re.search(r"ctrl(\d+)", span_id)
+                ctrl_idx = ctrl_match.group(1) if ctrl_match else "0"
 
-                # Look for row with RP- file number
-                if len(cells) >= 2:
-                    cell_texts = [c.get_text(strip=True) for c in cells]
-                    for i, ct in enumerate(cell_texts):
-                        if ct.startswith("RP-"):
-                            # Save previous record
-                            if current.get("doc_num"):
-                                records.append(current)
+                # Build prefix for sibling fields
+                prefix = re.sub(r"lblFileNo$", "", span_id)
 
-                            # Start new record - try to get all columns
-                            file_num  = ct
-                            file_date = cell_texts[i+1] if i+1 < len(cell_texts) else ""
-                            names_txt = cell_texts[i+3] if i+3 < len(cell_texts) else ""
-                            legal_txt = cell_texts[i+4] if i+4 < len(cell_texts) else ""
+                def find_span(suffix):
+                    el = soup.find("span", id=re.compile(re.escape(prefix) + suffix, re.IGNORECASE))
+                    return el.get_text(strip=True) if el else ""
 
-                            # Get link
-                            clerk_url = ""
-                            for a in row.find_all("a", href=True):
-                                href = a["href"]
-                                clerk_url = href if href.startswith("http") else CLERK_BASE + href
-                                break
+                def find_link(suffix):
+                    el = soup.find("a", id=re.compile(re.escape(prefix) + suffix, re.IGNORECASE))
+                    if el and el.get("href"):
+                        href = el["href"]
+                        return href if href.startswith("http") else CLERK_BASE + href
+                    return ""
 
-                            # Parse grantor/grantee
-                            grantor = ""
-                            grantee = ""
-                            for line in names_txt.split("\n"):
-                                line = line.strip()
-                                if "grantor" in line.lower():
-                                    grantor = re.sub(r"(?i)grantor\s*:?\s*", "", line).strip()
-                                elif "grantee" in line.lower() and not grantee:
-                                    grantee = re.sub(r"(?i)grantee\s*:?\s*", "", line).strip()
+                file_date = find_span("lblFileDate")
+                names_txt = find_span("lblNames")
+                legal_txt = find_span("lblLegal")
+                clerk_url = find_link("lnkFilmCode")
 
-                            filed_norm = ""
-                            for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
-                                try:
-                                    filed_norm = datetime.strptime(file_date, fmt).strftime("%Y-%m-%d")
-                                    break
-                                except Exception:
-                                    pass
+                # If no clerk_url try any nearby link
+                if not clerk_url:
+                    parent = span.find_parent("tr")
+                    if parent:
+                        a = parent.find("a", href=True)
+                        if a:
+                            href = a["href"]
+                            clerk_url = href if href.startswith("http") else CLERK_BASE + href
 
-                            current = {
-                                "doc_num":      file_num,
-                                "doc_type":     doc_type,
-                                "filed":        filed_norm or file_date,
-                                "cat":          cat,
-                                "cat_label":    cat_label,
-                                "owner":        grantor,
-                                "grantee":      grantee,
-                                "amount":       "",
-                                "legal":        legal_txt,
-                                "clerk_url":    clerk_url,
-                                "prop_address": "",
-                                "prop_city":    "Houston",
-                                "prop_state":   "TX",
-                                "prop_zip":     "",
-                                "mail_address": "",
-                                "mail_city":    "",
-                                "mail_state":   "TX",
-                                "mail_zip":     "",
-                                "flags":        [],
-                                "score":        0,
-                            }
-                            break
+                # Parse grantor/grantee from names
+                grantor = ""
+                grantee = ""
+                for line in names_txt.replace("\t", "\n").split("\n"):
+                    line = line.strip()
+                    if re.match(r"(?i)grantor\s*:", line):
+                        grantor = re.sub(r"(?i)grantor\s*:\s*", "", line).strip()
+                    elif re.match(r"(?i)grantee\s*:", line) and not grantee:
+                        grantee = re.sub(r"(?i)grantee\s*:\s*", "", line).strip()
 
-                # Check for grantor/grantee in name rows
-                elif "Grantor:" in text and current.get("doc_num"):
-                    for part in text.split("|"):
-                        part = part.strip()
-                        if part.startswith("Grantor:"):
-                            current["owner"] = part[8:].strip()
-                        elif part.startswith("Grantee:") and not current.get("grantee"):
-                            current["grantee"] = part[8:].strip()
+                if not grantor:
+                    grantor = names_txt.strip()
 
-            # Don't forget last record
-            if current.get("doc_num"):
-                records.append(current)
+                # Normalise date
+                filed_norm = ""
+                for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
+                    try:
+                        filed_norm = datetime.strptime(file_date, fmt).strftime("%Y-%m-%d")
+                        break
+                    except Exception:
+                        pass
+
+                records.append({
+                    "doc_num":      file_num,
+                    "doc_type":     doc_type,
+                    "filed":        filed_norm or file_date,
+                    "cat":          cat,
+                    "cat_label":    cat_label,
+                    "owner":        grantor,
+                    "grantee":      grantee,
+                    "amount":       "",
+                    "legal":        legal_txt,
+                    "clerk_url":    clerk_url,
+                    "prop_address": "",
+                    "prop_city":    "Houston",
+                    "prop_state":   "TX",
+                    "prop_zip":     "",
+                    "mail_address": "",
+                    "mail_city":    "",
+                    "mail_state":   "TX",
+                    "mail_zip":     "",
+                    "flags":        [],
+                    "score":        0,
+                })
+
+            except Exception as e:
+                log.warning(f"  Row parse error: {e}")
+                continue
 
         return records
 
