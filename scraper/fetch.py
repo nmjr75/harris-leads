@@ -269,15 +269,6 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
-        # Build case-insensitive lookups of ALL relevant spans on the page
-        # Key = lowercase ID, Value = (original_id, text)
-        name_spans  = {s["id"].lower(): s.get_text(strip=True)
-                       for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvOR_ctrl\d+_lblNames", re.IGNORECASE))}
-        legal_spans = {s["id"].lower(): s.get_text(strip=True)
-                       for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lvLegal_ctrl\d+_lbl", re.IGNORECASE))}
-        date_spans  = {s["id"].lower(): s.get_text(strip=True)
-                       for s in soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileDate", re.IGNORECASE))}
-
         # Find all file number spans
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
         if not file_spans:
@@ -292,25 +283,59 @@ class ClerkScraper:
                     continue
 
                 span_id = span.get("id", "")
+                ctrl_match = re.search(r"(ListViewl_ctrl\d+)", span_id, re.IGNORECASE)
+                ctrl_prefix = ctrl_match.group(1) if ctrl_match else ""
 
-                # Extract prefix in lowercase for consistent lookup
-                # e.g. "ct100_contentplaceholder1_listviewl_ctrl5"
-                ctrl_match = re.search(r"(.*?listviewl_ctrl\d+)", span_id, re.IGNORECASE)
-                if not ctrl_match:
-                    continue
-                prefix = ctrl_match.group(1).lower()
+                def find_text(pattern):
+                    el = soup.find("span", id=re.compile(pattern, re.IGNORECASE))
+                    return re.sub(r"\s+", " ", el.get_text(strip=True)) if el else ""
 
-                # Look up all fields using lowercase keys
-                file_date = date_spans.get(f"{prefix}_lblfiledate", "")
-                grantor   = name_spans.get(f"{prefix}_lvor_ctrl0_lblnames", "")
-                owner     = name_spans.get(f"{prefix}_lvor_ctrl1_lblnames", "")
-                if not owner:
-                    owner = grantor
+                # File date
+                file_date = find_text(ctrl_prefix + r"_lblFileDate")
 
-                subdiv  = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsubdivadd", "")
-                section = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblsection", "")
-                lot     = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lbllot", "")
-                block   = legal_spans.get(f"{prefix}_lvlegal_ctrl0_lblblock", "")
+                # Get ALL name spans for this specific record only
+                # Confirmed pattern: ListViewl_ctrl{N}_lvOR_ctrl{M}_lblNames
+                # ctrl0 = Grantor, ctrl1 = first Grantee (owner)
+                record_name_spans = soup.find_all(
+                    "span",
+                    id=re.compile(
+                        r"^.*?" + re.escape(ctrl_prefix) + r"_lvOR_ctrl\d+_lblNames$",
+                        re.IGNORECASE
+                    )
+                )
+
+                grantor = ""
+                owner   = ""
+
+                if record_name_spans:
+                    grantor = record_name_spans[0].get_text(strip=True)
+                    if len(record_name_spans) >= 2:
+                        owner = record_name_spans[1].get_text(strip=True)
+                    else:
+                        owner = grantor
+
+                # Legal description
+                subdiv_el  = soup.find("span", id=re.compile(
+                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblSubDivAdd$",
+                    re.IGNORECASE
+                ))
+                section_el = soup.find("span", id=re.compile(
+                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblSection$",
+                    re.IGNORECASE
+                ))
+                lot_el     = soup.find("span", id=re.compile(
+                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblLot$",
+                    re.IGNORECASE
+                ))
+                block_el   = soup.find("span", id=re.compile(
+                    r"^.*?" + re.escape(ctrl_prefix) + r"_lvLegal_ctrl\d+_lblBlock$",
+                    re.IGNORECASE
+                ))
+
+                subdiv  = subdiv_el.get_text(strip=True)  if subdiv_el  else ""
+                section = section_el.get_text(strip=True) if section_el else ""
+                lot     = lot_el.get_text(strip=True)     if lot_el     else ""
+                block   = block_el.get_text(strip=True)   if block_el   else ""
 
                 legal_parts = []
                 if subdiv:          legal_parts.append(subdiv)
