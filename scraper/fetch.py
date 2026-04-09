@@ -213,20 +213,6 @@ class ClerkScraper:
     def _fmt(self, dt: datetime) -> str:
         return dt.strftime("%m/%d/%Y")
 
-    async def _get_frame(self, page):
-        """Return the frame containing the search form — handles iframe or main page."""
-        # Check if form is inside an iframe
-        for frame in page.frames:
-            try:
-                el = await frame.query_selector("#ct100_ContentPlaceHolder1_txtInstrument")
-                if el:
-                    log.info(f"  Form found in frame: {frame.url}")
-                    return frame
-            except Exception:
-                pass
-        # Fallback to main page
-        return page
-
     async def _search_one(self, page, doc_type: str) -> list:
         cat, cat_label = DOC_TYPE_MAP.get(doc_type, (doc_type, doc_type))
         records = []
@@ -237,21 +223,26 @@ class ClerkScraper:
                 await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
                 await asyncio.sleep(2)
 
-                # Get the correct frame (main page or iframe)
-                frame = await self._get_frame(page)
-
-                # Wait for form field to be ready
-                await frame.wait_for_selector(
-                    "#ct100_ContentPlaceHolder1_txtInstrument",
-                    state="visible",
+                # Use querySelectorAll with attribute contains selector
+                # This is confirmed working from browser console testing
+                await page.wait_for_selector(
+                    "[id*='txtInstrument']",
+                    state="attached",
                     timeout=self.NAV_TIMEOUT
                 )
 
-                # Fill the form fields
-                await frame.fill("#ct100_ContentPlaceHolder1_txtInstrument", doc_type)
-                await frame.fill("#ct100_ContentPlaceHolder1_txtFrom", self._fmt(self.start_date))
-                await frame.fill("#ct100_ContentPlaceHolder1_txtTo", self._fmt(self.end_date))
-                await frame.click("#ct100_ContentPlaceHolder1_btnSearch")
+                # Fill fields using evaluate with querySelectorAll
+                await page.evaluate(f"""
+                    document.querySelectorAll('[id*="txtInstrument"]')[0].value = '{doc_type}';
+                    document.querySelectorAll('[id*="txtFrom"]')[0].value = '{self._fmt(self.start_date)}';
+                    document.querySelectorAll('[id*="txtTo"]')[0].value = '{self._fmt(self.end_date)}';
+                """)
+
+                # Click search button
+                await page.evaluate("""
+                    document.querySelectorAll('[id*="btnSearch"]')[0].click();
+                """)
+
                 await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
                 await asyncio.sleep(2)
 
