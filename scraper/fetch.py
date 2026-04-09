@@ -269,8 +269,6 @@ class ClerkScraper:
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
         records = []
 
-        # Find all file number spans
-        # Confirmed exact ID pattern: ct100_ContentPlaceHolder1_ListViewl_ctrl{N}_lblFileNo
         file_spans = soup.find_all("span", id=re.compile(r"ListViewl_ctrl\d+_lblFileNo", re.IGNORECASE))
         if not file_spans:
             file_spans = [s for s in soup.find_all("span") if re.match(r"RP-\d+", s.get_text(strip=True))]
@@ -283,26 +281,54 @@ class ClerkScraper:
                 if not file_num.startswith("RP-"):
                     continue
 
-                # Get exact span ID as it appears in HTML
-                # e.g. ct100_ContentPlaceHolder1_ListViewl_ctrl0_lblFileNo
                 span_id = span.get("id", "")
-
-                # Build exact sibling IDs by replacing lblFileNo with other field names
-                # This preserves exact casing from the actual HTML
-                base = span_id.replace("_lblFileNo", "")
                 # base = ct100_ContentPlaceHolder1_ListViewl_ctrl{N}
+                base = span_id.replace("_lblFileNo", "")
 
                 def get(field_id):
                     el = soup.find(id=field_id)
                     return re.sub(r"\s+", " ", el.get_text(strip=True)) if el else ""
 
-                # All IDs confirmed from browser console testing
                 file_date = get(f"{base}_lblFileDate")
-                grantor   = get(f"{base}_lvOR_ctrl0_lblNames")
-                owner     = get(f"{base}_lvOR_ctrl1_lblNames")
-                if not owner:
+
+                # Loop through all name entries for this record
+                # Confirmed row label ID pattern: {base}_lvOR_ctrl{N}_row
+                # Row label text starts with "Grantor:" or "Grantee:"
+                grantor  = ""
+                grantees = []
+
+                ctrl_idx = 0
+                while True:
+                    row_id  = f"{base}_lvOR_ctrl{ctrl_idx}_row"
+                    name_id = f"{base}_lvOR_ctrl{ctrl_idx}_lblNames"
+
+                    row_el  = soup.find(id=row_id)
+                    name_el = soup.find(id=name_id)
+
+                    if not row_el and not name_el:
+                        break
+
+                    row_text  = row_el.get_text(strip=True)  if row_el  else ""
+                    name_text = name_el.get_text(strip=True) if name_el else ""
+
+                    if name_text:
+                        if row_text.lower().startswith("grantee"):
+                            grantees.append(name_text)
+                        elif row_text.lower().startswith("grantor") and not grantor:
+                            grantor = name_text
+
+                    ctrl_idx += 1
+                    if ctrl_idx > 20:
+                        break
+
+                # Owner = all grantees joined by semicolon
+                # If no grantees found fall back to grantor
+                if grantees:
+                    owner = "; ".join(grantees)
+                else:
                     owner = grantor
 
+                # Legal description
                 subdiv  = get(f"{base}_lvLegal_ctrl0_lblSubDivAdd")
                 section = get(f"{base}_lvLegal_ctrl0_lblSection")
                 lot     = get(f"{base}_lvLegal_ctrl0_lblLot")
@@ -396,9 +422,11 @@ def export_ghl_csv(records: list, path: str):
         writer.writeheader()
         for rec in records:
             owner  = rec.get("owner", "") or ""
-            parts  = owner.strip().split()
+            # Use first grantee name for First/Last split
+            first_owner = owner.split(";")[0].strip()
+            parts  = first_owner.strip().split()
             first  = parts[0] if len(parts) >= 2 else ""
-            last   = " ".join(parts[1:]) if len(parts) >= 2 else owner
+            last   = " ".join(parts[1:]) if len(parts) >= 2 else first_owner
             writer.writerow({
                 "First Name":             first,
                 "Last Name":              last,
