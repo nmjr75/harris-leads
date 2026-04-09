@@ -90,7 +90,6 @@ async function loadData(){
     const to=data.date_range?.to||'';
     const fetched=data.fetched_at?new Date(data.fetched_at).toLocaleString():'Never';
     document.getElementById('metaInfo').textContent='Updated: '+fetched+' | '+from+' to '+to;
-
     const cats={};
     allRecords.forEach(r=>{cats[r.cat_label]=(cats[r.cat_label]||0)+1;});
     const top=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,4);
@@ -98,7 +97,6 @@ async function loadData(){
     html+='<div class="stat-card"><div class="num">'+(data.with_address||0)+'</div><div class="lbl">With Address</div></div>';
     top.forEach(([k,v])=>{html+='<div class="stat-card"><div class="num">'+v+'</div><div class="lbl">'+k+'</div></div>';});
     document.getElementById('statsRow').innerHTML=html;
-
     const types=[...new Set(allRecords.map(r=>r.doc_type))].sort();
     const tf=document.getElementById('typeFilter');
     types.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;tf.appendChild(o);});
