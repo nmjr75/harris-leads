@@ -45,7 +45,7 @@
 </header>
 <div class="stats" id="statsRow"></div>
 <div class="controls">
-  <input type="text" id="searchInput" placeholder="Search owner, address, doc#..." style="width:220px"/>
+  <input type="text" id="searchInput" placeholder="Search owner, legal, doc#..." style="width:220px"/>
   <select id="typeFilter"><option value="">All Types</option></select>
   <input type="number" id="minScore" placeholder="Min score" style="width:90px" min="0" max="100"/>
   <select id="addrFilter">
@@ -65,11 +65,12 @@
         <th onclick="sortBy('filed')">Filed</th>
         <th onclick="sortBy('doc_type')">Type</th>
         <th onclick="sortBy('cat_label')">Category</th>
-        <th onclick="sortBy('owner')">Owner</th>
+        <th onclick="sortBy('owner')">Owner / Grantor</th>
+        <th onclick="sortBy('grantee')">Grantee</th>
         <th>Flags</th>
+        <th onclick="sortBy('legal')">Legal Description</th>
         <th onclick="sortBy('prop_address')">Property Address</th>
         <th>Mail Address</th>
-        <th onclick="sortBy('amount')">Amount</th>
         <th>Doc #</th>
         <th>Link</th>
       </tr>
@@ -80,6 +81,7 @@
 <script>
 let allRecords=[];
 let sortKey='score',sortDir=-1;
+
 async function loadData(){
   try{
     const r=await fetch('records.json?t='+Date.now());
@@ -89,6 +91,7 @@ async function loadData(){
     const to=data.date_range?.to||'';
     const fetched=data.fetched_at?new Date(data.fetched_at).toLocaleString():'Never';
     document.getElementById('metaInfo').textContent='Updated: '+fetched+' | '+from+' to '+to;
+
     const cats={};
     allRecords.forEach(r=>{cats[r.cat_label]=(cats[r.cat_label]||0)+1;});
     const top=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,4);
@@ -96,6 +99,7 @@ async function loadData(){
     html+='<div class="stat-card"><div class="num">'+(data.with_address||0)+'</div><div class="lbl">With Address</div></div>';
     top.forEach(([k,v])=>{html+='<div class="stat-card"><div class="num">'+v+'</div><div class="lbl">'+k+'</div></div>';});
     document.getElementById('statsRow').innerHTML=html;
+
     const types=[...new Set(allRecords.map(r=>r.doc_type))].sort();
     const tf=document.getElementById('typeFilter');
     types.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;tf.appendChild(o);});
@@ -105,6 +109,7 @@ async function loadData(){
     document.getElementById('noData').textContent='Error loading data: '+e.message;
   }
 }
+
 function getFiltered(){
   const q=document.getElementById('searchInput').value.toLowerCase();
   const type=document.getElementById('typeFilter').value;
@@ -115,14 +120,27 @@ function getFiltered(){
     if(r.score<min)return false;
     if(addr==='yes'&&!r.prop_address)return false;
     if(addr==='no'&&r.prop_address)return false;
-    if(q){const hay=[r.owner,r.prop_address,r.mail_address,r.doc_num,r.cat_label].join(' ').toLowerCase();if(!hay.includes(q))return false;}
+    if(q){
+      const hay=[r.owner,r.grantee,r.legal,r.prop_address,r.mail_address,r.doc_num,r.cat_label].join(' ').toLowerCase();
+      if(!hay.includes(q))return false;
+    }
     return true;
   });
 }
-function sortBy(key){if(sortKey===key)sortDir*=-1;else{sortKey=key;sortDir=-1;}render();}
+
+function sortBy(key){
+  if(sortKey===key)sortDir*=-1;
+  else{sortKey=key;sortDir=-1;}
+  render();
+}
+
 function render(){
   let recs=getFiltered();
-  recs.sort((a,b)=>{let av=a[sortKey]||'',bv=b[sortKey]||'';if(sortKey==='score'){av=+av;bv=+bv;}return av<bv?sortDir:av>bv?-sortDir:0;});
+  recs.sort((a,b)=>{
+    let av=a[sortKey]||'',bv=b[sortKey]||'';
+    if(sortKey==='score'){av=+av;bv=+bv;}
+    return av<bv?sortDir:av>bv?-sortDir:0;
+  });
   const tbody=document.getElementById('tableBody');
   const noData=document.getElementById('noData');
   if(!recs.length){tbody.innerHTML='';noData.style.display='block';return;}
@@ -133,9 +151,23 @@ function render(){
     const prop=[r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ');
     const mail=[r.mail_address,r.mail_city,r.mail_state,r.mail_zip].filter(Boolean).join(', ');
     const link=r.clerk_url?'<a class="clerk-link" href="'+r.clerk_url+'" target="_blank">View</a>':'—';
-    return '<tr><td><span class="score-badge '+sc+'">'+r.score+'</span></td><td>'+(r.filed||'—')+'</td><td><span class="doc-type">'+r.doc_type+'</span></td><td>'+(r.cat_label||'—')+'</td><td>'+(r.owner||'—')+'</td><td>'+(flags||'—')+'</td><td>'+(prop||'—')+'</td><td>'+(mail||'—')+'</td><td>'+(r.amount||'—')+'</td><td style="font-size:.7rem;color:var(--muted)">'+(r.doc_num||'—')+'</td><td>'+link+'</td></tr>';
+    return '<tr>'+
+      '<td><span class="score-badge '+sc+'">'+r.score+'</span></td>'+
+      '<td>'+(r.filed||'—')+'</td>'+
+      '<td><span class="doc-type">'+r.doc_type+'</span></td>'+
+      '<td>'+(r.cat_label||'—')+'</td>'+
+      '<td>'+(r.owner||'—')+'</td>'+
+      '<td>'+(r.grantee||'—')+'</td>'+
+      '<td>'+(flags||'—')+'</td>'+
+      '<td style="font-size:.75rem">'+(r.legal||'—')+'</td>'+
+      '<td>'+(prop||'—')+'</td>'+
+      '<td>'+(mail||'—')+'</td>'+
+      '<td style="font-size:.7rem;color:var(--muted)">'+(r.doc_num||'—')+'</td>'+
+      '<td>'+link+'</td>'+
+      '</tr>';
   }).join('');
 }
+
 function resetFilters(){
   document.getElementById('searchInput').value='';
   document.getElementById('typeFilter').value='';
@@ -143,20 +175,28 @@ function resetFilters(){
   document.getElementById('addrFilter').value='';
   render();
 }
+
 function exportCSV(){
   const recs=getFiltered();
-  const cols=['score','filed','doc_type','cat_label','owner','grantee','prop_address','prop_city','prop_zip','mail_address','mail_city','mail_zip','amount','doc_num','flags','clerk_url'];
+  const cols=['score','filed','doc_type','cat_label','owner','grantee','legal','prop_address','prop_city','prop_zip','mail_address','mail_city','mail_zip','amount','doc_num','flags','clerk_url'];
   const lines=[cols.join(',')];
-  recs.forEach(r=>{lines.push(cols.map(c=>{let v=c==='flags'?(r.flags||[]).join('; '):(r[c]||'');return'"'+String(v).replace(/"/g,'""')+'"';}).join(','));});
+  recs.forEach(r=>{
+    lines.push(cols.map(c=>{
+      let v=c==='flags'?(r.flags||[]).join('; '):(r[c]||'');
+      return '"'+String(v).replace(/"/g,'""')+'"';
+    }).join(','));
+  });
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
   a.download='harris_leads_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
 }
+
 ['searchInput','typeFilter','minScore','addrFilter'].forEach(id=>{
   document.getElementById(id).addEventListener('input',render);
   document.getElementById(id).addEventListener('change',render);
 });
+
 loadData();
 </script>
 </body>
