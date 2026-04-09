@@ -222,32 +222,11 @@ class ClerkScraper:
                 await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
                 await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
 
-                # Clear all fields first
-                await page.evaluate("""() => {
-                    document.querySelectorAll('input[type=text]').forEach(i => i.value = '');
-                }""")
-
-                # Fill Instrument Type field (highlighted blue on the form)
-                await page.locator("input").filter(has_text="").nth(0).fill("")
-                
-                # Use the label to find the right field
-                instrument_field = page.locator("input#ctl00_ContentPlaceHolder1_txtFileNo")
-                if await instrument_field.count() == 0:
-                    # fallback: find by placeholder or position near "Instrument Type" label
-                    instrument_field = page.locator("input[id*='FileNo'], input[id*='Instrument'], input[id*='filmCd']").first
-                
-                await instrument_field.fill(doc_type)
-
-                # Fill Date From
-                date_from = page.locator("input[id*='txtFrom'], input[placeholder='MM/DD/YYYY']").first
-                await date_from.fill(self._fmt(self.start_date))
-
-                # Fill Date To  
-                date_to = page.locator("input[id*='txtTo'], input[placeholder='MM/DD/YYYY']").nth(1)
-                await date_to.fill(self._fmt(self.end_date))
-
-                # Click SEARCH button
-                await page.locator("input[value='SEARCH'], input[value='Search'], button:has-text('Search')").first.click()
+                # Use exact field IDs discovered from portal
+                await page.fill("#ctl100_ContentPlaceHolder1_txtInstrument", doc_type)
+                await page.fill("#ctl100_ContentPlaceHolder1_txtFrom", self._fmt(self.start_date))
+                await page.fill("#ctl100_ContentPlaceHolder1_txtTo", self._fmt(self.end_date))
+                await page.click("#ctl100_ContentPlaceHolder1_btnSearch")
                 await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
 
                 # Collect all pages
@@ -261,10 +240,10 @@ class ClerkScraper:
                     records.extend(batch)
 
                     # Check for NEXT button
-                    next_btn = page.locator("input[value='NEXT'], button:has-text('NEXT'), a:has-text('Next')")
+                    next_btn = page.locator("input[value='NEXT']")
                     if await next_btn.count() == 0:
                         break
-                    await next_btn.first.click()
+                    await next_btn.click()
                     await page.wait_for_load_state("networkidle", timeout=self.SEARCH_TIMEOUT)
 
                 log.info(f"  {doc_type}: {len(records)} total records")
@@ -277,13 +256,9 @@ class ClerkScraper:
         return records
 
     def _parse_results(self, soup: BeautifulSoup, doc_type: str, cat: str, cat_label: str) -> list:
-        """
-        Parse the results table with columns:
-        File Number | File Date | Type / Vol Page | Names | Legal Description | Pgs | Film Code
-        """
         records = []
 
-        # Find the main results table (has File Number, File Date headers)
+        # Find results table with File Number and File Date columns
         table = None
         for t in soup.find_all("table"):
             header_text = t.get_text().lower()
@@ -300,43 +275,30 @@ class ClerkScraper:
             if len(cells) < 4:
                 continue
 
-            # Column layout from portal:
-            # 0: File Number
-            # 1: File Date
-            # 2: Type / Vol Page
-            # 3: Names (Grantor + Grantee)
-            # 4: Legal Description
-            # 5: Pgs
-            # 6: Film Code (link)
-
-            file_num  = cells[0].get_text(strip=True) if len(cells) > 0 else ""
-            file_date = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+            file_num   = cells[0].get_text(strip=True)
+            file_date  = cells[1].get_text(strip=True)
             names_cell = cells[3] if len(cells) > 3 else None
             legal_cell = cells[4] if len(cells) > 4 else None
             link_cell  = cells[6] if len(cells) > 6 else None
 
-            if not file_num:
+            if not file_num or not file_num.startswith("RP-"):
                 continue
 
-            # Parse names cell — contains "Grantor:NAME" and "Grantee:NAME" lines
+            # Parse Grantor and Grantee from Names cell
             grantor = ""
             grantee = ""
             if names_cell:
-                names_text = names_cell.get_text(separator="\n", strip=True)
-                for line in names_text.split("\n"):
+                lines = names_cell.get_text(separator="\n", strip=True).split("\n")
+                for line in lines:
                     line = line.strip()
                     if line.lower().startswith("grantor:"):
                         grantor = line[8:].strip()
-                    elif line.lower().startswith("grantee:"):
-                        if not grantee:  # take first grantee
-                            grantee = line[8:].strip()
+                    elif line.lower().startswith("grantee:") and not grantee:
+                        grantee = line[8:].strip()
 
-            # Legal description
-            legal = ""
-            if legal_cell:
-                legal = legal_cell.get_text(separator=" ", strip=True)
+            legal = legal_cell.get_text(separator=" ", strip=True) if legal_cell else ""
 
-            # Film code link
+            # Get document link
             clerk_url = ""
             if link_cell:
                 a = link_cell.find("a", href=True)
@@ -393,16 +355,6 @@ class ClerkScraper:
                 viewport={"width": 1280, "height": 900},
             )
             page = await ctx.new_page()
-
-            # Log all input fields on first load so we can debug if needed
-            await page.goto(CLERK_SEARCH_URL, timeout=self.NAV_TIMEOUT)
-            await page.wait_for_load_state("networkidle", timeout=self.NAV_TIMEOUT)
-            fields = await page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('input')).map(i => ({
-                    id: i.id, name: i.name, type: i.type, placeholder: i.placeholder
-                }));
-            }""")
-            log.info(f"Portal fields: {json.dumps(fields, indent=2)}")
 
             for doc_type in TARGET_TYPES:
                 log.info(f"Searching: {doc_type}")
