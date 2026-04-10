@@ -168,7 +168,9 @@
   .filters input:focus, .filters select:focus { border-color: var(--accent); }
   .filters input::placeholder { color: var(--text-muted); }
   .search-input { width: 200px; }
-  .score-input { width: 80px; }
+  .score-input { width: 72px; }
+  .score-range { display: flex; align-items: center; gap: 4px; }
+  .score-range span { color: var(--text-muted); font-size: 0.75rem; }
   .btn {
     padding: 7px 14px;
     border: 1px solid var(--border);
@@ -182,6 +184,11 @@
   .btn:hover { border-color: var(--accent); }
   .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .btn-accent:hover { background: var(--accent-light); }
+  .btn-green { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+  .btn-green:hover { opacity: 0.85; }
+  .btn-green:disabled { opacity: 0.4; cursor: default; }
+  .export-group { display: flex; gap: 4px; align-items: center; }
+  .selected-count { font-size: 0.7rem; color: var(--green); font-weight: 600; margin-left: 2px; }
   .filter-tag {
     display: inline-flex;
     align-items: center;
@@ -270,6 +277,15 @@
   .addr-cell { max-width: 200px; }
   .owner-cell { max-width: 260px; word-break: break-word; }
 
+  /* Row checkboxes */
+  .row-cb, .hdr-cb {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  tbody tr.selected { background: rgba(124,92,252,0.08); }
+  tbody tr.selected:hover { background: rgba(124,92,252,0.14); }
+
   /* Pagination */
   .pagination {
     display: flex;
@@ -329,7 +345,11 @@
 <div class="filters" id="filtersBar">
   <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
   <select id="typeFilter"><option value="">All Types</option></select>
-  <input type="number" class="score-input" id="scoreInput" placeholder="Min score" min="0" max="100">
+  <div class="score-range">
+    <input type="number" class="score-input" id="scoreMin" placeholder="Min" min="0" max="100">
+    <span>–</span>
+    <input type="number" class="score-input" id="scoreMax" placeholder="Max" min="0" max="100">
+  </div>
   <select id="flagFilter"><option value="">All Flags</option></select>
   <select id="addrFilter">
     <option value="">All</option>
@@ -337,7 +357,10 @@
     <option value="without">Without Address</option>
   </select>
   <button class="btn" onclick="resetFilters()">Reset</button>
-  <button class="btn btn-accent" onclick="exportCSV()">Export CSV</button>
+  <div class="export-group">
+    <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
+    <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
+  </div>
   <span id="activeFilter"></span>
   <span class="showing-label" id="showingLabel"></span>
 </div>
@@ -359,6 +382,7 @@ let sortAsc = false;
 let currentPage = 1;
 let cardFilter = null;    // active stat-card filter
 const PER_PAGE = 50;
+const selectedRows = new Set();  // track selected doc_nums
 
 const COLS = [
   {key: "score", label: "Score", w: "55px"},
@@ -516,7 +540,8 @@ function populateFilters() {
   // Live filtering
   document.getElementById("searchInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
   document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
-  document.getElementById("scoreInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreMin").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreMax").addEventListener("input", () => { currentPage = 1; applyFilters(); });
   document.getElementById("flagFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
 }
@@ -524,7 +549,10 @@ function populateFilters() {
 function getFiltered() {
   const q     = document.getElementById("searchInput").value.toLowerCase();
   const type  = document.getElementById("typeFilter").value;
-  const min   = parseInt(document.getElementById("scoreInput").value) || 0;
+  const sMin  = parseInt(document.getElementById("scoreMin").value);
+  const sMax  = parseInt(document.getElementById("scoreMax").value);
+  const minScore = isNaN(sMin) ? 0 : sMin;
+  const maxScore = isNaN(sMax) ? 100 : sMax;
   const flag  = document.getElementById("flagFilter").value;
   const addr  = document.getElementById("addrFilter").value;
 
@@ -539,7 +567,7 @@ function getFiltered() {
       // "all" = no filter
     }
     if (type && r.doc_type !== type) return false;
-    if (r.score < min) return false;
+    if (r.score < minScore || r.score > maxScore) return false;
     if (flag && !(r.flags || []).includes(flag)) return false;
     if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
     if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
@@ -571,10 +599,13 @@ function applyFilters() {
 function resetFilters() {
   document.getElementById("searchInput").value = "";
   document.getElementById("typeFilter").value = "";
-  document.getElementById("scoreInput").value = "";
+  document.getElementById("scoreMin").value = "";
+  document.getElementById("scoreMax").value = "";
   document.getElementById("flagFilter").value = "";
   document.getElementById("addrFilter").value = "";
   cardFilter = null;
+  selectedRows.clear();
+  updateSelectionUI();
   document.querySelectorAll(".stat-card").forEach(el => el.classList.remove("active"));
   currentPage = 1;
   applyFilters();
@@ -602,8 +633,11 @@ function sortData() {
 
 // ── Table Render ───────────────────────────────────────────────────
 function renderTable() {
-  // Header
-  let thead = "<tr>";
+  // Header with checkbox
+  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
+  const allPageSelected = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
+
+  let thead = `<tr><th style="width:32px"><input type="checkbox" class="hdr-cb" ${allPageSelected ? 'checked' : ''} onchange="togglePageAll(this.checked)"></th>`;
   COLS.forEach(c => {
     const arrow = sortCol === c.key ? (sortAsc ? " &#9650;" : " &#9660;") : "";
     thead += `<th style="width:${c.w}" onclick="sortBy('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
@@ -612,12 +646,10 @@ function renderTable() {
   document.getElementById("thead").innerHTML = thead;
 
   // Body (paginated)
-  const start = (currentPage - 1) * PER_PAGE;
-  const pageData = filtered.slice(start, start + PER_PAGE);
-
   let html = "";
   pageData.forEach(r => {
     const scoreCls = r.score >= 70 ? "score-high" : r.score >= 50 ? "score-med" : "score-low";
+    const isSelected = selectedRows.has(r.doc_num);
 
     let flagsHtml = "";
     (r.flags || []).forEach(f => {
@@ -628,7 +660,8 @@ function renderTable() {
     const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
     const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
 
-    html += `<tr>
+    html += `<tr class="${isSelected ? 'selected' : ''}">
+      <td><input type="checkbox" class="row-cb" ${isSelected ? 'checked' : ''} onchange="toggleRow('${r.doc_num}', this.checked)"></td>
       <td class="score-cell"><span class="score-pill ${scoreCls}">${r.score}</span></td>
       <td>${r.filed || ""}</td>
       <td><span class="type-badge">${r.doc_type}</span></td>
@@ -642,7 +675,42 @@ function renderTable() {
       <td>${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">View</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+}
+
+// ── Row Selection ─────────────────────────────────────────────────
+function toggleRow(docNum, checked) {
+  if (checked) selectedRows.add(docNum);
+  else selectedRows.delete(docNum);
+  updateSelectionUI();
+  // Update the row highlight without full re-render
+  const rows = document.querySelectorAll("tbody tr");
+  rows.forEach(tr => {
+    const cb = tr.querySelector(".row-cb");
+    if (cb) tr.classList.toggle("selected", cb.checked);
+  });
+  // Update header checkbox
+  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
+  const hdrCb = document.querySelector(".hdr-cb");
+  if (hdrCb) hdrCb.checked = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
+}
+
+function togglePageAll(checked) {
+  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
+  pageData.forEach(r => {
+    if (checked) selectedRows.add(r.doc_num);
+    else selectedRows.delete(r.doc_num);
+  });
+  updateSelectionUI();
+  renderTable();
+}
+
+function updateSelectionUI() {
+  const count = selectedRows.size;
+  const btn = document.getElementById("exportSelBtn");
+  const badge = document.getElementById("selCount");
+  btn.disabled = count === 0;
+  badge.textContent = count > 0 ? `(${count})` : "";
 }
 
 // ── Pagination ─────────────────────────────────────────────────────
@@ -671,8 +739,14 @@ function goPage(p) {
 }
 
 // ── CSV Export ─────────────────────────────────────────────────────
-function exportCSV() {
-  const rows = getFiltered();
+function exportCSV(mode) {
+  let rows;
+  if (mode === "selected") {
+    rows = getFiltered().filter(r => selectedRows.has(r.doc_num));
+    if (rows.length === 0) return;
+  } else {
+    rows = getFiltered();
+  }
   const headers = [
     "Score","Filed","Type","Category","Owner","Flags","Legal Description",
     "Property Address","Property City","Property State","Property Zip",
@@ -690,10 +764,11 @@ function exportCSV() {
       r.doc_num, r.clerk_url||""
     ].join(",") + "\n";
   });
+  const suffix = mode === "selected" ? "_selected" : "";
   const blob = new Blob([csv], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}${suffix}.csv`;
   a.click();
 }
 
