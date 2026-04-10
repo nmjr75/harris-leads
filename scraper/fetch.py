@@ -128,13 +128,7 @@ class HCADParcelLoader:
     # Try current year first, then fall back
     FALLBACK_YEARS = [2026, 2025, 2024]
 
-    # Possible file names inside the zip
-    TARGET_FILENAMES = [
-        "real_acct_owner",
-        "real_acct_owner_2026",
-        "real_acct_owner_2025",
-        "real_acct_owner_2024",
-    ]
+    # (File selection now handled dynamically in _parse_zip)
 
     def __init__(self):
         self.lookup: dict = {}
@@ -261,122 +255,221 @@ class HCADParcelLoader:
                 return header_upper.index(cu)
         return None
 
+    def _read_tabular(self, zf, filename: str):
+        """Read a tab-delimited file from a zip, return (headers, rows_iterator)."""
+        f = zf.open(filename)
+        raw = io.TextIOWrapper(f, encoding="latin-1")
+
+        # Read header + a few sample lines to detect delimiter
+        sample_lines = []
+        for i, line in enumerate(raw):
+            sample_lines.append(line)
+            if i >= 5:
+                break
+
+        if not sample_lines:
+            return None, None, None, None
+
+        delimiter = self._detect_delimiter(sample_lines[0])
+        headers = sample_lines[0].strip().split(delimiter)
+
+        # Return headers, delimiter, remaining iterator, and sample data lines
+        return headers, delimiter, raw, sample_lines[1:]
+
     def _parse_zip(self, data: bytes) -> int:
-        """Extract owner→address records from a zip containing text or CSV files."""
+        """Extract owner→address records from HCAD CAMA zip.
+
+        The zip contains separate files that must be joined:
+        - owners.txt:    owner name + mailing address + account number
+        - real_acct.txt: site/property address + account number
+        We join on account number to build a complete owner→address lookup.
+        """
         count = 0
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
                 names = zf.namelist()
                 log.info(f"  Zip contains: {names}")
 
-                # Find the target file – prefer .txt, also accept .csv
-                target = None
+                # Locate files by basename
+                file_map = {}
                 for n in names:
                     base = n.lower().rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                    if base in [t.lower() for t in self.TARGET_FILENAMES]:
-                        target = n
-                        break
-                if not target:
-                    # Fallback: first .txt or .csv in the zip
-                    for n in names:
-                        if n.lower().endswith((".txt", ".csv")):
-                            target = n
+                    file_map[base] = n
+
+                def safe_get(fields, idx):
+                    if idx is not None and idx < len(fields):
+                        return fields[idx].strip()
+                    return ""
+
+                # ── Step 1: Parse real_acct.txt → {acct: site address} ────
+                site_by_acct = {}
+                if "real_acct" in file_map:
+                    ra_file = file_map["real_acct"]
+                    log.info(f"  Parsing site addresses from: {ra_file}")
+                    headers, delim, stream, sample_data = self._read_tabular(zf, ra_file)
+                    if headers:
+                        log.info(f"  Columns ({len(headers)}): {headers[:15]}{'...' if len(headers) > 15 else ''}")
+                        col_acct = self._find_column(headers, "ACCT", "ACCOUNT", "ACCT_NUM")
+                        col_site = self._find_column(
+                            headers, "SITE_ADDR_1", "SITEADDR", "SITE_ADDR",
+                            "SITE_ADDRESS", "SITE_ADDRESS_1", "PROP_ADDR",
+                            "PROPERTY_ADDRESS", "STR_NUM",
+                        )
+                        col_city = self._find_column(
+                            headers, "SITE_ADDR_3", "SITE_CITY",
+                        )
+                        col_zip = self._find_column(
+                            headers, "SITE_ADDR_4", "SITE_ZIP",
+                        )
+                        if col_acct is not None and col_site is not None:
+                            log.info(f"  real_acct columns: acct={col_acct}, site={col_site}, city={col_city}, zip={col_zip}")
+                            for line in (sample_data + list(stream)):
+                                fields = line.strip().split(delim)
+                                acct = safe_get(fields, col_acct)
+                                addr = safe_get(fields, col_site)
+                                if acct and addr:
+                                    site_by_acct[acct.strip()] = {
+                                        "prop_address": addr,
+                                        "prop_city":    safe_get(fields, col_city) or "Houston",
+                                        "prop_zip":     safe_get(fields, col_zip),
+                                    }
+                            log.info(f"  Site addresses loaded: {len(site_by_acct):,}")
+                        else:
+                            log.warning(f"  real_acct.txt missing acct or site_addr column: {headers[:15]}")
+
+                # ── Step 2: Parse owners.txt → owner name index ───────────
+                if "owners" in file_map:
+                    ow_file = file_map["owners"]
+                    log.info(f"  Parsing owner records from: {ow_file}")
+                    headers, delim, stream, sample_data = self._read_tabular(zf, ow_file)
+                    if headers:
+                        log.info(f"  Columns ({len(headers)}): {headers[:15]}{'...' if len(headers) > 15 else ''}")
+                        col_acct = self._find_column(headers, "ACCT", "ACCOUNT", "ACCT_NUM")
+                        col_owner = self._find_column(
+                            headers, "OWN_NAME", "OWNER_NAME", "OWN1", "OWNER",
+                            "NAME", "OWNER_1", "OWN_NAME1",
+                        )
+                        # HCAD owners.txt uses OWN_ADDR_1 for mailing address
+                        col_mail = self._find_column(
+                            headers, "OWN_ADDR_1", "MAIL_ADDR_1", "MAILADR1",
+                            "MAIL_ADDRESS", "MAIL_ADDR", "MAILING_ADDRESS",
+                        )
+                        col_mail_city = self._find_column(
+                            headers, "OWN_ADDR_3", "MAIL_CITY", "MAILCITY", "OWN_CITY",
+                        )
+                        col_mail_state = self._find_column(
+                            headers, "OWN_STATE", "MAIL_STATE", "MAILSTATE",
+                        )
+                        col_mail_zip = self._find_column(
+                            headers, "OWN_ZIP", "MAIL_ZIP", "MAILZIP",
+                        )
+
+                        if col_owner is None:
+                            log.warning(f"  Cannot find owner column in owners.txt: {headers}")
+                        else:
+                            log.info(f"  owners.txt columns: owner={col_owner}, acct={col_acct}, "
+                                     f"mail={col_mail}, city={col_mail_city}")
+                            for line in (sample_data + list(stream)):
+                                fields = line.strip().split(delim)
+                                owner = safe_get(fields, col_owner)
+                                if not owner:
+                                    continue
+
+                                info = {
+                                    "prop_address": "",
+                                    "prop_city":    "Houston",
+                                    "prop_state":   "TX",
+                                    "prop_zip":     "",
+                                    "mail_address": safe_get(fields, col_mail),
+                                    "mail_city":    safe_get(fields, col_mail_city),
+                                    "mail_state":   safe_get(fields, col_mail_state) or "TX",
+                                    "mail_zip":     safe_get(fields, col_mail_zip),
+                                }
+
+                                # Merge site address from real_acct via account number
+                                if col_acct is not None:
+                                    acct = safe_get(fields, col_acct).strip()
+                                    site = site_by_acct.get(acct)
+                                    if site:
+                                        info["prop_address"] = site["prop_address"]
+                                        info["prop_city"]    = site.get("prop_city", "Houston")
+                                        info["prop_zip"]     = site.get("prop_zip", "")
+
+                                self._index(owner, info)
+                                count += 1
+
+                # ── Fallback: try a single combined file ──────────────────
+                if count == 0:
+                    # Look for a combined file like real_acct_owner.txt
+                    target = None
+                    for basename in ["real_acct_owner", "real_acct_owner_2026",
+                                     "real_acct_owner_2025", "real_acct_owner_2024"]:
+                        if basename in file_map:
+                            target = file_map[basename]
                             break
-                if not target:
-                    log.warning(f"  No usable data file found in zip. Files: {names}")
-                    return 0
-
-                log.info(f"  Parsing: {target}")
-                with zf.open(target) as f:
-                    raw = io.TextIOWrapper(f, encoding="latin-1")
-
-                    # Read a sample to detect delimiter
-                    sample_lines = []
-                    for i, line in enumerate(raw):
-                        sample_lines.append(line)
-                        if i >= 5:
-                            break
-
-                    if not sample_lines:
-                        log.warning("  File is empty")
-                        return 0
-
-                    delimiter = self._detect_delimiter(sample_lines[0])
-                    log.info(f"  Detected delimiter: {repr(delimiter)}")
-
-                    # Parse header
-                    header_line = sample_lines[0]
-                    headers = header_line.strip().split(delimiter)
-                    log.info(f"  Columns ({len(headers)}): {headers[:15]}{'...' if len(headers) > 15 else ''}")
-
-                    # Map column indices – try many variants that HCAD has used
-                    col_owner = self._find_column(
-                        headers, "OWN_NAME", "OWNER_NAME", "OWN1", "OWNER", "NAME",
-                        "OWNER_1", "OWN_NAME1",
-                    )
-                    col_site_addr = self._find_column(
-                        headers, "SITE_ADDR_1", "SITEADDR", "SITE_ADDR",
-                        "SITE_ADDRESS", "SITE_ADDRESS_1", "PROP_ADDR",
-                        "PROPERTY_ADDRESS", "STR_NUM",
-                    )
-                    col_site_city = self._find_column(
-                        headers, "SITE_ADDR_3", "SITE_CITY", "CITY",
-                    )
-                    col_site_zip = self._find_column(
-                        headers, "SITE_ADDR_4", "SITE_ZIP", "ZIP",
-                    )
-                    col_mail_addr = self._find_column(
-                        headers, "MAIL_ADDR_1", "MAILADR1", "MAIL_ADDRESS",
-                        "MAIL_ADDR", "MAILING_ADDRESS",
-                    )
-                    col_mail_city = self._find_column(
-                        headers, "MAIL_CITY", "MAILCITY",
-                    )
-                    col_mail_state = self._find_column(
-                        headers, "MAIL_STATE", "MAILSTATE", "STATE",
-                    )
-                    col_mail_zip = self._find_column(
-                        headers, "MAIL_ZIP", "MAILZIP",
-                    )
-
-                    if col_owner is None:
-                        log.warning(f"  Cannot find owner column in: {headers}")
-                        return 0
-
-                    log.info(f"  Column mapping: owner={col_owner}, "
-                             f"site_addr={col_site_addr}, site_city={col_site_city}, "
-                             f"mail_addr={col_mail_addr}, mail_city={col_mail_city}")
-
-                    def safe_get(fields, idx):
-                        if idx is not None and idx < len(fields):
-                            return fields[idx].strip()
-                        return ""
-
-                    # Process the sample lines we already read (skip header)
-                    all_lines = sample_lines[1:] + list(raw)
-                    for line in all_lines:
-                        fields = line.strip().split(delimiter)
-                        owner = safe_get(fields, col_owner)
-                        if not owner:
-                            continue
-
-                        info = {
-                            "prop_address": safe_get(fields, col_site_addr),
-                            "prop_city":    safe_get(fields, col_site_city) or "Houston",
-                            "prop_state":   "TX",
-                            "prop_zip":     safe_get(fields, col_site_zip),
-                            "mail_address": safe_get(fields, col_mail_addr),
-                            "mail_city":    safe_get(fields, col_mail_city),
-                            "mail_state":   safe_get(fields, col_mail_state) or "TX",
-                            "mail_zip":     safe_get(fields, col_mail_zip),
-                        }
-                        self._index(owner, info)
-                        count += 1
+                    if target:
+                        log.info(f"  Trying combined file: {target}")
+                        count = self._parse_single_file(zf, target)
 
         except zipfile.BadZipFile:
             log.warning("  Not a valid zip file")
         except Exception as e:
             log.warning(f"  Parse error: {e}", exc_info=True)
+        return count
+
+    def _parse_single_file(self, zf, target: str) -> int:
+        """Fallback: parse a single file that has both owner and address columns."""
+        count = 0
+        headers, delim, stream, sample_data = self._read_tabular(zf, target)
+        if not headers:
+            return 0
+
+        log.info(f"  Columns ({len(headers)}): {headers[:15]}{'...' if len(headers) > 15 else ''}")
+
+        col_owner = self._find_column(
+            headers, "OWN_NAME", "OWNER_NAME", "OWN1", "OWNER", "NAME",
+        )
+        col_site_addr = self._find_column(
+            headers, "SITE_ADDR_1", "SITEADDR", "SITE_ADDR",
+            "SITE_ADDRESS", "PROP_ADDR", "PROPERTY_ADDRESS",
+        )
+        col_site_city = self._find_column(headers, "SITE_ADDR_3", "SITE_CITY", "CITY")
+        col_site_zip = self._find_column(headers, "SITE_ADDR_4", "SITE_ZIP", "ZIP")
+        col_mail_addr = self._find_column(
+            headers, "OWN_ADDR_1", "MAIL_ADDR_1", "MAILADR1",
+            "MAIL_ADDRESS", "MAIL_ADDR",
+        )
+        col_mail_city = self._find_column(headers, "OWN_ADDR_3", "MAIL_CITY", "OWN_CITY")
+        col_mail_state = self._find_column(headers, "OWN_STATE", "MAIL_STATE")
+        col_mail_zip = self._find_column(headers, "OWN_ZIP", "MAIL_ZIP")
+
+        if col_owner is None:
+            log.warning(f"  Cannot find owner column in: {headers}")
+            return 0
+
+        def safe_get(fields, idx):
+            if idx is not None and idx < len(fields):
+                return fields[idx].strip()
+            return ""
+
+        for line in (sample_data + list(stream)):
+            fields = line.strip().split(delim)
+            owner = safe_get(fields, col_owner)
+            if not owner:
+                continue
+            info = {
+                "prop_address": safe_get(fields, col_site_addr),
+                "prop_city":    safe_get(fields, col_site_city) or "Houston",
+                "prop_state":   "TX",
+                "prop_zip":     safe_get(fields, col_site_zip),
+                "mail_address": safe_get(fields, col_mail_addr),
+                "mail_city":    safe_get(fields, col_mail_city),
+                "mail_state":   safe_get(fields, col_mail_state) or "TX",
+                "mail_zip":     safe_get(fields, col_mail_zip),
+            }
+            self._index(owner, info)
+            count += 1
+
         return count
 
     def load(self) -> int:
