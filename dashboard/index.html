@@ -1,198 +1,703 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Harris County Motivated Seller Leads</title>
 <style>
-  :root{--bg:#0f1117;--surface:#1a1d27;--border:#2d3148;--accent:#6c63ff;--text:#e2e8f0;--muted:#64748b;--green:#22d3a5;--yellow:#fbbf24;--red:#f87171}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}
-  header{background:var(--surface);border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  header h1{font-size:1.3rem;font-weight:700;color:#fff}
-  header h1 span{color:var(--accent)}
-  .meta{font-size:.78rem;color:var(--muted);margin-left:auto}
-  .stats{display:flex;gap:12px;padding:18px 28px;flex-wrap:wrap}
-  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 20px;min-width:130px}
-  .stat-card .num{font-size:1.8rem;font-weight:700;color:var(--accent)}
-  .stat-card .lbl{font-size:.72rem;color:var(--muted);margin-top:2px}
-  .controls{padding:0 28px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .controls input,.controls select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:8px;font-size:.85rem;outline:none}
-  .btn{background:var(--accent);color:#fff;border:none;padding:7px 16px;border-radius:8px;cursor:pointer;font-size:.85rem}
-  .btn.outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
-  table{width:100%;border-collapse:collapse;font-size:.8rem}
-  thead th{background:#13161f;color:var(--muted);text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;cursor:pointer;white-space:nowrap}
-  thead th:hover{color:var(--text)}
-  tbody tr{border-bottom:1px solid var(--border)}
-  tbody tr:hover{background:#1e2235}
-  tbody td{padding:8px 12px;vertical-align:middle}
-  .table-wrap{overflow-x:auto;padding:0 28px 40px}
-  .score-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:600;font-size:.75rem}
-  .score-high{background:#22d3a522;color:var(--green)}
-  .score-mid{background:#fbbf2422;color:var(--yellow)}
-  .score-low{background:#f8717122;color:var(--red)}
-  .flag-pill{display:inline-block;background:#2d3148;color:#a5b4fc;font-size:.65rem;padding:2px 7px;border-radius:12px;margin:2px 2px 0 0}
-  .doc-type{background:#6c63ff22;color:#a5b4fc;font-size:.7rem;padding:2px 7px;border-radius:6px;font-weight:600}
-  a.clerk-link{color:var(--accent);text-decoration:none;font-size:.75rem}
-  a.clerk-link:hover{text-decoration:underline}
-  .no-data{text-align:center;color:var(--muted);padding:60px;font-size:1rem}
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #23273a;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-muted: #8b8fa3;
+    --accent: #7c5cfc;
+    --accent-light: #9b82fc;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --cyan: #06b6d4;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .header h1 { font-size: 1.25rem; font-weight: 700; }
+  .header h1 span { color: var(--accent-light); }
+  .header-meta { font-size: 0.75rem; color: var(--text-muted); text-align: right; }
+
+  /* Stat Cards */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 16px 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .stat-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .stat-card.active { border-color: var(--accent); background: var(--surface2); }
+  .stat-card .value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--accent-light);
+  }
+  .stat-card .label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-card.total .value { color: var(--text); }
+  .stat-card.addr .value  { color: var(--green); }
+
+  /* Score badge on cards */
+  .stat-card .pct {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+  }
+
+  /* Charts row */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 0 24px 12px;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .chart-card h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    letter-spacing: 0.04em;
+  }
+  .bar-chart { display: flex; flex-direction: column; gap: 6px; }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+  }
+  .bar-label { width: 120px; text-align: right; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; height: 18px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; display: flex; align-items: center; padding-left: 6px; font-size: 0.65rem; font-weight: 600; color: #fff; }
+  .bar-count { width: 35px; text-align: right; font-weight: 600; font-size: 0.75rem; flex-shrink: 0; }
+
+  /* Score distribution */
+  .score-dist { display: flex; align-items: flex-end; gap: 3px; height: 80px; }
+  .score-bar {
+    flex: 1;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+    min-width: 8px;
+    transition: height 0.4s ease;
+    position: relative;
+    cursor: pointer;
+  }
+  .score-bar:hover { opacity: 0.8; }
+  .score-bar .tooltip {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #000;
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-bottom: 4px;
+  }
+  .score-bar:hover .tooltip { display: block; }
+  .score-labels { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--text-muted); margin-top: 4px; }
+
+  /* Filters */
+  .filters {
+    display: flex;
+    gap: 8px;
+    padding: 12px 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filters input, .filters select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .filters input:focus, .filters select:focus { border-color: var(--accent); }
+  .filters input::placeholder { color: var(--text-muted); }
+  .search-input { width: 200px; }
+  .score-input { width: 80px; }
+  .btn {
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-accent:hover { background: var(--accent-light); }
+  .filter-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .filter-tag .x { cursor: pointer; opacity: 0.7; }
+  .filter-tag .x:hover { opacity: 1; }
+  .showing-label { font-size: 0.75rem; color: var(--text-muted); margin-left: auto; }
+
+  /* Table */
+  .table-wrap {
+    overflow-x: auto;
+    padding: 0 24px 24px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    padding: 10px 8px;
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
+  thead th:hover { color: var(--accent-light); }
+  thead th .sort-arrow { margin-left: 3px; font-size: 0.6rem; }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 10px 8px; vertical-align: top; }
+  td.score-cell {
+    font-weight: 700;
+    text-align: center;
+  }
+  .score-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .score-high { background: rgba(34,197,94,0.15); color: var(--green); }
+  .score-med  { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .score-low  { background: rgba(139,143,163,0.15); color: var(--text-muted); }
+  .type-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .flag-pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    margin: 1px 2px;
+    white-space: nowrap;
+  }
+  .flag-pill.distress { background: rgba(239,68,68,0.15); color: var(--red); }
+  .flag-pill.info     { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .flag-pill.fresh    { background: rgba(34,197,94,0.15); color: var(--green); }
+  td a { color: var(--accent-light); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .addr-cell { max-width: 200px; }
+  .owner-cell { max-width: 260px; word-break: break-word; }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 24px;
+  }
+  .pagination button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pagination button:hover { border-color: var(--accent); }
+  .pagination button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  .page-info { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .header { padding: 12px 16px; }
+    .filters { padding: 8px 16px; }
+    .table-wrap { padding: 0 8px 16px; }
+    .search-input { width: 100%; }
+    .bar-label { width: 80px; font-size: 0.65rem; }
+  }
 </style>
 </head>
 <body>
-<header>
+
+<div class="header">
   <h1>Harris County <span>Motivated Sellers</span></h1>
-  <div class="meta" id="metaInfo">Loading...</div>
-</header>
-<div class="stats" id="statsRow"></div>
-<div class="controls">
-  <input type="text" id="searchInput" placeholder="Search owner, legal, doc#..." style="width:220px"/>
+  <div class="header-meta" id="meta"></div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="charts-row" id="chartsRow">
+  <div class="chart-card">
+    <h3>Leads by Category</h3>
+    <div class="bar-chart" id="catChart"></div>
+  </div>
+  <div class="chart-card">
+    <h3>Score Distribution</h3>
+    <div class="score-dist" id="scoreChart"></div>
+    <div class="score-labels"><span>30</span><span>50</span><span>70</span><span>100</span></div>
+  </div>
+</div>
+
+<div class="filters" id="filtersBar">
+  <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
   <select id="typeFilter"><option value="">All Types</option></select>
-  <input type="number" id="minScore" placeholder="Min score" style="width:90px" min="0" max="100"/>
+  <input type="number" class="score-input" id="scoreInput" placeholder="Min score" min="0" max="100">
+  <select id="flagFilter"><option value="">All Flags</option></select>
   <select id="addrFilter">
     <option value="">All</option>
-    <option value="yes">Has Address</option>
-    <option value="no">No Address</option>
+    <option value="with">With Address</option>
+    <option value="without">Without Address</option>
   </select>
-  <button class="btn outline" onclick="resetFilters()">Reset</button>
-  <button class="btn" onclick="exportCSV()">Export CSV</button>
+  <button class="btn" onclick="resetFilters()">Reset</button>
+  <button class="btn btn-accent" onclick="exportCSV()">Export CSV</button>
+  <span id="activeFilter"></span>
+  <span class="showing-label" id="showingLabel"></span>
 </div>
+
 <div class="table-wrap">
-  <div id="noData" class="no-data" style="display:none">No records match your filters.</div>
-  <table id="leadTable">
-    <thead>
-      <tr>
-        <th onclick="sortBy('score')">Score</th>
-        <th onclick="sortBy('filed')">Filed</th>
-        <th onclick="sortBy('doc_type')">Type</th>
-        <th onclick="sortBy('cat_label')">Category</th>
-        <th onclick="sortBy('owner')">Owner</th>
-        <th>Flags</th>
-        <th onclick="sortBy('legal')">Legal Description</th>
-        <th onclick="sortBy('prop_address')">Property Address</th>
-        <th>Mail Address</th>
-        <th>Doc #</th>
-        <th>Link</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
+  <table>
+    <thead id="thead"></thead>
+    <tbody id="tbody"></tbody>
   </table>
 </div>
-<script>
-let allRecords=[];
-let sortKey='score',sortDir=-1;
 
-async function loadData(){
-  try{
-    const r=await fetch('records.json?t='+Date.now());
-    const data=await r.json();
-    allRecords=data.records||[];
-    const from=data.date_range?.from||'';
-    const to=data.date_range?.to||'';
-    const fetched=data.fetched_at?new Date(data.fetched_at).toLocaleString():'Never';
-    document.getElementById('metaInfo').textContent='Updated: '+fetched+' | '+from+' to '+to;
-    const cats={};
-    allRecords.forEach(r=>{cats[r.cat_label]=(cats[r.cat_label]||0)+1;});
-    const top=Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,4);
-    let html='<div class="stat-card"><div class="num">'+data.total+'</div><div class="lbl">Total Leads</div></div>';
-    html+='<div class="stat-card"><div class="num">'+(data.with_address||0)+'</div><div class="lbl">With Address</div></div>';
-    top.forEach(([k,v])=>{html+='<div class="stat-card"><div class="num">'+v+'</div><div class="lbl">'+k+'</div></div>';});
-    document.getElementById('statsRow').innerHTML=html;
-    const types=[...new Set(allRecords.map(r=>r.doc_type))].sort();
-    const tf=document.getElementById('typeFilter');
-    types.forEach(t=>{const o=document.createElement('option');o.value=t;o.textContent=t;tf.appendChild(o);});
-    render();
-  }catch(e){
-    document.getElementById('noData').style.display='block';
-    document.getElementById('noData').textContent='Error loading data: '+e.message;
-  }
+<div class="pagination" id="pagination"></div>
+
+<script>
+let DATA = null;
+let filtered = [];
+let sortCol = "score";
+let sortAsc = false;
+let currentPage = 1;
+let cardFilter = null;    // active stat-card filter
+const PER_PAGE = 50;
+
+const COLS = [
+  {key: "score", label: "Score", w: "55px"},
+  {key: "filed", label: "Filed", w: "90px"},
+  {key: "doc_type", label: "Type", w: "55px"},
+  {key: "cat_label", label: "Category", w: "160px"},
+  {key: "owner", label: "Owner", w: "220px"},
+  {key: "flags", label: "Flags", w: "170px"},
+  {key: "legal", label: "Legal Description", w: "200px"},
+  {key: "prop_address", label: "Property Address", w: "170px"},
+  {key: "mail_address", label: "Mail Address", w: "150px"},
+  {key: "doc_num", label: "Doc #", w: "100px"},
+  {key: "link", label: "Link", w: "40px"},
+];
+
+const CAT_COLORS = {
+  LP: "#ef4444", NOFC: "#f59e0b", TAXLIEN: "#f97316", LIEN: "#eab308",
+  JUD: "#a855f7", LEVY: "#ec4899", PROBATE: "#06b6d4", BNKRCY: "#6366f1",
+  REL: "#64748b",
+};
+
+const DISTRESS_FLAGS = new Set([
+  "Lis pendens", "Pre-foreclosure / trustee sale", "Judgment lien",
+  "Federal tax lien", "Lien (HOA / state tax / other)", "Levy on real estate",
+  "Probate / estate", "Bankruptcy",
+]);
+
+// ── Load Data ──────────────────────────────────────────────────────
+async function loadData() {
+  const resp = await fetch("records.json");
+  DATA = await resp.json();
+  document.getElementById("meta").innerHTML =
+    `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}`;
+  buildStats();
+  buildCharts();
+  populateFilters();
+  applyFilters();
 }
 
-function getFiltered(){
-  const q=document.getElementById('searchInput').value.toLowerCase();
-  const type=document.getElementById('typeFilter').value;
-  const min=parseInt(document.getElementById('minScore').value)||0;
-  const addr=document.getElementById('addrFilter').value;
-  return allRecords.filter(r=>{
-    if(type&&r.doc_type!==type)return false;
-    if(r.score<min)return false;
-    if(addr==='yes'&&!r.prop_address)return false;
-    if(addr==='no'&&r.prop_address)return false;
-    if(q){
-      const hay=[r.owner,r.legal,r.prop_address,r.mail_address,r.doc_num,r.cat_label].join(' ').toLowerCase();
-      if(!hay.includes(q))return false;
+// ── Stat Cards ─────────────────────────────────────────────────────
+function buildStats() {
+  const cats = {};
+  DATA.records.forEach(r => { cats[r.cat] = (cats[r.cat] || 0) + 1; });
+
+  const withAddr = DATA.records.filter(r => r.prop_address && r.prop_address.trim()).length;
+  const pct = DATA.total ? Math.round(withAddr / DATA.total * 100) : 0;
+
+  let html = `
+    <div class="stat-card total" data-filter="all" onclick="toggleCardFilter('all')">
+      <div class="value">${DATA.total.toLocaleString()}</div>
+      <div class="label">Total Leads</div>
+    </div>
+    <div class="stat-card addr" data-filter="addr" onclick="toggleCardFilter('addr')">
+      <div class="value">${withAddr.toLocaleString()}</div>
+      <div class="label">With Address</div>
+      <div class="pct">${pct}%</div>
+    </div>`;
+
+  // Top categories as cards
+  const catOrder = ["LP","NOFC","TAXLIEN","LIEN","JUD","LEVY","PROBATE","BNKRCY","REL"];
+  const catLabels = {};
+  DATA.records.forEach(r => { catLabels[r.cat] = r.cat_label; });
+
+  catOrder.forEach(c => {
+    if (cats[c]) {
+      html += `
+        <div class="stat-card" data-filter="cat:${c}" onclick="toggleCardFilter('cat:${c}')">
+          <div class="value" style="color:${CAT_COLORS[c] || '#7c5cfc'}">${cats[c]}</div>
+          <div class="label">${catLabels[c] || c}</div>
+        </div>`;
+    }
+  });
+
+  document.getElementById("stats").innerHTML = html;
+}
+
+function toggleCardFilter(filter) {
+  if (cardFilter === filter) {
+    cardFilter = null;
+  } else {
+    cardFilter = filter;
+  }
+  // Highlight active card
+  document.querySelectorAll(".stat-card").forEach(el => {
+    el.classList.toggle("active", el.dataset.filter === cardFilter);
+  });
+  currentPage = 1;
+  applyFilters();
+}
+
+// ── Charts ─────────────────────────────────────────────────────────
+function buildCharts() {
+  // Category bar chart
+  const cats = {};
+  const catLabels = {};
+  DATA.records.forEach(r => {
+    cats[r.cat] = (cats[r.cat] || 0) + 1;
+    catLabels[r.cat] = r.cat_label;
+  });
+  const maxCat = Math.max(...Object.values(cats));
+  const sortedCats = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+
+  let barHtml = "";
+  sortedCats.forEach(([cat, count]) => {
+    if (cat === "REL") return;  // skip releases from chart
+    const pct = (count / maxCat * 100).toFixed(0);
+    const color = CAT_COLORS[cat] || "#7c5cfc";
+    const shortLabel = (catLabels[cat] || cat).replace(/ \/ /g, "/").substring(0, 20);
+    barHtml += `
+      <div class="bar-row">
+        <div class="bar-label" title="${catLabels[cat]}">${shortLabel}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">${count > 5 ? count : ''}</div></div>
+        <div class="bar-count">${count}</div>
+      </div>`;
+  });
+  document.getElementById("catChart").innerHTML = barHtml;
+
+  // Score distribution
+  const buckets = {};
+  for (let i = 30; i <= 100; i += 5) buckets[i] = 0;
+  DATA.records.forEach(r => {
+    const b = Math.floor(r.score / 5) * 5;
+    const key = Math.max(30, Math.min(100, b));
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  const maxBucket = Math.max(...Object.values(buckets), 1);
+  let scoreHtml = "";
+  Object.entries(buckets).forEach(([score, count]) => {
+    const h = Math.max(2, (count / maxBucket * 100));
+    const color = score >= 70 ? "var(--green)" : score >= 50 ? "var(--orange)" : "var(--accent)";
+    scoreHtml += `<div class="score-bar" style="height:${h}%;background:${color}"><div class="tooltip">${score}-${parseInt(score)+4}: ${count}</div></div>`;
+  });
+  document.getElementById("scoreChart").innerHTML = scoreHtml;
+}
+
+// ── Filters ────────────────────────────────────────────────────────
+function populateFilters() {
+  const types = [...new Set(DATA.records.map(r => r.doc_type))].sort();
+  const sel = document.getElementById("typeFilter");
+  types.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t; opt.textContent = t;
+    sel.appendChild(opt);
+  });
+
+  const flags = new Set();
+  DATA.records.forEach(r => (r.flags || []).forEach(f => flags.add(f)));
+  const fsel = document.getElementById("flagFilter");
+  [...flags].sort().forEach(f => {
+    const opt = document.createElement("option");
+    opt.value = f; opt.textContent = f;
+    fsel.appendChild(opt);
+  });
+
+  // Live filtering
+  document.getElementById("searchInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("flagFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+}
+
+function getFiltered() {
+  const q     = document.getElementById("searchInput").value.toLowerCase();
+  const type  = document.getElementById("typeFilter").value;
+  const min   = parseInt(document.getElementById("scoreInput").value) || 0;
+  const flag  = document.getElementById("flagFilter").value;
+  const addr  = document.getElementById("addrFilter").value;
+
+  return DATA.records.filter(r => {
+    // Card filter
+    if (cardFilter) {
+      if (cardFilter === "addr") {
+        if (!r.prop_address || !r.prop_address.trim()) return false;
+      } else if (cardFilter.startsWith("cat:")) {
+        if (r.cat !== cardFilter.slice(4)) return false;
+      }
+      // "all" = no filter
+    }
+    if (type && r.doc_type !== type) return false;
+    if (r.score < min) return false;
+    if (flag && !(r.flags || []).includes(flag)) return false;
+    if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
+    if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
+    if (q) {
+      const hay = [r.owner, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
+        .join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
     }
     return true;
   });
 }
 
-function sortBy(key){
-  if(sortKey===key)sortDir*=-1;
-  else{sortKey=key;sortDir=-1;}
-  render();
+function applyFilters() {
+  filtered = getFiltered();
+  sortData();
+  renderTable();
+  renderPagination();
+
+  // Active filter tag
+  let tag = "";
+  if (cardFilter && cardFilter !== "all") {
+    const label = cardFilter === "addr" ? "With Address" : cardFilter.replace("cat:", "");
+    tag = `<span class="filter-tag">${label} <span class="x" onclick="toggleCardFilter('${cardFilter}')">&times;</span></span>`;
+  }
+  document.getElementById("activeFilter").innerHTML = tag;
+  document.getElementById("showingLabel").textContent = `Showing ${filtered.length} of ${DATA.total}`;
 }
 
-function render(){
-  let recs=getFiltered();
-  recs.sort((a,b)=>{
-    let av=a[sortKey]||'',bv=b[sortKey]||'';
-    if(sortKey==='score'){av=+av;bv=+bv;}
-    return av<bv?sortDir:av>bv?-sortDir:0;
+function resetFilters() {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("typeFilter").value = "";
+  document.getElementById("scoreInput").value = "";
+  document.getElementById("flagFilter").value = "";
+  document.getElementById("addrFilter").value = "";
+  cardFilter = null;
+  document.querySelectorAll(".stat-card").forEach(el => el.classList.remove("active"));
+  currentPage = 1;
+  applyFilters();
+}
+
+// ── Sort ───────────────────────────────────────────────────────────
+function sortBy(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = col === "filed"; }
+  sortData();
+  renderTable();
+}
+
+function sortData() {
+  filtered.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === "score") { va = va || 0; vb = vb || 0; }
+    else if (sortCol === "flags") { va = (va||[]).length; vb = (vb||[]).length; }
+    else { va = (va || "").toString().toLowerCase(); vb = (vb || "").toString().toLowerCase(); }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
   });
-  const tbody=document.getElementById('tableBody');
-  const noData=document.getElementById('noData');
-  if(!recs.length){tbody.innerHTML='';noData.style.display='block';return;}
-  noData.style.display='none';
-  tbody.innerHTML=recs.map(r=>{
-    const sc=r.score>=70?'score-high':r.score>=45?'score-mid':'score-low';
-    const flags=(r.flags||[]).map(f=>'<span class="flag-pill">'+f+'</span>').join('');
-    const prop=[r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ');
-    const mail=[r.mail_address,r.mail_city,r.mail_state,r.mail_zip].filter(Boolean).join(', ');
-    const link=r.clerk_url?'<a class="clerk-link" href="'+r.clerk_url+'" target="_blank">View</a>':'—';
-    return '<tr>'+
-      '<td><span class="score-badge '+sc+'">'+r.score+'</span></td>'+
-      '<td>'+(r.filed||'—')+'</td>'+
-      '<td><span class="doc-type">'+r.doc_type+'</span></td>'+
-      '<td>'+(r.cat_label||'—')+'</td>'+
-      '<td>'+(r.owner||'—')+'</td>'+
-      '<td>'+(flags||'—')+'</td>'+
-      '<td style="font-size:.75rem">'+(r.legal||'—')+'</td>'+
-      '<td>'+(prop||'—')+'</td>'+
-      '<td>'+(mail||'—')+'</td>'+
-      '<td style="font-size:.7rem;color:var(--muted)">'+(r.doc_num||'—')+'</td>'+
-      '<td>'+link+'</td>'+
-      '</tr>';
-  }).join('');
 }
 
-function resetFilters(){
-  document.getElementById('searchInput').value='';
-  document.getElementById('typeFilter').value='';
-  document.getElementById('minScore').value='';
-  document.getElementById('addrFilter').value='';
-  render();
-}
-
-function exportCSV(){
-  const recs=getFiltered();
-  const cols=['score','filed','doc_type','cat_label','owner','legal','prop_address','prop_city','prop_zip','mail_address','mail_city','mail_zip','amount','doc_num','flags','clerk_url'];
-  const lines=[cols.join(',')];
-  recs.forEach(r=>{
-    lines.push(cols.map(c=>{
-      let v=c==='flags'?(r.flags||[]).join('; '):(r[c]||'');
-      return '"'+String(v).replace(/"/g,'""')+'"';
-    }).join(','));
+// ── Table Render ───────────────────────────────────────────────────
+function renderTable() {
+  // Header
+  let thead = "<tr>";
+  COLS.forEach(c => {
+    const arrow = sortCol === c.key ? (sortAsc ? " &#9650;" : " &#9660;") : "";
+    thead += `<th style="width:${c.w}" onclick="sortBy('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
   });
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
-  a.download='harris_leads_'+new Date().toISOString().slice(0,10)+'.csv';
+  thead += "</tr>";
+  document.getElementById("thead").innerHTML = thead;
+
+  // Body (paginated)
+  const start = (currentPage - 1) * PER_PAGE;
+  const pageData = filtered.slice(start, start + PER_PAGE);
+
+  let html = "";
+  pageData.forEach(r => {
+    const scoreCls = r.score >= 70 ? "score-high" : r.score >= 50 ? "score-med" : "score-low";
+
+    let flagsHtml = "";
+    (r.flags || []).forEach(f => {
+      const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
+      flagsHtml += `<span class="flag-pill ${cls}">${f}</span>`;
+    });
+
+    const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
+    const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
+
+    html += `<tr>
+      <td class="score-cell"><span class="score-pill ${scoreCls}">${r.score}</span></td>
+      <td>${r.filed || ""}</td>
+      <td><span class="type-badge">${r.doc_type}</span></td>
+      <td>${r.cat_label}</td>
+      <td class="owner-cell">${r.owner || ""}</td>
+      <td>${flagsHtml}</td>
+      <td>${r.legal || ""}</td>
+      <td class="addr-cell">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td class="addr-cell">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td style="font-size:0.7rem">${r.doc_num}</td>
+      <td>${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">View</a>' : ''}</td>
+    </tr>`;
+  });
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+}
+
+// ── Pagination ─────────────────────────────────────────────────────
+function renderPagination() {
+  const totalPages = Math.ceil(filtered.length / PER_PAGE);
+  if (totalPages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
+
+  let html = `<button ${currentPage === 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">&laquo; Prev</button>`;
+  const start = Math.max(1, currentPage - 3);
+  const end = Math.min(totalPages, currentPage + 3);
+  if (start > 1) html += `<button onclick="goPage(1)">1</button><span class="page-info">...</span>`;
+  for (let i = start; i <= end; i++) {
+    html += `<button class="${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  if (end < totalPages) html += `<span class="page-info">...</span><button onclick="goPage(${totalPages})">${totalPages}</button>`;
+  html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">Next &raquo;</button>`;
+  html += `<span class="page-info" style="margin-left:8px">Page ${currentPage} of ${totalPages}</span>`;
+  document.getElementById("pagination").innerHTML = html;
+}
+
+function goPage(p) {
+  currentPage = p;
+  renderTable();
+  renderPagination();
+  document.querySelector(".table-wrap").scrollIntoView({behavior: "smooth"});
+}
+
+// ── CSV Export ─────────────────────────────────────────────────────
+function exportCSV() {
+  const rows = getFiltered();
+  const headers = [
+    "Score","Filed","Type","Category","Owner","Flags","Legal Description",
+    "Property Address","Property City","Property State","Property Zip",
+    "Mail Address","Mail City","Mail State","Mail Zip","Doc #","Clerk URL"
+  ];
+  let csv = headers.join(",") + "\n";
+  rows.forEach(r => {
+    csv += [
+      r.score, r.filed, r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
+      `"${(r.owner||'').replace(/"/g,'""')}"`,
+      `"${(r.flags||[]).join('; ')}"`,
+      `"${(r.legal||'').replace(/"/g,'""')}"`,
+      `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
+      `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
+      r.doc_num, r.clerk_url||""
+    ].join(",") + "\n";
+  });
+  const blob = new Blob([csv], {type: "text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
 
-['searchInput','typeFilter','minScore','addrFilter'].forEach(id=>{
-  document.getElementById(id).addEventListener('input',render);
-  document.getElementById(id).addEventListener('change',render);
-});
-
+// ── Init ───────────────────────────────────────────────────────────
 loadData();
 </script>
 </body>
