@@ -509,10 +509,19 @@ class HCADParcelLoader:
                 return {"info": self.lookup[short], "level": "low"}
 
         # 4. Prefix match → low confidence
+        #    Both the search name AND the key must be ≥ 8 chars,
+        #    and the shorter string must be at least 60% the length of
+        #    the longer one to avoid wild mismatches (e.g. key="S"
+        #    matching any name starting with S).
         if len(n) >= 8:
             for key, val in self.lookup.items():
+                if len(key) < 8:
+                    continue
                 if key.startswith(n) or n.startswith(key):
-                    return {"info": val, "level": "low"}
+                    shorter = min(len(n), len(key))
+                    longer  = max(len(n), len(key))
+                    if shorter / longer >= 0.6:
+                        return {"info": val, "level": "low"}
 
         return None
 
@@ -572,10 +581,18 @@ class HCADParcelLoader:
 
         # 4. Prefix match – "SMITH JOHN" matches "SMITH JOHN A" or
         #    "SMITH JOHN WILLIAM III" etc.
-        if len(n) >= 8:  # avoid matching on very short prefixes
+        #    Both name and key must be >= 8 chars, and the shorter must
+        #    be at least 60% the length of the longer to avoid wild
+        #    mismatches (e.g. a key of "S" matching every S-name).
+        if len(n) >= 8:
             for key, val in self.lookup.items():
+                if len(key) < 8:
+                    continue
                 if key.startswith(n) or n.startswith(key):
-                    return val
+                    shorter = min(len(n), len(key))
+                    longer  = max(len(n), len(key))
+                    if shorter / longer >= 0.6:
+                        return val
 
         return None
 
@@ -888,6 +905,204 @@ class HCADParcelLoader:
 
         log.warning("  Could not load HCAD data. Address enrichment will be skipped.")
         return 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  HCAD Live Search  (Playwright — probate verification only)
+# ═══════════════════════════════════════════════════════════════════════════════
+HCAD_SEARCH_URL = "https://search.hcad.org/"
+HCAD_DETAIL_BASE = "https://public.hcad.org/records/details.asp?cession=A&acct="
+
+
+async def hcad_live_search(page, name: str) -> Optional[dict]:
+    """Search search.hcad.org by Owner Name using Playwright.
+
+    Returns dict with acct, owner_name, address, property_type or None.
+    Used ONLY for probate grantor verification when bulk data matching
+    fails or returns low confidence.
+    """
+    if not name or not name.strip():
+        return None
+
+    try:
+        await page.goto(HCAD_SEARCH_URL, timeout=30_000)
+        await page.wait_for_load_state("networkidle", timeout=30_000)
+        await asyncio.sleep(2)
+
+        # Select "Owner Name" radio button
+        owner_radio = page.locator("text=Owner Name").first
+        await owner_radio.click()
+        await asyncio.sleep(0.5)
+
+        # Type the search name
+        search_input = page.locator("input[type='search']").first
+        await search_input.fill(name.strip())
+        await asyncio.sleep(0.5)
+
+        # Click the search button
+        search_btn = page.locator("button:has-text('Search')").first
+        if await search_btn.count() == 0:
+            search_btn = page.locator("button.btn-primary").first
+        await search_btn.click()
+
+        # Wait for results to load
+        await asyncio.sleep(3)
+
+        # Check if results table appeared
+        # The results table has columns: Account Number, Business\Owner Name, Address, Type
+        rows = page.locator("table tbody tr")
+        row_count = await rows.count()
+
+        if row_count == 0:
+            log.info(f"    HCAD live search: no results for '{name}'")
+            return None
+
+        # Parse the first result row (most relevant match)
+        # Try to find residential properties first
+        best = None
+        for i in range(min(row_count, 10)):  # check up to 10 rows
+            row = rows.nth(i)
+            cells = row.locator("td")
+            cell_count = await cells.count()
+            if cell_count < 4:
+                continue
+
+            acct = (await cells.nth(0).text_content() or "").strip()
+            owner_name = (await cells.nth(1).text_content() or "").strip()
+            address = (await cells.nth(2).text_content() or "").strip()
+            prop_type = (await cells.nth(3).text_content() or "").strip()
+
+            if not acct or not address:
+                continue
+
+            result = {
+                "acct": acct,
+                "owner_name": owner_name,
+                "address": address,
+                "prop_type": prop_type,
+            }
+
+            # Prefer residential over commercial/personal
+            if "residential" in prop_type.lower():
+                log.info(f"    HCAD live search: found residential for '{name}' → {address}")
+                return result
+
+            if best is None:
+                best = result
+
+        if best:
+            log.info(f"    HCAD live search: found {best['prop_type']} for '{name}' → {best['address']}")
+        else:
+            log.info(f"    HCAD live search: no usable results for '{name}'")
+        return best
+
+    except Exception as e:
+        log.warning(f"    HCAD live search error for '{name}': {e}")
+        return None
+
+
+def parse_hcad_address(address_str: str) -> dict:
+    """Parse an HCAD address string like '1302 RUDEL DR, TOMBALL, TX 77375'
+    into structured fields."""
+    parts = [p.strip() for p in address_str.split(",")]
+    result = {"street": "", "city": "Houston", "state": "TX", "zip": ""}
+
+    if len(parts) >= 1:
+        result["street"] = parts[0]
+    if len(parts) >= 2:
+        result["city"] = parts[1]
+    if len(parts) >= 3:
+        # Last part might be "TX 77375" or just "TX"
+        state_zip = parts[2].strip().split()
+        if state_zip:
+            result["state"] = state_zip[0]
+        if len(state_zip) >= 2:
+            result["zip"] = state_zip[1]
+
+    return result
+
+
+async def verify_probate_via_hcad(browser_context, probate_records: list,
+                                   parcel_loader) -> int:
+    """Run live HCAD searches for probate records that have no/low confidence.
+
+    For each probate record with confidence 'none' or 'low':
+      - Tries each grantor name on search.hcad.org
+      - If found, updates prop_address with the HCAD result
+      - Also tries each grantee for mailing address
+
+    Returns count of records improved.
+    """
+    # Filter to probate records needing verification
+    to_verify = [r for r in probate_records
+                 if r.get("cat") == "PROBATE"
+                 and r.get("match_confidence") in ("none", "low")]
+
+    if not to_verify:
+        log.info("No probate records need HCAD live verification")
+        return 0
+
+    log.info(f"HCAD live verification: {len(to_verify)} probate records to check")
+
+    page = await browser_context.new_page()
+    improved = 0
+
+    for rec in to_verify:
+        grantor_str = rec.get("grantor_name", "") or ""
+        grantee_str = rec.get("grantee_names", "") or ""
+        grantor_list = [g.strip() for g in grantor_str.split(";") if g.strip()]
+        grantee_list = [g.strip() for g in grantee_str.split(";") if g.strip()]
+
+        # ── Search for grantor's property (the house to buy) ──
+        prop_found = False
+        for gname in grantor_list:
+            # Try name as-is first
+            variants = [gname]
+            # Add cleaned version (strip EST/ESTATE)
+            cleaned = HCADParcelLoader._clean_probate_name(gname)
+            if cleaned != gname:
+                variants.append(cleaned)
+            # Add "ESTATE OF" version
+            base = HCADParcelLoader.ESTATE_PREFIX_RE.sub("", cleaned).strip()
+            if base:
+                variants.append(f"ESTATE OF {base}")
+
+            for variant in variants:
+                result = await hcad_live_search(page, variant)
+                if result:
+                    addr = parse_hcad_address(result["address"])
+                    rec["prop_address"] = addr["street"]
+                    rec["prop_city"] = addr["city"]
+                    rec["prop_state"] = addr["state"]
+                    rec["prop_zip"] = addr["zip"]
+                    rec["match_confidence"] = "medium"
+                    rec["hcad_url"] = f"{HCAD_DETAIL_BASE}{result['acct']}"
+                    prop_found = True
+                    improved += 1
+                    break
+                await asyncio.sleep(1)  # rate limit between searches
+
+            if prop_found:
+                break
+
+        # ── Search for grantee's address (where the heir lives) ──
+        if not rec.get("mail_address") or rec.get("mail_address") == "Grantee not found":
+            for gname in grantee_list:
+                result = await hcad_live_search(page, gname)
+                if result:
+                    addr = parse_hcad_address(result["address"])
+                    rec["mail_address"] = addr["street"]
+                    rec["mail_city"] = addr["city"]
+                    rec["mail_state"] = addr["state"]
+                    rec["mail_zip"] = addr["zip"]
+                    break
+                await asyncio.sleep(1)
+
+        await asyncio.sleep(1)  # rate limit between records
+
+    await page.close()
+    log.info(f"HCAD live verification: improved {improved} of {len(to_verify)} records")
+    return improved
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1247,11 +1462,44 @@ async def main():
 
         confidence_counts[confidence] = confidence_counts.get(confidence, 0) + 1
 
-    log.info(f"HCAD enrichment: {with_address} with address")
+    log.info(f"HCAD bulk enrichment: {with_address} with address")
     log.info(f"  Confidence: high={confidence_counts['high']}, "
              f"medium={confidence_counts['medium']}, "
              f"low={confidence_counts['low']}, "
              f"none={confidence_counts['none']}")
+
+    # 4b. HCAD LIVE VERIFICATION — probate cases only
+    #     For probate records with no/low confidence, search search.hcad.org
+    #     directly to find the grantor's property address.
+    if PLAYWRIGHT_AVAILABLE:
+        probate_needing_verify = [r for r in deduped
+                                  if r.get("cat") == "PROBATE"
+                                  and r.get("match_confidence") in ("none", "low")]
+        if probate_needing_verify:
+            log.info(f"Starting HCAD live verification for {len(probate_needing_verify)} probate records...")
+            try:
+                async with async_playwright() as pw:
+                    browser = await pw.chromium.launch(
+                        headless=True,
+                        args=["--no-sandbox", "--disable-dev-shm-usage"],
+                    )
+                    ctx = await browser.new_context(
+                        user_agent=(
+                            "Mozilla/5.0 (X11; Linux x86_64) "
+                            "AppleWebKit/537.36 Chrome/120 Safari/537.36"
+                        ),
+                        viewport={"width": 1280, "height": 900},
+                    )
+                    improved = await verify_probate_via_hcad(ctx, deduped, parcel)
+
+                    # Recount addresses after live verification
+                    with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
+
+                    await browser.close()
+            except Exception as e:
+                log.warning(f"HCAD live verification failed: {e}")
+        else:
+            log.info("All probate records already have medium/high confidence — skipping live verification")
 
     # 5. Compute flags & scores
     for rec in deduped:
