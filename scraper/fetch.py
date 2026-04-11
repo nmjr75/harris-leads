@@ -128,10 +128,13 @@ class HCADParcelLoader:
     # Try current year first, then fall back
     FALLBACK_YEARS = [2026, 2025, 2024]
 
-    # (File selection now handled dynamically in _parse_zip)
+    # HCAD public property detail URL pattern
+    HCAD_DETAIL_URL = "https://public.hcad.org/records/details.asp?cession=A&acct="
 
     def __init__(self):
-        self.lookup: dict = {}
+        self.lookup: dict = {}           # name → info (address dict)
+        self.legal_index: dict = {}      # normalized_legal_key → info
+        self.acct_index: dict = {}       # acct → info (for HCAD URL lookups)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120"})
 
@@ -156,6 +159,223 @@ class HCADParcelLoader:
             if len(parts) == 2 and parts[0] and parts[1]:
                 alt = self._norm(f"{parts[1]} {parts[0]}")
                 self.lookup[alt] = info
+
+    def _index_legal(self, lgl_1: str, lgl_2: str, lgl_3: str, info: dict):
+        """Build a normalized legal key from HCAD lgl_1 + lgl_2 + lgl_3 fields
+        and index it for fast lookup.
+
+        HCAD format:
+          lgl_1 = "LT 5 BLK 3"  (lot/block/tract)
+          lgl_2 = "WILDHEATHER SEC 1"  (subdivision name, sometimes "(NM)")
+          lgl_3 = additional info (sometimes holds the actual subdivision)
+        """
+        # Combine all legal fields
+        combined = f"{lgl_1} {lgl_2} {lgl_3}".upper()
+        combined = re.sub(r"[^\w\s]", " ", combined)
+        combined = re.sub(r"\s+", " ", combined).strip()
+        if not combined or len(combined) < 5:
+            return
+
+        # Extract subdivision name (from lgl_2, or lgl_3 if lgl_2 is short/empty)
+        subdiv = lgl_2.strip()
+        if subdiv.startswith("(") and subdiv.endswith(")"):
+            subdiv = subdiv[1:-1]  # strip parens
+        if len(subdiv) <= 3 or subdiv == "NM":
+            subdiv = lgl_3.strip()
+            if subdiv.startswith("(") and subdiv.endswith(")"):
+                subdiv = subdiv[1:-1]
+
+        subdiv_norm = re.sub(r"[^\w\s]", " ", subdiv.upper())
+        subdiv_norm = re.sub(r"\s+", " ", subdiv_norm).strip()
+
+        # Extract lot and block numbers from lgl_1
+        lot_match = re.search(r"\bL(?:O?T|TS?)?\s*(\d+)\b", lgl_1.upper())
+        blk_match = re.search(r"\bBL(?:OC)?K?\s*(\d+)\b", lgl_1.upper())
+
+        lot_num = lot_match.group(1) if lot_match else ""
+        blk_num = blk_match.group(1) if blk_match else ""
+
+        # Build multiple index keys for flexible matching
+        if subdiv_norm and lot_num and blk_num:
+            key = f"{subdiv_norm}|LOT{lot_num}|BLK{blk_num}"
+            self.legal_index[key] = info
+        if subdiv_norm and lot_num:
+            key2 = f"{subdiv_norm}|LOT{lot_num}"
+            if key2 not in self.legal_index:
+                self.legal_index[key2] = info
+        if subdiv_norm and blk_num:
+            key3 = f"{subdiv_norm}|BLK{blk_num}"
+            if key3 not in self.legal_index:
+                self.legal_index[key3] = info
+
+    @staticmethod
+    def _parse_clerk_legal(legal: str) -> dict:
+        """Parse a clerk filing legal description into subdivision, lot, block.
+
+        Clerk format: "WILDHEATHER SEC 1 | Sec: 1 | Lot: 5 | Block: 3"
+        """
+        result = {"subdiv": "", "lot": "", "block": "", "section": ""}
+        if not legal:
+            return result
+
+        parts = [p.strip() for p in legal.split("|")]
+        for part in parts:
+            if part.lower().startswith("lot:"):
+                result["lot"] = part.split(":", 1)[1].strip()
+            elif part.lower().startswith("block:"):
+                result["block"] = part.split(":", 1)[1].strip()
+            elif part.lower().startswith("sec:"):
+                result["section"] = part.split(":", 1)[1].strip()
+            elif not result["subdiv"]:
+                result["subdiv"] = part.strip()
+
+        return result
+
+    def lookup_by_legal(self, legal: str) -> Optional[dict]:
+        """Try to match a clerk filing against the HCAD legal description index.
+
+        Returns the info dict if matched, or None.
+        """
+        if not legal or not self.legal_index:
+            return None
+
+        parsed = self._parse_clerk_legal(legal)
+        subdiv = parsed["subdiv"]
+        lot = parsed["lot"]
+        block = parsed["block"]
+
+        if not subdiv:
+            return None
+
+        subdiv_norm = re.sub(r"[^\w\s]", " ", subdiv.upper())
+        subdiv_norm = re.sub(r"\s+", " ", subdiv_norm).strip()
+
+        # Extract just the lot/block numbers (strip leading zeros)
+        lot_num = re.sub(r"^0+", "", lot) if lot else ""
+        blk_num = re.sub(r"^0+", "", block) if block else ""
+
+        # Try full match first (subdiv + lot + block)
+        if subdiv_norm and lot_num and blk_num:
+            key = f"{subdiv_norm}|LOT{lot_num}|BLK{blk_num}"
+            if key in self.legal_index:
+                return self.legal_index[key]
+
+        # Try subdiv + lot only
+        if subdiv_norm and lot_num:
+            key = f"{subdiv_norm}|LOT{lot_num}"
+            if key in self.legal_index:
+                return self.legal_index[key]
+
+        # Try subdiv + block only
+        if subdiv_norm and blk_num:
+            key = f"{subdiv_norm}|BLK{blk_num}"
+            if key in self.legal_index:
+                return self.legal_index[key]
+
+        return None
+
+    def enrich_record(self, record: dict) -> dict:
+        """Enrich a clerk record with HCAD data using tiered matching.
+
+        Returns dict with address fields + match_confidence + hcad_url.
+        Confidence levels:
+          high   = legal description matched (subdivision + lot/block)
+          medium = exact owner name matched
+          low    = fuzzy/prefix owner name matched
+          none   = no match found
+        """
+        legal = record.get("legal", "")
+        owner = record.get("owner", "")
+
+        # ── Tier 1: Legal description match (highest confidence) ──
+        result = self.lookup_by_legal(legal)
+        if result:
+            out = dict(result)
+            out["match_confidence"] = "high"
+            out["hcad_url"] = self._get_hcad_url(result)
+            return out
+
+        # ── Tier 2: Exact owner name match ──
+        if owner:
+            result = self._lookup_owner_exact(owner)
+            if result:
+                out = dict(result["info"])
+                out["match_confidence"] = result["level"]
+                out["hcad_url"] = self._get_hcad_url(result["info"])
+                return out
+
+        # ── No match ──
+        return {
+            "match_confidence": "none",
+            "hcad_url": "",
+        }
+
+    def _get_hcad_url(self, info: dict) -> str:
+        """Build HCAD public detail URL from account number stored in info."""
+        acct = info.get("_acct", "")
+        if acct:
+            return f"{self.HCAD_DETAIL_URL}{acct.strip()}"
+        return ""
+
+    def _lookup_owner_exact(self, name: str) -> Optional[dict]:
+        """Try to match owner name, returning confidence level.
+
+        Returns {"info": dict, "level": "medium"|"low"} or None.
+        """
+        if not name or not self.lookup:
+            return None
+
+        # Split semicolons – clerk records often list multiple grantees
+        candidates = [c.strip() for c in name.split(";") if c.strip()]
+        if not candidates:
+            return None
+
+        # First pass: skip LLCs
+        for cand in candidates:
+            if LLC_PATTERN.search(cand):
+                continue
+            result = self._try_match_with_level(cand)
+            if result:
+                return result
+
+        # Second pass: try LLCs too
+        for cand in candidates:
+            result = self._try_match_with_level(cand)
+            if result:
+                return result
+
+        return None
+
+    def _try_match_with_level(self, name: str) -> Optional[dict]:
+        """Attempt exact, reversed, and prefix match. Returns level."""
+        n = self._norm(name)
+        if not n:
+            return None
+
+        # 1. Exact match → medium confidence
+        if n in self.lookup:
+            return {"info": self.lookup[n], "level": "medium"}
+
+        # 2. Try "FIRST LAST" → "LAST FIRST" → medium confidence
+        parts = n.split()
+        if len(parts) >= 2:
+            reversed_name = f"{parts[-1]} {' '.join(parts[:-1])}"
+            if reversed_name in self.lookup:
+                return {"info": self.lookup[reversed_name], "level": "medium"}
+
+        # 3. Try just "LAST FIRST" (first two tokens) → low confidence
+        if len(parts) >= 3:
+            short = f"{parts[0]} {parts[1]}"
+            if short in self.lookup:
+                return {"info": self.lookup[short], "level": "low"}
+
+        # 4. Prefix match → low confidence
+        if len(n) >= 8:
+            for key, val in self.lookup.items():
+                if key.startswith(n) or n.startswith(key):
+                    return {"info": val, "level": "low"}
+
+        return None
 
     def lookup_owner(self, name: str) -> Optional[dict]:
         """Try to match a clerk-record owner name against the HCAD index.
@@ -341,14 +561,20 @@ class HCADParcelLoader:
                         col_mail_zip = self._find_column(
                             headers, "MAIL_ZIP", "OWN_ZIP",
                         )
+                        # Legal description columns
+                        col_lgl1 = self._find_column(headers, "LGL_1", "LEGAL_1")
+                        col_lgl2 = self._find_column(headers, "LGL_2", "LEGAL_2")
+                        col_lgl3 = self._find_column(headers, "LGL_3", "LEGAL_3")
 
                         log.info(f"  Column mapping: acct={col_acct}, mailto={col_mailto}, "
                                  f"site={col_site}, site_city={col_site_city}, "
-                                 f"mail={col_mail}, mail_city={col_mail_city}")
+                                 f"mail={col_mail}, mail_city={col_mail_city}, "
+                                 f"lgl_1={col_lgl1}, lgl_2={col_lgl2}, lgl_3={col_lgl3}")
 
                         if col_mailto is None and col_acct is None:
                             log.warning(f"  Cannot find mailto or acct column in real_acct.txt")
                         else:
+                            legal_indexed = 0
                             for line in (sample_data + list(stream)):
                                 fields = line.strip().split(delim)
                                 mailto = safe_get(fields, col_mailto) if col_mailto is not None else ""
@@ -366,6 +592,7 @@ class HCADParcelLoader:
                                     "mail_city":    safe_get(fields, col_mail_city),
                                     "mail_state":   safe_get(fields, col_mail_state) or "TX",
                                     "mail_zip":     safe_get(fields, col_mail_zip),
+                                    "_acct":        acct.strip(),
                                 }
 
                                 # Index by mailto name (primary owner match)
@@ -373,12 +600,24 @@ class HCADParcelLoader:
                                     self._index(mailto, info)
                                     count += 1
 
+                                # Index by legal description for parcel-level matching
+                                lgl_1 = safe_get(fields, col_lgl1) if col_lgl1 is not None else ""
+                                lgl_2 = safe_get(fields, col_lgl2) if col_lgl2 is not None else ""
+                                lgl_3 = safe_get(fields, col_lgl3) if col_lgl3 is not None else ""
+                                if lgl_1 or lgl_2:
+                                    self._index_legal(lgl_1, lgl_2, lgl_3, info)
+                                    legal_indexed += 1
+
                                 # Store by account for owners.txt cross-reference
+                                # and for HCAD URL generation
                                 if acct:
                                     acct_to_info[acct.strip()] = info
+                                    self.acct_index[acct.strip()] = info
 
                             log.info(f"  real_acct.txt: indexed {count:,} owner names, "
-                                     f"{len(acct_to_info):,} account records")
+                                     f"{len(acct_to_info):,} account records, "
+                                     f"{legal_indexed:,} legal descriptions, "
+                                     f"{len(self.legal_index):,} unique legal keys")
 
                 # ── Step 2: Parse owners.txt (supplement — extra name variants) ──
                 extra = 0
@@ -696,26 +935,28 @@ class ClerkScraper:
                         pass
 
                 records.append({
-                    "doc_num":      file_num,
-                    "doc_type":     doc_type,
-                    "filed":        filed_norm or file_date,
-                    "cat":          cat,
-                    "cat_label":    cat_label,
-                    "owner":        owner,
-                    "grantee":      grantor,
-                    "amount":       "",
-                    "legal":        legal,
-                    "clerk_url":    clerk_url,
-                    "prop_address": "",
-                    "prop_city":    "Houston",
-                    "prop_state":   "TX",
-                    "prop_zip":     "",
-                    "mail_address": "",
-                    "mail_city":    "",
-                    "mail_state":   "TX",
-                    "mail_zip":     "",
-                    "flags":        [],
-                    "score":        0,
+                    "doc_num":           file_num,
+                    "doc_type":          doc_type,
+                    "filed":             filed_norm or file_date,
+                    "cat":               cat,
+                    "cat_label":         cat_label,
+                    "owner":             owner,
+                    "grantee":           grantor,
+                    "amount":            "",
+                    "legal":             legal,
+                    "clerk_url":         clerk_url,
+                    "prop_address":      "",
+                    "prop_city":         "Houston",
+                    "prop_state":        "TX",
+                    "prop_zip":          "",
+                    "mail_address":      "",
+                    "mail_city":         "",
+                    "mail_state":        "TX",
+                    "mail_zip":          "",
+                    "match_confidence":  "none",
+                    "hcad_url":          "",
+                    "flags":             [],
+                    "score":             0,
                 })
             except Exception as e:
                 log.warning(f"  Row parse error: {e}")
@@ -830,17 +1071,32 @@ async def main():
             deduped.append(rec)
     log.info(f"After dedup: {len(deduped)}")
 
-    # 4. Enrich with HCAD addresses
+    # 4. Enrich with HCAD addresses (tiered: legal desc → exact name → fuzzy name)
     with_address = 0
-    match_count  = 0
+    confidence_counts = {"high": 0, "medium": 0, "low": 0, "none": 0}
     for rec in deduped:
-        p = parcel.lookup_owner(rec.get("owner", ""))
-        if p:
-            match_count += 1
-            rec.update(p)
-            if p.get("prop_address"):
+        enrichment = parcel.enrich_record(rec)
+        confidence = enrichment.pop("match_confidence", "none")
+        hcad_url   = enrichment.pop("hcad_url", "")
+
+        # Remove internal _acct field from address data before merging
+        enrichment.pop("_acct", None)
+
+        rec["match_confidence"] = confidence
+        rec["hcad_url"] = hcad_url
+
+        if confidence != "none":
+            rec.update(enrichment)
+            if enrichment.get("prop_address"):
                 with_address += 1
-    log.info(f"HCAD matches: {match_count} | With property address: {with_address}")
+
+        confidence_counts[confidence] = confidence_counts.get(confidence, 0) + 1
+
+    log.info(f"HCAD enrichment: {with_address} with address")
+    log.info(f"  Confidence: high={confidence_counts['high']}, "
+             f"medium={confidence_counts['medium']}, "
+             f"low={confidence_counts['low']}, "
+             f"none={confidence_counts['none']}")
 
     # 5. Compute flags & scores
     for rec in deduped:
