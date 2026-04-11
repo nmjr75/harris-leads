@@ -908,96 +908,61 @@ class HCADParcelLoader:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  HCAD Live Search  (Playwright — probate verification only)
+#  HCAD Live Search  (ArcGIS REST API — probate verification only)
 # ═══════════════════════════════════════════════════════════════════════════════
-HCAD_SEARCH_URL = "https://search.hcad.org/"
+HCAD_ARCGIS_URL = (
+    "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query"
+)
 HCAD_DETAIL_BASE = "https://public.hcad.org/records/details.asp?cession=A&acct="
 
 
-async def hcad_live_search(page, name: str) -> Optional[dict]:
-    """Search search.hcad.org by Owner Name using Playwright.
+def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
+    """Search HCAD via the ArcGIS REST API by owner name.
 
-    Returns dict with acct, owner_name, address, property_type or None.
-    Used ONLY for probate grantor verification when bulk data matching
-    fails or returns low confidence.
+    Uses a simple HTTP GET → JSON response.  No Playwright / WebSocket needed.
+    Returns dict with acct, owner_name, address or None.
     """
     if not name or not name.strip():
         return None
 
+    # Sanitise for SQL LIKE clause (escape single quotes)
+    safe = name.strip().upper().replace("'", "''")
+
+    params = {
+        "where":              f"owner_name_1 LIKE '%{safe}%'",
+        "outFields":          "HCAD_NUM,owner_name_1,owner_name_2,site_address",
+        "returnGeometry":     "false",
+        "f":                  "json",
+        "resultRecordCount":  "10",
+    }
+
     try:
-        await page.goto(HCAD_SEARCH_URL, timeout=30_000)
-        await page.wait_for_load_state("networkidle", timeout=30_000)
-        await asyncio.sleep(2)
-
-        # Select "Owner Name" radio button
-        owner_radio = page.locator("text=Owner Name").first
-        await owner_radio.click()
-        await asyncio.sleep(0.5)
-
-        # Type the search name
-        search_input = page.locator("input[type='search']").first
-        await search_input.fill(name.strip())
-        await asyncio.sleep(0.5)
-
-        # Click the search button
-        search_btn = page.locator("button:has-text('Search')").first
-        if await search_btn.count() == 0:
-            search_btn = page.locator("button.btn-primary").first
-        await search_btn.click()
-
-        # Wait for results to load
-        await asyncio.sleep(3)
-
-        # Check if results table appeared
-        # The results table has columns: Account Number, Business\Owner Name, Address, Type
-        rows = page.locator("table tbody tr")
-        row_count = await rows.count()
-
-        if row_count == 0:
-            log.info(f"    HCAD live search: no results for '{name}'")
+        resp = session.get(HCAD_ARCGIS_URL, params=params, timeout=30)
+        if resp.status_code != 200:
+            log.warning(f"    HCAD API HTTP {resp.status_code} for '{name}'")
             return None
 
-        # Parse the first result row (most relevant match)
-        # Try to find residential properties first
-        best = None
-        for i in range(min(row_count, 10)):  # check up to 10 rows
-            row = rows.nth(i)
-            cells = row.locator("td")
-            cell_count = await cells.count()
-            if cell_count < 4:
-                continue
+        data = resp.json()
+        features = data.get("features", [])
+        if not features:
+            log.info(f"    HCAD API: no results for '{name}'")
+            return None
 
-            acct = (await cells.nth(0).text_content() or "").strip()
-            owner_name = (await cells.nth(1).text_content() or "").strip()
-            address = (await cells.nth(2).text_content() or "").strip()
-            prop_type = (await cells.nth(3).text_content() or "").strip()
+        # Return first feature with a usable address
+        for feat in features:
+            attr = feat.get("attributes", {})
+            acct    = str(attr.get("HCAD_NUM", "")).strip()
+            owner   = (attr.get("owner_name_1") or "").strip()
+            address = (attr.get("site_address") or "").strip()
+            if acct and address:
+                log.info(f"    HCAD API: found '{owner}' → {address} for '{name}'")
+                return {"acct": acct, "owner_name": owner, "address": address}
 
-            if not acct or not address:
-                continue
-
-            result = {
-                "acct": acct,
-                "owner_name": owner_name,
-                "address": address,
-                "prop_type": prop_type,
-            }
-
-            # Prefer residential over commercial/personal
-            if "residential" in prop_type.lower():
-                log.info(f"    HCAD live search: found residential for '{name}' → {address}")
-                return result
-
-            if best is None:
-                best = result
-
-        if best:
-            log.info(f"    HCAD live search: found {best['prop_type']} for '{name}' → {best['address']}")
-        else:
-            log.info(f"    HCAD live search: no usable results for '{name}'")
-        return best
+        log.info(f"    HCAD API: results but no usable address for '{name}'")
+        return None
 
     except Exception as e:
-        log.warning(f"    HCAD live search error for '{name}': {e}")
+        log.warning(f"    HCAD API error for '{name}': {e}")
         return None
 
 
@@ -1022,18 +987,17 @@ def parse_hcad_address(address_str: str) -> dict:
     return result
 
 
-async def verify_probate_via_hcad(browser_context, probate_records: list,
-                                   parcel_loader) -> int:
-    """Run live HCAD searches for probate records that have no/low confidence.
+def verify_probate_via_hcad(http_session: requests.Session,
+                            probate_records: list) -> int:
+    """Run live HCAD API searches for probate records with no/low confidence.
 
-    For each probate record with confidence 'none' or 'low':
-      - Tries each grantor name on search.hcad.org
+    For each qualifying probate record:
+      - Tries each grantor name variant via the ArcGIS REST API
       - If found, updates prop_address with the HCAD result
       - Also tries each grantee for mailing address
 
     Returns count of records improved.
     """
-    # Filter to probate records needing verification
     to_verify = [r for r in probate_records
                  if r.get("cat") == "PROBATE"
                  and r.get("match_confidence") in ("none", "low")]
@@ -1043,8 +1007,6 @@ async def verify_probate_via_hcad(browser_context, probate_records: list,
         return 0
 
     log.info(f"HCAD live verification: {len(to_verify)} probate records to check")
-
-    page = await browser_context.new_page()
     improved = 0
 
     for rec in to_verify:
@@ -1056,19 +1018,16 @@ async def verify_probate_via_hcad(browser_context, probate_records: list,
         # ── Search for grantor's property (the house to buy) ──
         prop_found = False
         for gname in grantor_list:
-            # Try name as-is first
             variants = [gname]
-            # Add cleaned version (strip EST/ESTATE)
             cleaned = HCADParcelLoader._clean_probate_name(gname)
             if cleaned != gname:
                 variants.append(cleaned)
-            # Add "ESTATE OF" version
             base = HCADParcelLoader.ESTATE_PREFIX_RE.sub("", cleaned).strip()
             if base:
                 variants.append(f"ESTATE OF {base}")
 
             for variant in variants:
-                result = await hcad_live_search(page, variant)
+                result = hcad_api_search(http_session, variant)
                 if result:
                     addr = parse_hcad_address(result["address"])
                     rec["prop_address"] = addr["street"]
@@ -1080,7 +1039,7 @@ async def verify_probate_via_hcad(browser_context, probate_records: list,
                     prop_found = True
                     improved += 1
                     break
-                await asyncio.sleep(1)  # rate limit between searches
+                time.sleep(0.5)  # gentle rate limit
 
             if prop_found:
                 break
@@ -1088,7 +1047,7 @@ async def verify_probate_via_hcad(browser_context, probate_records: list,
         # ── Search for grantee's address (where the heir lives) ──
         if not rec.get("mail_address") or rec.get("mail_address") == "Grantee not found":
             for gname in grantee_list:
-                result = await hcad_live_search(page, gname)
+                result = hcad_api_search(http_session, gname)
                 if result:
                     addr = parse_hcad_address(result["address"])
                     rec["mail_address"] = addr["street"]
@@ -1096,11 +1055,10 @@ async def verify_probate_via_hcad(browser_context, probate_records: list,
                     rec["mail_state"] = addr["state"]
                     rec["mail_zip"] = addr["zip"]
                     break
-                await asyncio.sleep(1)
+                time.sleep(0.5)
 
-        await asyncio.sleep(1)  # rate limit between records
+        time.sleep(0.3)  # rate limit between records
 
-    await page.close()
     log.info(f"HCAD live verification: improved {improved} of {len(to_verify)} records")
     return improved
 
@@ -1469,37 +1427,27 @@ async def main():
              f"none={confidence_counts['none']}")
 
     # 4b. HCAD LIVE VERIFICATION — probate cases only
-    #     For probate records with no/low confidence, search search.hcad.org
-    #     directly to find the grantor's property address.
-    if PLAYWRIGHT_AVAILABLE:
-        probate_needing_verify = [r for r in deduped
-                                  if r.get("cat") == "PROBATE"
-                                  and r.get("match_confidence") in ("none", "low")]
-        if probate_needing_verify:
-            log.info(f"Starting HCAD live verification for {len(probate_needing_verify)} probate records...")
-            try:
-                async with async_playwright() as pw:
-                    browser = await pw.chromium.launch(
-                        headless=True,
-                        args=["--no-sandbox", "--disable-dev-shm-usage"],
-                    )
-                    ctx = await browser.new_context(
-                        user_agent=(
-                            "Mozilla/5.0 (X11; Linux x86_64) "
-                            "AppleWebKit/537.36 Chrome/120 Safari/537.36"
-                        ),
-                        viewport={"width": 1280, "height": 900},
-                    )
-                    improved = await verify_probate_via_hcad(ctx, deduped, parcel)
+    #     For probate records with no/low confidence, query the HCAD
+    #     ArcGIS REST API to find the grantor's property address.
+    #     This is a simple HTTP GET → JSON call (no Playwright needed).
+    probate_needing_verify = [r for r in deduped
+                              if r.get("cat") == "PROBATE"
+                              and r.get("match_confidence") in ("none", "low")]
+    if probate_needing_verify:
+        log.info(f"Starting HCAD live verification for {len(probate_needing_verify)} probate records...")
+        try:
+            api_session = requests.Session()
+            api_session.headers.update({
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
+            })
+            improved = verify_probate_via_hcad(api_session, deduped)
 
-                    # Recount addresses after live verification
-                    with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
-
-                    await browser.close()
-            except Exception as e:
-                log.warning(f"HCAD live verification failed: {e}")
-        else:
-            log.info("All probate records already have medium/high confidence — skipping live verification")
+            # Recount addresses after live verification
+            with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
+        except Exception as e:
+            log.warning(f"HCAD live verification failed: {e}")
+    else:
+        log.info("All probate records already have medium/high confidence — skipping live verification")
 
     # 5. Compute flags & scores
     for rec in deduped:
