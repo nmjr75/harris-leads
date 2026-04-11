@@ -289,7 +289,7 @@
   td a { color: var(--accent-light); text-decoration: none; }
   td a:hover { text-decoration: underline; }
   .addr-cell { max-width: 200px; }
-  .owner-cell { max-width: 260px; word-break: break-word; }
+  .owner-cell { max-width: 260px; word-break: break-word; font-size: 0.78rem; }
 
   /* Row checkboxes */
   .row-cb, .hdr-cb {
@@ -410,7 +410,8 @@ const COLS = [
   {key: "filed", label: "Filed", w: "90px"},
   {key: "doc_type", label: "Type", w: "55px"},
   {key: "cat_label", label: "Category", w: "160px"},
-  {key: "owner", label: "Owner", w: "220px"},
+  {key: "owner", label: "Owner / Contact", w: "200px"},
+  {key: "grantor_name", label: "Grantor (Deceased)", w: "180px"},
   {key: "flags", label: "Flags", w: "170px"},
   {key: "legal", label: "Legal Description", w: "200px"},
   {key: "prop_address", label: "Property Address", w: "170px"},
@@ -597,7 +598,7 @@ function getFiltered() {
     if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
     if (conf && (r.match_confidence || "none") !== conf) return false;
     if (q) {
-      const hay = [r.owner, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
+      const hay = [r.owner, r.grantor_name, r.grantee_names, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
         .join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
@@ -693,6 +694,7 @@ function renderTable() {
       <td><span class="type-badge">${r.doc_type}</span></td>
       <td>${r.cat_label}</td>
       <td class="owner-cell">${r.owner || ""}</td>
+      <td class="owner-cell">${r.cat === "PROBATE" ? (r.grantor_name || '<span style="color:var(--text-muted)">--</span>') : '<span style="color:var(--text-muted)">--</span>'}</td>
       <td>${flagsHtml}</td>
       <td>${r.legal || ""}</td>
       <td class="addr-cell">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
@@ -702,7 +704,7 @@ function renderTable() {
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -775,7 +777,8 @@ function exportCSV(mode) {
     rows = getFiltered();
   }
   const headers = [
-    "Score","Filed","Type","Category","Owner","Flags","Legal Description",
+    "Score","Filed","Type","Category","Owner / Contact","Grantor (Deceased)","Grantee (Heirs)",
+    "Flags","Legal Description",
     "Property Address","Property City","Property State","Property Zip",
     "Mail Address","Mail City","Mail State","Mail Zip",
     "Match Confidence","Doc #","Clerk URL","HCAD URL"
@@ -785,6 +788,8 @@ function exportCSV(mode) {
     csv += [
       r.score, r.filed, r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
       `"${(r.owner||'').replace(/"/g,'""')}"`,
+      `"${(r.grantor_name||'').replace(/"/g,'""')}"`,
+      `"${(r.grantee_names||'').replace(/"/g,'""')}"`,
       `"${(r.flags||[]).join('; ')}"`,
       `"${(r.legal||'').replace(/"/g,'""')}"`,
       `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
