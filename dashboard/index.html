@@ -272,6 +272,20 @@
   .flag-pill.distress { background: rgba(239,68,68,0.15); color: var(--red); }
   .flag-pill.info     { background: rgba(59,130,246,0.15); color: var(--blue); }
   .flag-pill.fresh    { background: rgba(34,197,94,0.15); color: var(--green); }
+
+  /* Confidence badges */
+  .conf-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .conf-high   { background: rgba(34,197,94,0.18); color: var(--green); }
+  .conf-medium { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .conf-low    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .conf-none   { background: rgba(139,143,163,0.12); color: var(--text-muted); }
   td a { color: var(--accent-light); text-decoration: none; }
   td a:hover { text-decoration: underline; }
   .addr-cell { max-width: 200px; }
@@ -356,6 +370,13 @@
     <option value="with">With Address</option>
     <option value="without">Without Address</option>
   </select>
+  <select id="confFilter">
+    <option value="">All Confidence</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+    <option value="none">None</option>
+  </select>
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
@@ -394,8 +415,9 @@ const COLS = [
   {key: "legal", label: "Legal Description", w: "200px"},
   {key: "prop_address", label: "Property Address", w: "170px"},
   {key: "mail_address", label: "Mail Address", w: "150px"},
+  {key: "match_confidence", label: "Confidence", w: "80px"},
   {key: "doc_num", label: "Doc #", w: "100px"},
-  {key: "link", label: "Link", w: "40px"},
+  {key: "link", label: "Links", w: "80px"},
 ];
 
 const CAT_COLORS = {
@@ -544,6 +566,7 @@ function populateFilters() {
   document.getElementById("scoreMax").addEventListener("input", () => { currentPage = 1; applyFilters(); });
   document.getElementById("flagFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
 }
 
 function getFiltered() {
@@ -555,6 +578,7 @@ function getFiltered() {
   const maxScore = isNaN(sMax) ? 100 : sMax;
   const flag  = document.getElementById("flagFilter").value;
   const addr  = document.getElementById("addrFilter").value;
+  const conf  = document.getElementById("confFilter").value;
 
   return DATA.records.filter(r => {
     // Card filter
@@ -571,6 +595,7 @@ function getFiltered() {
     if (flag && !(r.flags || []).includes(flag)) return false;
     if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
     if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
+    if (conf && (r.match_confidence || "none") !== conf) return false;
     if (q) {
       const hay = [r.owner, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
         .join(" ").toLowerCase();
@@ -603,6 +628,7 @@ function resetFilters() {
   document.getElementById("scoreMax").value = "";
   document.getElementById("flagFilter").value = "";
   document.getElementById("addrFilter").value = "";
+  document.getElementById("confFilter").value = "";
   cardFilter = null;
   selectedRows.clear();
   updateSelectionUI();
@@ -671,11 +697,12 @@ function renderTable() {
       <td>${r.legal || ""}</td>
       <td class="addr-cell">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
       <td class="addr-cell">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
       <td style="font-size:0.7rem">${r.doc_num}</td>
-      <td>${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">View</a>' : ''}</td>
+      <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -750,7 +777,8 @@ function exportCSV(mode) {
   const headers = [
     "Score","Filed","Type","Category","Owner","Flags","Legal Description",
     "Property Address","Property City","Property State","Property Zip",
-    "Mail Address","Mail City","Mail State","Mail Zip","Doc #","Clerk URL"
+    "Mail Address","Mail City","Mail State","Mail Zip",
+    "Match Confidence","Doc #","Clerk URL","HCAD URL"
   ];
   let csv = headers.join(",") + "\n";
   rows.forEach(r => {
@@ -761,7 +789,7 @@ function exportCSV(mode) {
       `"${(r.legal||'').replace(/"/g,'""')}"`,
       `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
       `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
-      r.doc_num, r.clerk_url||""
+      r.match_confidence||"none", r.doc_num, r.clerk_url||"", r.hcad_url||""
     ].join(",") + "\n";
   });
   const suffix = mode === "selected" ? "_selected" : "";
