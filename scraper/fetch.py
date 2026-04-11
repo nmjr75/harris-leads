@@ -274,6 +274,48 @@ class HCADParcelLoader:
 
         return None
 
+    # Suffixes to strip from probate grantor names (only on retry, not first pass)
+    PROBATE_SUFFIXES = re.compile(
+        r"\b(EST|ESTATE|DECEASED|DECD|DEC D|DECEDENT)\s*$",
+        re.IGNORECASE,
+    )
+    # Prefixes HCAD sometimes uses: "ESTATE OF JOHN SMITH"
+    ESTATE_PREFIX_RE = re.compile(
+        r"^(ESTATE\s+OF\s+|EST\s+OF\s+)",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _clean_probate_name(cls, name: str) -> str:
+        """Strip trailing 'EST', 'ESTATE', 'DECEASED' etc. from a probate name.
+
+        Example: 'BLUM MITCHELL AARON EST' → 'BLUM MITCHELL AARON'
+        Does NOT strip leading 'ESTATE OF' — that's a valid HCAD format.
+        """
+        cleaned = cls.PROBATE_SUFFIXES.sub("", name).strip()
+        cleaned = cleaned.rstrip(" ,;-")
+        return cleaned if cleaned else name
+
+    def _try_name_with_rotations(self, name: str) -> Optional[dict]:
+        """Try exact/fuzzy match, then rotate word order to find HCAD match.
+
+        Returns {"info": dict, "level": str} or None.
+        """
+        # First try exact/fuzzy via the standard pipeline
+        result = self._lookup_owner_exact(name)
+        if result:
+            return result
+
+        # Try rotating words: "A B C" → "C A B", "B C A"
+        parts = self._norm(name).split()
+        if len(parts) >= 2:
+            for i in range(1, len(parts)):
+                rotated = " ".join(parts[i:] + parts[:i])
+                if rotated in self.lookup:
+                    return {"info": self.lookup[rotated], "level": "medium"}
+
+        return None
+
     def enrich_record(self, record: dict) -> dict:
         """Enrich a clerk record with HCAD data using tiered matching.
 
@@ -283,9 +325,29 @@ class HCADParcelLoader:
           medium = exact owner name matched
           low    = fuzzy/prefix owner name matched
           none   = no match found
+
+        PROBATE LOGIC: For probate cases (cat == "PROBATE"), looks up
+        the GRANTOR (deceased person) on HCAD to find the target property.
+        Search order for probate:
+          1. Legal description (all case types)
+          2. Grantor name exactly as filed (e.g. "BLUM MITCHELL AARON EST")
+             + word rotations
+          3. "ESTATE OF [clean name]" format (HCAD sometimes stores it this way,
+             e.g. "ESTATE OF ANDRES JOHN LEDAY SR") + word rotations
+          4. Clean name without EST/ESTATE suffix (e.g. "BLUM MITCHELL AARON")
+             + word rotations
         """
         legal = record.get("legal", "")
         owner = record.get("owner", "")
+        cat   = record.get("cat", "")
+        is_probate = cat == "PROBATE"
+
+        # For probate: the lookup name is the GRANTOR (deceased), not grantee
+        if is_probate:
+            grantor_raw = record.get("grantor_name", "") or ""
+            lookup_name = grantor_raw if grantor_raw else owner
+        else:
+            lookup_name = owner
 
         # ── Tier 1: Legal description match (highest confidence) ──
         result = self.lookup_by_legal(legal)
@@ -295,9 +357,44 @@ class HCADParcelLoader:
             out["hcad_url"] = self._get_hcad_url(result)
             return out
 
-        # ── Tier 2: Exact owner name match ──
-        if owner:
-            result = self._lookup_owner_exact(owner)
+        # ── Tier 2 (probate): multi-step grantor name search ──
+        if is_probate and lookup_name:
+            # Step A: Try name exactly as it appears from clerk
+            #   e.g. "BLUM MITCHELL AARON EST" — might match if HCAD has it
+            result = self._try_name_with_rotations(lookup_name)
+            if result:
+                out = dict(result["info"])
+                out["match_confidence"] = result["level"]
+                out["hcad_url"] = self._get_hcad_url(result["info"])
+                return out
+
+            # Step B: Try "ESTATE OF [clean name]" format
+            #   HCAD sometimes stores as "ESTATE OF ANDRES JOHN LEDAY SR"
+            clean_name = self._clean_probate_name(lookup_name)
+            # Strip any existing "ESTATE OF" prefix to avoid "ESTATE OF ESTATE OF..."
+            base_name = self.ESTATE_PREFIX_RE.sub("", clean_name).strip()
+            if base_name:
+                estate_of = f"ESTATE OF {base_name}"
+                result = self._try_name_with_rotations(estate_of)
+                if result:
+                    out = dict(result["info"])
+                    out["match_confidence"] = result["level"]
+                    out["hcad_url"] = self._get_hcad_url(result["info"])
+                    return out
+
+            # Step C: Try just the clean name (no EST/ESTATE suffix)
+            #   e.g. "BLUM MITCHELL AARON"
+            if clean_name != lookup_name:
+                result = self._try_name_with_rotations(clean_name)
+                if result:
+                    out = dict(result["info"])
+                    out["match_confidence"] = result["level"]
+                    out["hcad_url"] = self._get_hcad_url(result["info"])
+                    return out
+
+        # ── Tier 2 (non-probate): standard name match + rotations ──
+        elif lookup_name:
+            result = self._try_name_with_rotations(lookup_name)
             if result:
                 out = dict(result["info"])
                 out["match_confidence"] = result["level"]
@@ -912,6 +1009,11 @@ class ClerkScraper:
 
                 owner = "; ".join(grantees) if grantees else grantor
 
+                # For probate: grantor = deceased, grantees = heirs/executors
+                # Store both so enrichment can look up the right person
+                grantor_name = grantor  # The deceased / filing party
+                grantee_names = "; ".join(grantees) if grantees else ""
+
                 # Legal description
                 subdiv  = get(f"{base}_lvLegal_ctrl0_lblSubDivAdd")
                 section = get(f"{base}_lvLegal_ctrl0_lblSection")
@@ -941,7 +1043,8 @@ class ClerkScraper:
                     "cat":               cat,
                     "cat_label":         cat_label,
                     "owner":             owner,
-                    "grantee":           grantor,
+                    "grantor_name":      grantor_name,
+                    "grantee_names":     grantee_names,
                     "amount":            "",
                     "legal":             legal,
                     "clerk_url":         clerk_url,
@@ -1006,6 +1109,8 @@ def export_ghl_csv(records: list, path: str):
         "Property Address", "Property City", "Property State", "Property Zip",
         "Lead Type", "Document Type", "Date Filed", "Document Number",
         "Amount/Debt Owed", "Seller Score", "Motivated Seller Flags",
+        "Grantor (Deceased/Filing Party)", "Grantee (Heirs/Applicants)",
+        "Match Confidence", "HCAD URL",
         "Source", "Public Records URL",
     ]
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -1037,6 +1142,10 @@ def export_ghl_csv(records: list, path: str):
                 "Amount/Debt Owed":       rec.get("amount", ""),
                 "Seller Score":           rec.get("score", 0),
                 "Motivated Seller Flags": "; ".join(rec.get("flags", [])),
+                "Grantor (Deceased/Filing Party)": rec.get("grantor_name", ""),
+                "Grantee (Heirs/Applicants)":      rec.get("grantee_names", ""),
+                "Match Confidence":       rec.get("match_confidence", ""),
+                "HCAD URL":              rec.get("hcad_url", ""),
                 "Source":                 "Harris County Clerk",
                 "Public Records URL":     rec.get("clerk_url", ""),
             })
