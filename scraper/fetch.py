@@ -316,6 +316,39 @@ class HCADParcelLoader:
 
         return None
 
+    def _try_grantor_name_variants(self, name: str) -> Optional[dict]:
+        """Try multiple name variants for a single grantor against HCAD.
+
+        Order: as-filed → "ESTATE OF name" → stripped (no EST/ESTATE suffix)
+        At each step, also tries word rotations.
+        Returns {"info": dict, "level": str} or None.
+        """
+        if not name:
+            return None
+
+        # Step A: Try name exactly as filed (e.g. "BLUM MITCHELL AARON EST")
+        result = self._try_name_with_rotations(name)
+        if result:
+            return result
+
+        # Step B: Try "ESTATE OF [clean name]"
+        #   HCAD sometimes stores as "ESTATE OF ANDRES JOHN LEDAY SR"
+        clean_name = self._clean_probate_name(name)
+        base_name = self.ESTATE_PREFIX_RE.sub("", clean_name).strip()
+        if base_name:
+            estate_of = f"ESTATE OF {base_name}"
+            result = self._try_name_with_rotations(estate_of)
+            if result:
+                return result
+
+        # Step C: Try just the clean name (no EST/ESTATE suffix)
+        if clean_name != name:
+            result = self._try_name_with_rotations(clean_name)
+            if result:
+                return result
+
+        return None
+
     def enrich_record(self, record: dict) -> dict:
         """Enrich a clerk record with HCAD data using tiered matching.
 
@@ -326,30 +359,21 @@ class HCADParcelLoader:
           low    = fuzzy/prefix owner name matched
           none   = no match found
 
-        PROBATE LOGIC: For probate cases (cat == "PROBATE"), looks up
-        the GRANTOR (deceased person) on HCAD to find the target property.
-        Search order for probate:
-          1. Legal description (all case types)
-          2. Grantor name exactly as filed (e.g. "BLUM MITCHELL AARON EST")
-             + word rotations
-          3. "ESTATE OF [clean name]" format (HCAD sometimes stores it this way,
-             e.g. "ESTATE OF ANDRES JOHN LEDAY SR") + word rotations
-          4. Clean name without EST/ESTATE suffix (e.g. "BLUM MITCHELL AARON")
-             + word rotations
+        PROBATE LOGIC (cat == "PROBATE"):
+          - Property Address = GRANTOR's address (the deceased person's property)
+            Tries each grantor on HCAD until one matches.
+          - Mail Address = GRANTEE's address (the heir/executor you contact)
+            Tries each grantee on HCAD. If none found, sets "Grantee not found".
+          - Tries each grantor name with variants: as-filed, "ESTATE OF", stripped.
+        NON-PROBATE:
+          - Standard: legal desc → owner name → fuzzy match.
         """
         legal = record.get("legal", "")
         owner = record.get("owner", "")
         cat   = record.get("cat", "")
         is_probate = cat == "PROBATE"
 
-        # For probate: the lookup name is the GRANTOR (deceased), not grantee
-        if is_probate:
-            grantor_raw = record.get("grantor_name", "") or ""
-            lookup_name = grantor_raw if grantor_raw else owner
-        else:
-            lookup_name = owner
-
-        # ── Tier 1: Legal description match (highest confidence) ──
+        # ── Tier 1: Legal description match (highest confidence, all types) ──
         result = self.lookup_by_legal(legal)
         if result:
             out = dict(result)
@@ -357,44 +381,62 @@ class HCADParcelLoader:
             out["hcad_url"] = self._get_hcad_url(result)
             return out
 
-        # ── Tier 2 (probate): multi-step grantor name search ──
-        if is_probate and lookup_name:
-            # Step A: Try name exactly as it appears from clerk
-            #   e.g. "BLUM MITCHELL AARON EST" — might match if HCAD has it
-            result = self._try_name_with_rotations(lookup_name)
-            if result:
-                out = dict(result["info"])
-                out["match_confidence"] = result["level"]
-                out["hcad_url"] = self._get_hcad_url(result["info"])
-                return out
+        # ── PROBATE: separate grantor (property) and grantee (mail) lookups ──
+        if is_probate:
+            grantor_str = record.get("grantor_name", "") or ""
+            grantee_str = record.get("grantee_names", "") or ""
 
-            # Step B: Try "ESTATE OF [clean name]" format
-            #   HCAD sometimes stores as "ESTATE OF ANDRES JOHN LEDAY SR"
-            clean_name = self._clean_probate_name(lookup_name)
-            # Strip any existing "ESTATE OF" prefix to avoid "ESTATE OF ESTATE OF..."
-            base_name = self.ESTATE_PREFIX_RE.sub("", clean_name).strip()
-            if base_name:
-                estate_of = f"ESTATE OF {base_name}"
-                result = self._try_name_with_rotations(estate_of)
-                if result:
-                    out = dict(result["info"])
-                    out["match_confidence"] = result["level"]
-                    out["hcad_url"] = self._get_hcad_url(result["info"])
-                    return out
+            # Split into individual names (semicolon-separated)
+            grantor_list = [g.strip() for g in grantor_str.split(";") if g.strip()]
+            grantee_list = [g.strip() for g in grantee_str.split(";") if g.strip()]
 
-            # Step C: Try just the clean name (no EST/ESTATE suffix)
-            #   e.g. "BLUM MITCHELL AARON"
-            if clean_name != lookup_name:
-                result = self._try_name_with_rotations(clean_name)
-                if result:
-                    out = dict(result["info"])
-                    out["match_confidence"] = result["level"]
-                    out["hcad_url"] = self._get_hcad_url(result["info"])
-                    return out
+            # ── Grantor lookup → Property Address ──
+            # Try each grantor until one matches HCAD
+            prop_result = None
+            for grantor_name in grantor_list:
+                prop_result = self._try_grantor_name_variants(grantor_name)
+                if prop_result:
+                    break
 
-        # ── Tier 2 (non-probate): standard name match + rotations ──
-        elif lookup_name:
-            result = self._try_name_with_rotations(lookup_name)
+            # ── Grantee lookup → Mail Address ──
+            # Try each grantee to find where the heir/executor lives
+            mail_result = None
+            for grantee_name in grantee_list:
+                mail_result = self._try_name_with_rotations(grantee_name)
+                if mail_result:
+                    break
+
+            # Build the output
+            out = {}
+            if prop_result:
+                prop_info = prop_result["info"]
+                out["prop_address"] = prop_info.get("prop_address", "")
+                out["prop_city"]    = prop_info.get("prop_city", "Houston")
+                out["prop_state"]   = prop_info.get("prop_state", "TX")
+                out["prop_zip"]     = prop_info.get("prop_zip", "")
+                out["match_confidence"] = prop_result["level"]
+                out["hcad_url"] = self._get_hcad_url(prop_info)
+            else:
+                out["match_confidence"] = "none"
+                out["hcad_url"] = ""
+
+            if mail_result:
+                mail_info = mail_result["info"]
+                out["mail_address"] = mail_info.get("prop_address", "") or mail_info.get("mail_address", "")
+                out["mail_city"]    = mail_info.get("prop_city", "") or mail_info.get("mail_city", "")
+                out["mail_state"]   = mail_info.get("prop_state", "") or mail_info.get("mail_state", "TX")
+                out["mail_zip"]     = mail_info.get("prop_zip", "") or mail_info.get("mail_zip", "")
+            else:
+                out["mail_address"] = "Grantee not found"
+                out["mail_city"]    = ""
+                out["mail_state"]   = ""
+                out["mail_zip"]     = ""
+
+            return out
+
+        # ── NON-PROBATE: standard name match + rotations ──
+        if owner:
+            result = self._try_name_with_rotations(owner)
             if result:
                 out = dict(result["info"])
                 out["match_confidence"] = result["level"]
@@ -985,8 +1027,8 @@ class ClerkScraper:
 
                 file_date = get(f"{base}_lblFileDate")
 
-                # Grantor / Grantee names
-                grantor  = ""
+                # Grantor / Grantee names — capture ALL of each
+                grantors = []
                 grantees = []
                 ctrl_idx = 0
                 while True:
@@ -1001,17 +1043,18 @@ class ClerkScraper:
                     if name_text:
                         if row_text.lower().startswith("grantee"):
                             grantees.append(name_text)
-                        elif row_text.lower().startswith("grantor") and not grantor:
-                            grantor = name_text
+                        elif row_text.lower().startswith("grantor"):
+                            grantors.append(name_text)
                     ctrl_idx += 1
                     if ctrl_idx > 20:
                         break
 
+                grantor = grantors[0] if grantors else ""
                 owner = "; ".join(grantees) if grantees else grantor
 
-                # For probate: grantor = deceased, grantees = heirs/executors
-                # Store both so enrichment can look up the right person
-                grantor_name = grantor  # The deceased / filing party
+                # Store ALL grantors and grantees for probate enrichment
+                # Probate: grantors = deceased/filing parties, grantees = heirs/executors
+                grantor_name = "; ".join(grantors) if grantors else ""
                 grantee_names = "; ".join(grantees) if grantees else ""
 
                 # Legal description
@@ -1181,6 +1224,7 @@ async def main():
     log.info(f"After dedup: {len(deduped)}")
 
     # 4. Enrich with HCAD addresses (tiered: legal desc → exact name → fuzzy name)
+    #    For PROBATE: grantor → prop_address, grantee → mail_address
     with_address = 0
     confidence_counts = {"high": 0, "medium": 0, "low": 0, "none": 0}
     for rec in deduped:
@@ -1194,10 +1238,12 @@ async def main():
         rec["match_confidence"] = confidence
         rec["hcad_url"] = hcad_url
 
-        if confidence != "none":
+        # Always merge enrichment — for probate cases this includes
+        # mail_address="Grantee not found" even when confidence is "none"
+        if enrichment:
             rec.update(enrichment)
-            if enrichment.get("prop_address"):
-                with_address += 1
+        if rec.get("prop_address", "").strip():
+            with_address += 1
 
         confidence_counts[confidence] = confidence_counts.get(confidence, 0) + 1
 
