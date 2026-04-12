@@ -694,9 +694,13 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
             log.info(f"  No results found for {month_name} {year}")
             return records
 
-    # Parse all pages
+    # Parse all pages — with safety limits to prevent infinite loops
+    MAX_PAGES = 100  # Hard cap: 100 pages × 20 results = 2,000 max
     page_num = 1
+    seen_doc_ids = set()
+
     while True:
+        prev_count = len(records)
         rows = table.find_all("tr") if table else []
         for row in rows:
             # Skip pager rows (class pagination-ys) and header rows (class bg-color-transblue)
@@ -719,6 +723,11 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
             if not doc_id.startswith("FRCL"):
                 continue
 
+            # Skip duplicates (prevents infinite loop re-scraping same page)
+            if doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(doc_id)
+
             sale_date = cells[2].get_text(strip=True)
             file_date = cells[3].get_text(strip=True)
             pages = cells[4].get_text(strip=True) if len(cells) > 4 else ""
@@ -730,12 +739,25 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
                 "pages": pages,
             })
 
+        new_on_page = len(records) - prev_count
+        log.info(f"  Page {page_num}: {new_on_page} new records (total: {len(records)})")
+
+        # If this page added zero new records, we've seen them all — stop
+        if new_on_page == 0 and page_num > 1:
+            log.info(f"  No new records on page {page_num} — pagination complete")
+            break
+
+        # Hard cap to prevent runaway loops
+        if page_num >= MAX_PAGES:
+            log.warning(f"  Hit max page limit ({MAX_PAGES}) — stopping pagination")
+            break
+
         # Check for next page — pager row has class "pagination-ys"
         pager = soup.find("tr", class_="pagination-ys")
         if not pager:
             break
 
-        # Find next page link
+        # Find the next numbered page link
         page_num += 1
         next_link = None
         for a in pager.find_all("a"):
@@ -747,13 +769,14 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
             except:
                 pass
 
+        # If exact page number not found, look for "..." but ONLY use
+        # the LAST "..." link (which goes forward, not backward)
         if not next_link:
-            # Try "..." link for pages beyond 10
-            for a in pager.find_all("a"):
-                if a.get_text(strip=True) == "...":
-                    next_link = a
-                    break
+            dots_links = [a for a in pager.find_all("a") if a.get_text(strip=True) == "..."]
+            if dots_links:
+                next_link = dots_links[-1]  # last "..." = forward
             if not next_link:
+                log.info(f"  No more page links found — pagination complete")
                 break
 
         # Get the postback for the next page
@@ -784,7 +807,6 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         log.info(f"  Loading page {page_num}...")
         resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=(15, 60))
         resp.raise_for_status()
-        log.info(f"  Page {page_num} loaded: {len(resp.text):,} bytes")
         soup = BeautifulSoup(resp.text, "html.parser")
         table = soup.find("table", {"id": "ctl00_ContentPlaceHolder1_GridView1"})
 
