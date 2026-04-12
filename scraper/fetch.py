@@ -1077,8 +1077,12 @@ def verify_probate_via_hcad(http_session: requests.Session,
 
         grantor_str = rec.get("grantor_name", "") or ""
         grantee_str = rec.get("grantee_names", "") or ""
-        grantor_list = [g.strip() for g in grantor_str.split(";") if g.strip()]
-        grantee_list = [g.strip() for g in grantee_str.split(";") if g.strip()]
+        # Filter out placeholder names that are never real people
+        _skip = {"SEE INSTRUMENT", "SEE DOCUMENT", "SEE FILE", "UNKNOWN"}
+        grantor_list = [g.strip() for g in grantor_str.split(";")
+                        if g.strip() and g.strip().upper() not in _skip]
+        grantee_list = [g.strip() for g in grantee_str.split(";")
+                        if g.strip() and g.strip().upper() not in _skip]
 
         # ── Search for grantor's property (the house to buy) ──
         #    Variants: as-filed name, then cleaned (no EST/ESTATE).
