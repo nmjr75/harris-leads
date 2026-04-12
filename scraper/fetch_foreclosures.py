@@ -56,13 +56,14 @@ log = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 FRCL_SEARCH_URL = "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.aspx"
 FRCL_DOC_URL = "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx"
+CCLERK_LOGIN_URL = "https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
 
 HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 
 # Batch limit: process at most this many PDFs per run to stay within
 # GitHub Actions timeout.  Remaining PDFs are picked up on the next run
 # because we track seen_ids incrementally.
-MAX_PDFS_PER_RUN = 15
+MAX_PDFS_PER_RUN = 50
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 200
@@ -740,11 +741,17 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
             file_date = cells[3].get_text(strip=True)
             pages = cells[4].get_text(strip=True) if len(cells) > 4 else ""
 
+            # Capture the actual PDF viewer URL (uses encrypted token, not plain doc ID)
+            pdf_href = link.get("href", "")
+            if pdf_href and not pdf_href.startswith("http"):
+                pdf_href = "https://www.cclerk.hctx.net/applications/websearch/" + pdf_href
+
             records.append({
                 "doc_id": doc_id,
                 "sale_date": sale_date,
                 "file_date": file_date,
                 "pages": pages,
+                "pdf_url": pdf_href,
             })
 
         new_on_page = len(records) - prev_count
@@ -826,13 +833,85 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Login to County Clerk (required to download PDF documents)
+# ═══════════════════════════════════════════════════════════════════════════════
+def login_to_cclerk(session: requests.Session) -> bool:
+    """Log in to the Harris County Clerk website.
+
+    The clerk site requires authentication to view/download PDF documents.
+    Credentials are read from environment variables CCLERK_USERNAME and
+    CCLERK_PASSWORD (set as GitHub Actions secrets).
+
+    Returns True on success, False on failure.
+    """
+    username = os.environ.get("CCLERK_USERNAME", "")
+    password = os.environ.get("CCLERK_PASSWORD", "")
+
+    if not username or not password:
+        log.warning("CCLERK_USERNAME / CCLERK_PASSWORD not set — PDF downloads will fail")
+        return False
+
+    try:
+        # Step 1: GET the login page to grab ASP.NET ViewState tokens
+        resp = session.get(CCLERK_LOGIN_URL, timeout=30)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Extract hidden form fields
+        viewstate = soup.find("input", {"name": "__VIEWSTATE"})
+        viewstate = viewstate["value"] if viewstate else ""
+        generator = soup.find("input", {"name": "__VIEWSTATEGENERATOR"})
+        generator = generator["value"] if generator else ""
+        encrypted = soup.find("input", {"name": "__VIEWSTATEENCRYPTED"})
+        encrypted = encrypted["value"] if encrypted else ""
+        validation = soup.find("input", {"name": "__EVENTVALIDATION"})
+        validation = validation["value"] if validation else ""
+        prevpage = soup.find("input", {"name": "__PREVIOUSPAGE"})
+        prevpage = prevpage["value"] if prevpage else ""
+
+        # Step 2: POST the login form
+        login_data = {
+            "__EVENTTARGET": "",
+            "__EVENTARGUMENT": "",
+            "__VIEWSTATE": viewstate,
+            "__VIEWSTATEGENERATOR": generator,
+            "__VIEWSTATEENCRYPTED": encrypted,
+            "__PREVIOUSPAGE": prevpage,
+            "__EVENTVALIDATION": validation,
+            "ctl00$ContentPlaceHolder1$Login1$UserName": username,
+            "ctl00$ContentPlaceHolder1$Login1$Password": password,
+            "ctl00$ContentPlaceHolder1$Login1$LoginButton": "LOG IN",
+        }
+
+        resp = session.post(CCLERK_LOGIN_URL, data=login_data, timeout=30,
+                           allow_redirects=True)
+        resp.raise_for_status()
+
+        # Check for successful login: page should contain LOGOUT or WELCOME
+        if "LOGOUT" in resp.text.upper() or "WELCOME" in resp.text.upper():
+            log.info("Successfully logged in to Harris County Clerk")
+            return True
+        else:
+            log.warning("Login POST succeeded but could not confirm authentication")
+            return False
+
+    except Exception as e:
+        log.warning(f"Login failed: {e}")
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  PDF Downloader
 # ═══════════════════════════════════════════════════════════════════════════════
-def download_frcl_pdf(session: requests.Session, doc_id: str) -> Optional[bytes]:
-    """Download a foreclosure PDF by its FRCL doc ID."""
-    # The ViewECdocs.aspx page typically requires the doc ID in a specific format
-    # URL pattern: ViewECdocs.aspx?id=FRCL-2026-612
-    url = f"{FRCL_DOC_URL}?id={doc_id}"
+def download_frcl_pdf(session: requests.Session, doc_id: str,
+                      pdf_url: str = "") -> Optional[bytes]:
+    """Download a foreclosure PDF using its encrypted viewer URL.
+
+    The county clerk uses encrypted token URLs (ViewECdocs.aspx?ID=<token>)
+    that are only available from the search results page.  Plain doc-ID URLs
+    (ViewECdocs.aspx?id=FRCL-2026-612) return HTML, not a PDF.
+    """
+    url = pdf_url if pdf_url else f"{FRCL_DOC_URL}?id={doc_id}"
 
     try:
         resp = session.get(url, timeout=30)
@@ -892,6 +971,11 @@ def main():
         "Connection": "keep-alive",
         "Referer": "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.aspx",
     })
+
+    # Log in to county clerk (required to download PDFs)
+    logged_in = login_to_cclerk(session)
+    if not logged_in:
+        log.warning("Proceeding without login — PDF downloads may fail")
 
     # Get target months (next 3 months)
     target_months = get_target_months()
@@ -959,8 +1043,8 @@ def main():
             signal.signal(signal.SIGALRM, _timeout_handler)
             signal.alarm(PDF_TIMEOUT)
 
-            # Download PDF
-            pdf_bytes = download_frcl_pdf(session, doc_id)
+            # Download PDF using encrypted token URL from search results
+            pdf_bytes = download_frcl_pdf(session, doc_id, listing.get("pdf_url", ""))
             if not pdf_bytes:
                 log.warning(f"  Skipping {doc_id} - could not download PDF")
                 seen_ids.add(doc_id)  # Mark as seen so we don't retry
@@ -1001,7 +1085,7 @@ def main():
             "prop_zip": parsed.get("property_zip", ""),
             "match_confidence": "none",
             "hcad_url": "",
-            "clerk_url": f"https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?id={doc_id}",
+            "clerk_url": listing.get("pdf_url", f"https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?id={doc_id}"),
             "needs_ocr": parsed.get("needs_ocr", False),
         }
 
