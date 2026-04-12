@@ -1065,23 +1065,31 @@ def verify_probate_via_hcad(http_session: requests.Session,
 
     log.info(f"HCAD live verification: {len(to_verify)} probate records to check")
     improved = 0
+    deadline = time.time() + 15 * 60  # 15-minute time cap
 
     for rec in to_verify:
+        # ── Time cap: stop if we've been running too long ──
+        if time.time() > deadline:
+            remaining = len(to_verify) - to_verify.index(rec)
+            log.warning(f"HCAD live verification: 15-min time cap reached, "
+                        f"skipping remaining {remaining} records")
+            break
+
         grantor_str = rec.get("grantor_name", "") or ""
         grantee_str = rec.get("grantee_names", "") or ""
         grantor_list = [g.strip() for g in grantor_str.split(";") if g.strip()]
         grantee_list = [g.strip() for g in grantee_str.split(";") if g.strip()]
 
         # ── Search for grantor's property (the house to buy) ──
+        #    Variants: as-filed name, then cleaned (no EST/ESTATE).
+        #    "ESTATE OF" variant removed — HCAD never stores names
+        #    that way, so it always returns zero results.
         prop_found = False
         for gname in grantor_list:
             variants = [gname]
             cleaned = HCADParcelLoader._clean_probate_name(gname)
             if cleaned != gname:
                 variants.append(cleaned)
-            base = HCADParcelLoader.ESTATE_PREFIX_RE.sub("", cleaned).strip()
-            if base:
-                variants.append(f"ESTATE OF {base}")
 
             for variant in variants:
                 result = hcad_api_search(http_session, variant)
@@ -1095,7 +1103,7 @@ def verify_probate_via_hcad(http_session: requests.Session,
                     prop_found = True
                     improved += 1
                     break
-                time.sleep(0.5)  # gentle rate limit
+                time.sleep(0.25)  # gentle rate limit
 
             if prop_found:
                 break
@@ -1110,9 +1118,9 @@ def verify_probate_via_hcad(http_session: requests.Session,
                     rec["mail_state"] = result["state"]
                     rec["mail_zip"] = result["zip"]
                     break
-                time.sleep(0.5)
+                time.sleep(0.25)
 
-        time.sleep(0.3)  # rate limit between records
+        time.sleep(0.15)  # rate limit between records
 
     log.info(f"HCAD live verification: improved {improved} of {len(to_verify)} records")
     return improved
