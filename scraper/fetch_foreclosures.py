@@ -658,11 +658,12 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         "__VIEWSTATE": viewstate_val,
         "__VIEWSTATEGENERATOR": viewstate_gen_val,
         "__EVENTVALIDATION": event_val,
-        "ctl00$ContentPlaceHolder1$rbSaleOrFileDate": "rdSaleDate",
+        "__VIEWSTATEENCRYPTED": "",
+        "ctl00$ContentPlaceHolder1$rbtlDate": "SaleDate",
         "ctl00$ContentPlaceHolder1$ddlYear": str(year),
-        "ctl00$ContentPlaceHolder1$ddlMonth": month_name,
+        "ctl00$ContentPlaceHolder1$ddlMonth": str(month),
         "ctl00$ContentPlaceHolder1$btnSearch": "SEARCH",
-        "ctl00$ContentPlaceHolder1$txtDocumentID": "",
+        "ctl00$ContentPlaceHolder1$txtFileNo": "",
     }
 
     resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=60)
@@ -671,10 +672,10 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
 
     # Parse the results table
     records = []
-    table = soup.find("table", {"id": "ctl00_ContentPlaceHolder1_gvResults"})
+    table = soup.find("table", {"id": "ctl00_ContentPlaceHolder1_GridView1"})
     if not table:
         # Check if results text shows count
-        count_text = soup.find(text=re.compile(r'\d+\s+Row\(s\)\s+Found', re.IGNORECASE))
+        count_text = soup.find(string=re.compile(r'\d+\s+Row\(s\)\s+Found', re.IGNORECASE))
         if count_text:
             log.info(f"  Found results text but no table yet")
         else:
@@ -686,16 +687,26 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
     while True:
         rows = table.find_all("tr") if table else []
         for row in rows:
+            # Skip pager rows (class pagination-ys) and header rows (class bg-color-transblue)
+            row_class = row.get("class", [])
+            if isinstance(row_class, list):
+                row_class = " ".join(row_class)
+            if "pagination" in row_class or "bg-color" in row_class:
+                continue
+
             cells = row.find_all("td")
             if len(cells) < 4:
                 continue
 
-            # Extract doc ID from link
+            # Cell layout: [0]=empty/checkbox, [1]=Doc ID (link), [2]=Sale Date, [3]=File Date, [4]=Pgs
             link = cells[1].find("a")
             if not link:
                 continue
 
             doc_id = link.get_text(strip=True)
+            if not doc_id.startswith("FRCL"):
+                continue
+
             sale_date = cells[2].get_text(strip=True)
             file_date = cells[3].get_text(strip=True)
             pages = cells[4].get_text(strip=True) if len(cells) > 4 else ""
@@ -707,8 +718,8 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
                 "pages": pages,
             })
 
-        # Check for next page
-        pager = soup.find("tr", class_="pager")
+        # Check for next page — pager row has class "pagination-ys"
+        pager = soup.find("tr", class_="pagination-ys")
         if not pager:
             break
 
@@ -725,7 +736,13 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
                 pass
 
         if not next_link:
-            break
+            # Try "..." link for pages beyond 10
+            for a in pager.find_all("a"):
+                if a.get_text(strip=True) == "...":
+                    next_link = a
+                    break
+            if not next_link:
+                break
 
         # Get the postback for the next page
         href = next_link.get("href", "")
@@ -745,6 +762,7 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         post_data = {
             "__VIEWSTATE": viewstate_val,
             "__VIEWSTATEGENERATOR": viewstate_gen_val,
+            "__VIEWSTATEENCRYPTED": "",
             "__EVENTVALIDATION": event_val,
             "__EVENTTARGET": event_target,
             "__EVENTARGUMENT": event_arg,
@@ -754,7 +772,7 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=60)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        table = soup.find("table", {"id": "ctl00_ContentPlaceHolder1_gvResults"})
+        table = soup.find("table", {"id": "ctl00_ContentPlaceHolder1_GridView1"})
 
         if not table:
             break
