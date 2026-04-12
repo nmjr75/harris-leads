@@ -1065,13 +1065,13 @@ def verify_probate_via_hcad(http_session: requests.Session,
 
     log.info(f"HCAD live verification: {len(to_verify)} probate records to check")
     improved = 0
-    deadline = time.time() + 15 * 60  # 15-minute time cap
+    deadline = time.time() + 35 * 60  # 35-minute time cap
 
     for rec in to_verify:
         # ── Time cap: stop if we've been running too long ──
         if time.time() > deadline:
             remaining = len(to_verify) - to_verify.index(rec)
-            log.warning(f"HCAD live verification: 15-min time cap reached, "
+            log.warning(f"HCAD live verification: 35-min time cap reached, "
                         f"skipping remaining {remaining} records")
             break
 
