@@ -391,19 +391,26 @@ class HCADParcelLoader:
             grantee_list = [g.strip() for g in grantee_str.split(";") if g.strip()]
 
             # ── Grantor lookup → Property Address ──
-            # Try each grantor until one matches HCAD
+            # Try each grantor until one matches HCAD.
+            # IMPORTANT: only accept "medium" (exact) confidence from bulk
+            # data.  "low" (fuzzy/prefix) matches produce too many false
+            # positives for probate grantors (title companies, partial
+            # name collisions, etc.).  Low-confidence records will be
+            # picked up by the HCAD ArcGIS API verification step instead.
             prop_result = None
             for grantor_name in grantor_list:
-                prop_result = self._try_grantor_name_variants(grantor_name)
-                if prop_result:
+                candidate = self._try_grantor_name_variants(grantor_name)
+                if candidate and candidate.get("level") in ("medium", "high"):
+                    prop_result = candidate
                     break
 
             # ── Grantee lookup → Mail Address ──
-            # Try each grantee to find where the heir/executor lives
+            # Same rule: only accept medium+ confidence for grantees.
             mail_result = None
             for grantee_name in grantee_list:
-                mail_result = self._try_name_with_rotations(grantee_name)
-                if mail_result:
+                candidate = self._try_name_with_rotations(grantee_name)
+                if candidate and candidate.get("level") in ("medium", "high"):
+                    mail_result = candidate
                     break
 
             # Build the output
@@ -920,7 +927,9 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
     """Search HCAD via the ArcGIS REST API by owner name.
 
     Uses a simple HTTP GET → JSON response.  No Playwright / WebSocket needed.
-    Returns dict with acct, owner_name, address or None.
+    Address fields are split in the API (site_str_num, site_str_name, etc.)
+    so we reassemble them here.
+    Returns dict with acct, owner_name, street, city, state, zip or None.
     """
     if not name or not name.strip():
         return None
@@ -928,9 +937,20 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
     # Sanitise for SQL LIKE clause (escape single quotes)
     safe = name.strip().upper().replace("'", "''")
 
+    # Search ALL three owner name fields — deceased owners are often
+    # listed as owner_name_2 or _3 when co-owned with a spouse/trust.
+    where = (
+        f"upper(owner_name_1) LIKE upper('%{safe}%') OR "
+        f"upper(owner_name_2) LIKE upper('%{safe}%') OR "
+        f"upper(owner_name_3) LIKE upper('%{safe}%')"
+    )
+
     params = {
-        "where":              f"owner_name_1 LIKE '%{safe}%'",
-        "outFields":          "HCAD_NUM,owner_name_1,owner_name_2,site_address",
+        "where":              where,
+        "outFields":          ("HCAD_NUM,owner_name_1,owner_name_2,owner_name_3,"
+                               "site_str_num,site_str_name,site_str_sfx,"
+                               "site_str_pfx,site_str_sfx_dir,"
+                               "site_city,site_zip,state_class"),
         "returnGeometry":     "false",
         "f":                  "json",
         "resultRecordCount":  "10",
@@ -943,23 +963,59 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
             return None
 
         data = resp.json()
+        if "error" in data:
+            log.warning(f"    HCAD API error response for '{name}': {data['error']}")
+            return None
+
         features = data.get("features", [])
         if not features:
             log.info(f"    HCAD API: no results for '{name}'")
             return None
 
-        # Return first feature with a usable address
+        # Reassemble split address fields into a street string
+        # e.g. site_str_num=1302, site_str_name="RUDEL", site_str_sfx="DR"
+        #    → "1302 RUDEL DR"
+        best = None
         for feat in features:
             attr = feat.get("attributes", {})
-            acct    = str(attr.get("HCAD_NUM", "")).strip()
-            owner   = (attr.get("owner_name_1") or "").strip()
-            address = (attr.get("site_address") or "").strip()
-            if acct and address:
-                log.info(f"    HCAD API: found '{owner}' → {address} for '{name}'")
-                return {"acct": acct, "owner_name": owner, "address": address}
+            acct  = str(attr.get("HCAD_NUM", "")).strip()
+            owner = (attr.get("owner_name_1") or "").strip()
 
-        log.info(f"    HCAD API: results but no usable address for '{name}'")
-        return None
+            num   = str(attr.get("site_str_num") or "").strip()
+            pfx   = (attr.get("site_str_pfx") or "").strip()
+            sname = (attr.get("site_str_name") or "").strip()
+            sfx   = (attr.get("site_str_sfx") or "").strip()
+            sdir  = (attr.get("site_str_sfx_dir") or "").strip()
+            city  = (attr.get("site_city") or "").strip()
+            zipcd = (attr.get("site_zip") or "").strip()
+            sclass = (attr.get("state_class") or "").strip()
+
+            # Build street: "1302 RUDEL DR"
+            parts = [p for p in [pfx, num, sname, sfx, sdir] if p and p != "0"]
+            street = " ".join(parts)
+
+            if not acct or not street:
+                continue
+
+            result = {
+                "acct": acct, "owner_name": owner,
+                "street": street, "city": city or "Houston",
+                "state": "TX", "zip": zipcd,
+            }
+
+            # Prefer residential over commercial
+            if sclass and sclass.startswith(("A", "B")):
+                log.info(f"    HCAD API: found residential '{owner}' → {street}, {city} {zipcd}")
+                return result
+
+            if best is None:
+                best = result
+
+        if best:
+            log.info(f"    HCAD API: found '{best['owner_name']}' → {best['street']}, {best['city']} {best['zip']}")
+        else:
+            log.info(f"    HCAD API: results but no usable address for '{name}'")
+        return best
 
     except Exception as e:
         log.warning(f"    HCAD API error for '{name}': {e}")
@@ -968,7 +1024,8 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
 
 def parse_hcad_address(address_str: str) -> dict:
     """Parse an HCAD address string like '1302 RUDEL DR, TOMBALL, TX 77375'
-    into structured fields."""
+    into structured fields.  (Kept for backwards compat but the API
+    version now returns pre-parsed fields.)"""
     parts = [p.strip() for p in address_str.split(",")]
     result = {"street": "", "city": "Houston", "state": "TX", "zip": ""}
 
@@ -1029,11 +1086,10 @@ def verify_probate_via_hcad(http_session: requests.Session,
             for variant in variants:
                 result = hcad_api_search(http_session, variant)
                 if result:
-                    addr = parse_hcad_address(result["address"])
-                    rec["prop_address"] = addr["street"]
-                    rec["prop_city"] = addr["city"]
-                    rec["prop_state"] = addr["state"]
-                    rec["prop_zip"] = addr["zip"]
+                    rec["prop_address"] = result["street"]
+                    rec["prop_city"] = result["city"]
+                    rec["prop_state"] = result["state"]
+                    rec["prop_zip"] = result["zip"]
                     rec["match_confidence"] = "medium"
                     rec["hcad_url"] = f"{HCAD_DETAIL_BASE}{result['acct']}"
                     prop_found = True
@@ -1049,11 +1105,10 @@ def verify_probate_via_hcad(http_session: requests.Session,
             for gname in grantee_list:
                 result = hcad_api_search(http_session, gname)
                 if result:
-                    addr = parse_hcad_address(result["address"])
-                    rec["mail_address"] = addr["street"]
-                    rec["mail_city"] = addr["city"]
-                    rec["mail_state"] = addr["state"]
-                    rec["mail_zip"] = addr["zip"]
+                    rec["mail_address"] = result["street"]
+                    rec["mail_city"] = result["city"]
+                    rec["mail_state"] = result["state"]
+                    rec["mail_zip"] = result["zip"]
                     break
                 time.sleep(0.5)
 
@@ -1448,6 +1503,15 @@ async def main():
             log.warning(f"HCAD live verification failed: {e}")
     else:
         log.info("All probate records already have medium/high confidence — skipping live verification")
+
+    # 4c. Set "Not found" for probate records with no property address
+    #     After both bulk enrichment AND live API verification, any
+    #     probate record that still has no property address should
+    #     display "Not found" rather than being blank (or worse,
+    #     showing a wrong address from a bad match).
+    for rec in deduped:
+        if rec.get("cat") == "PROBATE" and not rec.get("prop_address", "").strip():
+            rec["prop_address"] = "Not found"
 
     # 5. Compute flags & scores
     for rec in deduped:
