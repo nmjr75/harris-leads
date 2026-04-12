@@ -45,7 +45,7 @@ except ImportError:
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S,%f",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger(__name__)
 
@@ -57,6 +57,14 @@ FRCL_SEARCH_URL = "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.asp
 FRCL_DOC_URL = "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx"
 
 HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
+
+# Batch limit: process at most this many PDFs per run to stay within
+# GitHub Actions timeout.  Remaining PDFs are picked up on the next run
+# because we track seen_ids incrementally.
+MAX_PDFS_PER_RUN = 75
+
+# OCR resolution — 200 DPI is a good balance of speed and accuracy
+OCR_DPI = 200
 
 DASHBOARD_DIR = Path("dashboard")
 DATA_DIR = Path("data")
@@ -454,7 +462,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                     full_text += text + "\n"
                 elif HAS_OCR:
                     # Scanned image PDF — use OCR
-                    img = page.to_image(resolution=300)
+                    img = page.to_image(resolution=OCR_DPI)
                     ocr_text = pytesseract.image_to_string(img.original)
                     full_text += ocr_text + "\n"
     except Exception as e:
@@ -773,8 +781,10 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         }
 
         time.sleep(0.5)
-        resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=60)
+        log.info(f"  Loading page {page_num}...")
+        resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=(15, 60))
         resp.raise_for_status()
+        log.info(f"  Page {page_num} loaded: {len(resp.text):,} bytes")
         soup = BeautifulSoup(resp.text, "html.parser")
         table = soup.find("table", {"id": "ctl00_ContentPlaceHolder1_GridView1"})
 
@@ -875,9 +885,21 @@ def main():
         _save_output(existing_records, seen_ids, today, target_months)
         return
 
+    # Apply batch limit to stay within GitHub Actions timeout
+    if len(new_listings) > MAX_PDFS_PER_RUN:
+        log.info(f"Batch limit: processing first {MAX_PDFS_PER_RUN} of {len(new_listings)} new listings")
+        new_listings = new_listings[:MAX_PDFS_PER_RUN]
+
     # Load HCAD bulk data for address enrichment
+    # Skip bulk download if batch is small — ArcGIS API is faster for < 25 records
     hcad = HCADMatcher()
-    hcad.load(session)
+    if len(new_listings) >= 25:
+        try:
+            hcad.load(session)
+        except Exception as e:
+            log.warning(f"HCAD bulk load failed (will use API fallback): {e}")
+    else:
+        log.info("Small batch — skipping HCAD bulk download, using ArcGIS API only")
 
     # Process each new listing
     new_records = []
@@ -892,6 +914,7 @@ def main():
 
     for i, listing in enumerate(new_listings):
         doc_id = listing["doc_id"]
+        t0 = time.time()
         log.info(f"Processing {doc_id} ({i+1}/{len(new_listings)})...")
 
         # Download PDF
@@ -903,6 +926,7 @@ def main():
 
         # Parse PDF
         parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
+        log.info(f"  PDF parsed in {time.time()-t0:.1f}s — grantor={parsed.get('grantor','')[:30]}")
 
         # Build record
         record = {
@@ -978,6 +1002,8 @@ def main():
 
         new_records.append(record)
         seen_ids.add(doc_id)
+        elapsed = time.time() - t0
+        log.info(f"  Done {doc_id} in {elapsed:.1f}s — addr={record['prop_address'][:40]}")
 
         # Rate limit between PDF downloads
         time.sleep(0.3)
