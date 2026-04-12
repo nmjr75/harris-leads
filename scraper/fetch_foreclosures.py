@@ -63,7 +63,7 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 # Batch limit: process at most this many PDFs per run to stay within
 # GitHub Actions timeout.  Remaining PDFs are picked up on the next run
 # because we track seen_ids incrementally.
-MAX_PDFS_PER_RUN = 50
+MAX_PDFS_PER_RUN = 10
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 200
@@ -912,17 +912,27 @@ def download_frcl_pdf(session: requests.Session, doc_id: str,
     (ViewECdocs.aspx?id=FRCL-2026-612) return HTML, not a PDF.
     """
     url = pdf_url if pdf_url else f"{FRCL_DOC_URL}?id={doc_id}"
+    log.info(f"  Downloading PDF: {url[:120]}...")
 
     try:
-        resp = session.get(url, timeout=30)
+        resp = session.get(url, timeout=60, allow_redirects=True)
+        log.info(f"  Response: status={resp.status_code}, type={resp.headers.get('Content-Type','')}, size={len(resp.content)} bytes, url={resp.url[:120]}")
         resp.raise_for_status()
+
+        # Check if we got redirected to the login page
+        if "Login.aspx" in resp.url:
+            log.warning(f"  Redirected to login page — session expired!")
+            return None
 
         # Check if we got a PDF
         content_type = resp.headers.get("Content-Type", "")
         if "pdf" in content_type.lower() or resp.content[:4] == b"%PDF":
+            log.info(f"  PDF downloaded OK: {len(resp.content):,} bytes")
             return resp.content
         else:
             log.warning(f"  Non-PDF response for {doc_id}: {content_type}")
+            # Log first 200 chars of response to help debug
+            log.warning(f"  Response preview: {resp.text[:200]}")
             return None
     except Exception as e:
         log.warning(f"  Failed to download {doc_id}: {e}")
@@ -1005,15 +1015,29 @@ def main():
         new_listings = new_listings[:MAX_PDFS_PER_RUN]
 
     # Load HCAD bulk data for address enrichment
-    # Skip bulk download if batch is small — ArcGIS API is faster for < 25 records
+    # Use a SEPARATE session so we don't clobber the clerk login cookies
     hcad = HCADMatcher()
+    hcad_session = requests.Session()
+    hcad_session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+    })
     if len(new_listings) >= 25:
         try:
-            hcad.load(session)
+            hcad.load(hcad_session)
         except Exception as e:
             log.warning(f"HCAD bulk load failed (will use API fallback): {e}")
     else:
         log.info("Small batch — skipping HCAD bulk download, using ArcGIS API only")
+
+    # Re-login before PDF downloads (session may have gone stale during HCAD load)
+    log.info("Re-authenticating with county clerk before PDF downloads...")
+    logged_in = login_to_cclerk(session)
+    if not logged_in:
+        log.warning("Re-login failed — PDF downloads may fail")
 
     # Process each new listing
     new_records = []
@@ -1025,6 +1049,8 @@ def main():
             "Chrome/124.0.0.0 Safari/537.36"
         ),
     })
+
+    log.info(f"=== Starting PDF processing: {len(new_listings)} PDFs to download ===")
 
     # Per-PDF timeout handler
     class PdfTimeout(Exception):
