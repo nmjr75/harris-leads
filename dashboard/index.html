@@ -299,6 +299,124 @@
   }
   tbody tr.selected { background: rgba(124,92,252,0.08); }
   tbody tr.selected:hover { background: rgba(124,92,252,0.14); }
+  tbody tr td:not(:first-child) { cursor: pointer; }
+
+  /* Detail Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .modal-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    flex: 1;
+    word-break: break-word;
+  }
+  .modal-header .cat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-score {
+    font-size: 1.5rem;
+    font-weight: 800;
+  }
+  .modal-score-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .modal-score-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .modal-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .modal-section {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-section:last-child { border-bottom: none; }
+  .modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .modal-field-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+  }
+  .modal-field-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .modal-field-value a { color: var(--accent-light); text-decoration: none; font-size: 0.78rem; }
+  .modal-field-value a:hover { text-decoration: underline; }
+  .modal-addr-block {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 4px;
+  }
+  .modal-addr-block .addr-line {
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+  .modal-addr-block .addr-city {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
 
   /* Pagination */
   .pagination {
@@ -377,6 +495,11 @@
     <option value="low">Low</option>
     <option value="none">None</option>
   </select>
+  <select id="sourceFilter">
+    <option value="">All Sources</option>
+    <option value="clerk">Clerk Records</option>
+    <option value="foreclosure">Foreclosures</option>
+  </select>
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
@@ -395,19 +518,27 @@
 
 <div class="pagination" id="pagination"></div>
 
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
 <script>
 let DATA = null;
+let FRCL_DATA = null;  // foreclosure records
 let filtered = [];
 let sortCol = "score";
 let sortAsc = false;
 let currentPage = 1;
 let cardFilter = null;    // active stat-card filter
+let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
 const PER_PAGE = 50;
 const selectedRows = new Set();  // track selected doc_nums
 
 const COLS = [
   {key: "score", label: "Score", w: "55px"},
   {key: "filed", label: "Filed", w: "90px"},
+  {key: "sale_date", label: "Sale Date", w: "90px"},
   {key: "doc_type", label: "Type", w: "55px"},
   {key: "cat_label", label: "Category", w: "160px"},
   {key: "owner", label: "Owner / Contact", w: "200px"},
@@ -424,7 +555,7 @@ const COLS = [
 const CAT_COLORS = {
   LP: "#ef4444", NOFC: "#f59e0b", TAXLIEN: "#f97316", LIEN: "#eab308",
   JUD: "#a855f7", LEVY: "#ec4899", PROBATE: "#06b6d4", BNKRCY: "#6366f1",
-  REL: "#64748b",
+  REL: "#64748b", FRCL: "#dc2626",
 };
 
 const DISTRESS_FLAGS = new Set([
@@ -437,8 +568,39 @@ const DISTRESS_FLAGS = new Set([
 async function loadData() {
   const resp = await fetch("records.json");
   DATA = await resp.json();
-  document.getElementById("meta").innerHTML =
-    `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}`;
+
+  // Mark all main records as source "clerk"
+  DATA.records.forEach(r => { r._source = "clerk"; });
+
+  // Try loading foreclosure records (may not exist yet)
+  try {
+    const fResp = await fetch("foreclosures.json");
+    if (fResp.ok) {
+      FRCL_DATA = await fResp.json();
+      // Normalize foreclosure records into the same shape
+      (FRCL_DATA.records || []).forEach(fr => {
+        fr._source = "foreclosure";
+        fr.cat = "FRCL";
+        fr.cat_label = "Foreclosure Posting";
+        fr.doc_type = "FRCL";
+        fr.score = fr.score || 80;  // default high score for foreclosures
+        fr.filed = fr.file_date || "";
+        fr.owner = fr.grantor_name || "";
+        fr.flags = fr.flags || ["Pre-foreclosure / trustee sale"];
+        fr.match_confidence = fr.match_confidence || "none";
+      });
+      // Merge into main DATA
+      DATA.records = DATA.records.concat(FRCL_DATA.records || []);
+      DATA.total = DATA.records.length;
+    }
+  } catch(e) { /* foreclosures.json not yet available */ }
+
+  let metaHtml = `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}`;
+  if (FRCL_DATA) {
+    metaHtml += `<br>Foreclosures: ${FRCL_DATA.total || 0} postings`;
+  }
+  document.getElementById("meta").innerHTML = metaHtml;
+
   buildStats();
   buildCharts();
   populateFilters();
@@ -465,7 +627,7 @@ function buildStats() {
     </div>`;
 
   // Top categories as cards
-  const catOrder = ["LP","NOFC","TAXLIEN","LIEN","JUD","LEVY","PROBATE","BNKRCY","REL"];
+  const catOrder = ["FRCL","LP","NOFC","TAXLIEN","LIEN","JUD","LEVY","PROBATE","BNKRCY","REL"];
   const catLabels = {};
   DATA.records.forEach(r => { catLabels[r.cat] = r.cat_label; });
 
@@ -568,6 +730,7 @@ function populateFilters() {
   document.getElementById("flagFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
 }
 
 function getFiltered() {
@@ -580,8 +743,10 @@ function getFiltered() {
   const flag  = document.getElementById("flagFilter").value;
   const addr  = document.getElementById("addrFilter").value;
   const conf  = document.getElementById("confFilter").value;
+  const src   = document.getElementById("sourceFilter").value;
 
   return DATA.records.filter(r => {
+    if (src && (r._source || "clerk") !== src) return false;
     // Card filter
     if (cardFilter) {
       if (cardFilter === "addr") {
@@ -630,6 +795,7 @@ function resetFilters() {
   document.getElementById("flagFilter").value = "";
   document.getElementById("addrFilter").value = "";
   document.getElementById("confFilter").value = "";
+  document.getElementById("sourceFilter").value = "";
   cardFilter = null;
   selectedRows.clear();
   updateSelectionUI();
@@ -687,24 +853,28 @@ function renderTable() {
     const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
     const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
 
-    html += `<tr class="${isSelected ? 'selected' : ''}">
+    const rowIdx = (currentPage - 1) * PER_PAGE + filtered.indexOf(r);
+    const grantorCol = (r.cat === "PROBATE" || r.cat === "FRCL") ? (r.grantor_name || '<span style="color:var(--text-muted)">--</span>') : '<span style="color:var(--text-muted)">--</span>';
+
+    html += `<tr class="${isSelected ? 'selected' : ''}" data-idx="${rowIdx}">
       <td><input type="checkbox" class="row-cb" ${isSelected ? 'checked' : ''} onchange="toggleRow('${r.doc_num}', this.checked)"></td>
-      <td class="score-cell"><span class="score-pill ${scoreCls}">${r.score}</span></td>
-      <td>${r.filed || ""}</td>
-      <td><span class="type-badge">${r.doc_type}</span></td>
-      <td>${r.cat_label}</td>
-      <td class="owner-cell">${r.owner || ""}</td>
-      <td class="owner-cell">${r.cat === "PROBATE" ? (r.grantor_name || '<span style="color:var(--text-muted)">--</span>') : '<span style="color:var(--text-muted)">--</span>'}</td>
-      <td>${flagsHtml}</td>
-      <td>${r.legal || ""}</td>
-      <td class="addr-cell">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
-      <td class="addr-cell">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
-      <td><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
-      <td style="font-size:0.7rem">${r.doc_num}</td>
+      <td class="score-cell" onclick="openModal(${rowIdx})"><span class="score-pill ${scoreCls}">${r.score}</span></td>
+      <td onclick="openModal(${rowIdx})">${r.filed || ""}</td>
+      <td onclick="openModal(${rowIdx})">${r.sale_date || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td onclick="openModal(${rowIdx})"><span class="type-badge">${r.doc_type}</span></td>
+      <td onclick="openModal(${rowIdx})">${r.cat_label}</td>
+      <td class="owner-cell" onclick="openModal(${rowIdx})">${r.owner || ""}</td>
+      <td class="owner-cell" onclick="openModal(${rowIdx})">${grantorCol}</td>
+      <td onclick="openModal(${rowIdx})">${flagsHtml}</td>
+      <td onclick="openModal(${rowIdx})">${r.legal || ""}</td>
+      <td class="addr-cell" onclick="openModal(${rowIdx})">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td class="addr-cell" onclick="openModal(${rowIdx})">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
+      <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="15" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -777,24 +947,26 @@ function exportCSV(mode) {
     rows = getFiltered();
   }
   const headers = [
-    "Score","Filed","Type","Category","Owner / Contact","Grantor (Deceased)","Grantee (Heirs)",
-    "Flags","Legal Description",
+    "Score","Filed","Sale Date","Date Scraped","Type","Category","Owner / Contact","Grantor (Deceased)","Grantee (Heirs)",
+    "Flags","Legal Description","Amount",
     "Property Address","Property City","Property State","Property Zip",
     "Mail Address","Mail City","Mail State","Mail Zip",
-    "Match Confidence","Doc #","Clerk URL","HCAD URL"
+    "Match Confidence","Doc #","Source","Clerk URL","HCAD URL"
   ];
   let csv = headers.join(",") + "\n";
   rows.forEach(r => {
     csv += [
-      r.score, r.filed, r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
+      r.score, r.filed, r.sale_date||"", r.date_scraped||"",
+      r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
       `"${(r.owner||'').replace(/"/g,'""')}"`,
       `"${(r.grantor_name||'').replace(/"/g,'""')}"`,
       `"${(r.grantee_names||'').replace(/"/g,'""')}"`,
       `"${(r.flags||[]).join('; ')}"`,
       `"${(r.legal||'').replace(/"/g,'""')}"`,
+      `"${(r.amount||'').replace(/"/g,'""')}"`,
       `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
       `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
-      r.match_confidence||"none", r.doc_num, r.clerk_url||"", r.hcad_url||""
+      r.match_confidence||"none", r.doc_num, r._source||"clerk", r.clerk_url||"", r.hcad_url||""
     ].join(",") + "\n";
   });
   const suffix = mode === "selected" ? "_selected" : "";
@@ -804,6 +976,140 @@ function exportCSV(mode) {
   a.download = `harris_leads_${new Date().toISOString().slice(0,10)}${suffix}.csv`;
   a.click();
 }
+
+// ── Detail Modal ──────────────────────────────────────────────────
+function openModal(idx) {
+  const r = filtered[idx];
+  if (!r) return;
+
+  const scoreCls = r.score >= 70 ? "var(--green)" : r.score >= 50 ? "var(--orange)" : "var(--accent)";
+
+  let flagsHtml = "";
+  (r.flags || []).forEach(f => {
+    const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
+    flagsHtml += `<span class="flag-pill ${cls}">${f}</span>`;
+  });
+
+  const confColor = {high: "var(--green)", medium: "var(--orange)", low: "var(--red)", none: "var(--text-muted)"}[r.match_confidence || "none"];
+
+  let html = `
+    <div class="modal-header">
+      <div>
+        <h2>${r.owner || r.grantor_name || "Unknown"} - ${r.cat_label || ""}</h2>
+        <div class="cat-label">${r.doc_type} | ${r.doc_num}</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+
+    <div class="modal-score-row">
+      <div>
+        <div class="modal-field-label">Seller Score</div>
+        <div class="modal-score" style="color:${scoreCls}">${r.score}/100</div>
+      </div>
+      <div style="flex:1">
+        <div class="modal-score-bar">
+          <div class="modal-score-fill" style="width:${r.score}%;background:${scoreCls}"></div>
+        </div>
+      </div>
+      <div class="modal-flags">${flagsHtml}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Document Type</div>
+          <div class="modal-field-value">${r.doc_type}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Date Filed</div>
+          <div class="modal-field-value">${r.filed || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Document Number</div>
+          <div class="modal-field-value">${r.doc_num || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Amount</div>
+          <div class="modal-field-value">${r.amount || "--"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Owner / Grantor</div>
+          <div class="modal-field-value">${r.owner || r.grantor_name || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Grantee</div>
+          <div class="modal-field-value">${r.grantee_names || "--"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Property Address</div>
+          <div class="modal-addr-block">
+            <div class="addr-line">${r.prop_address || "Not found"}</div>
+            <div class="addr-city">${[r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ") || ""}</div>
+          </div>
+        </div>
+        <div>
+          <div class="modal-field-label">Mailing Address</div>
+          <div class="modal-addr-block">
+            <div class="addr-line">${r.mail_address || "--"}</div>
+            <div class="addr-city">${[r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ") || ""}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-field-label">Legal Description</div>
+      <div class="modal-field-value" style="margin-top:4px">${r.legal || "--"}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Match Confidence</div>
+          <div class="modal-field-value"><span class="conf-pill conf-${r.match_confidence || 'none'}" style="font-size:0.75rem">${r.match_confidence || 'none'}</span></div>
+        </div>
+        <div>
+          <div class="modal-field-label">Links</div>
+          <div class="modal-field-value">
+            ${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk Record</a>' : '--'}
+            ${r.hcad_url ? ' &nbsp;|&nbsp; <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD Record</a>' : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  if (r.sale_date || r.date_scraped || r._source === "foreclosure") {
+    html += `<div class="modal-section">
+      <div class="modal-grid">
+        ${r.sale_date ? '<div><div class="modal-field-label">Foreclosure Sale Date</div><div class="modal-field-value" style="color:var(--red);font-weight:700">' + r.sale_date + '</div></div>' : ''}
+        ${r.file_date ? '<div><div class="modal-field-label">File Date</div><div class="modal-field-value">' + r.file_date + '</div></div>' : ''}
+        ${r.date_scraped ? '<div><div class="modal-field-label">Date Scraped</div><div class="modal-field-value">' + r.date_scraped + '</div></div>' : ''}
+        ${r._source === "foreclosure" ? '<div><div class="modal-field-label">Source</div><div class="modal-field-value"><span class="flag-pill distress">Foreclosure Posting</span></div></div>' : ''}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById("modalContent").innerHTML = html;
+  document.getElementById("modalOverlay").classList.add("active");
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").classList.remove("active");
+  document.body.style.overflow = "";
+}
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
 // ── Init ───────────────────────────────────────────────────────────
 loadData();
