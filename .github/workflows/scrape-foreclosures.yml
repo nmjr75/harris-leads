@@ -49,6 +49,9 @@ jobs:
           mkdir -p dashboard data
 
       - name: Run foreclosure scraper
+        env:
+          CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}
+          CCLERK_PASSWORD: ${{ secrets.CCLERK_PASSWORD }}
         run: python scraper/fetch_foreclosures.py
 
       - name: Verify output
