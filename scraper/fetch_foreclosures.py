@@ -61,7 +61,7 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 # Batch limit: process at most this many PDFs per run to stay within
 # GitHub Actions timeout.  Remaining PDFs are picked up on the next run
 # because we track seen_ids incrementally.
-MAX_PDFS_PER_RUN = 75
+MAX_PDFS_PER_RUN = 40
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 200
