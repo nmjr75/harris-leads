@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import signal
 import sys
 import time
 import zipfile
@@ -61,10 +62,13 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 # Batch limit: process at most this many PDFs per run to stay within
 # GitHub Actions timeout.  Remaining PDFs are picked up on the next run
 # because we track seen_ids incrementally.
-MAX_PDFS_PER_RUN = 40
+MAX_PDFS_PER_RUN = 15
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 200
+
+# Per-PDF timeout in seconds — kill stuck OCR processing
+PDF_TIMEOUT = 90
 
 DASHBOARD_DIR = Path("dashboard")
 DATA_DIR = Path("data")
@@ -456,21 +460,25 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     try:
         with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
             full_text = ""
+            has_scanned_pages = False
             for page in pdf.pages:
                 text = page.extract_text() or ""
                 if text.strip():
                     full_text += text + "\n"
-                elif HAS_OCR:
-                    # Scanned image PDF — use OCR
-                    img = page.to_image(resolution=OCR_DPI)
-                    ocr_text = pytesseract.image_to_string(img.original)
-                    full_text += ocr_text + "\n"
+                else:
+                    has_scanned_pages = True
+            if has_scanned_pages and not full_text.strip():
+                log.info(f"  {doc_id} is a scanned PDF — skipping OCR, flagging for VA lookup")
+                result["needs_ocr"] = True
+                return result
+            elif has_scanned_pages:
+                log.info(f"  {doc_id} has some scanned pages but got text from others")
     except Exception as e:
         log.warning(f"Failed to extract text from {doc_id}: {e}")
         return result
 
     if not full_text.strip():
-        log.warning(f"Empty PDF text for {doc_id} (OCR also failed or unavailable)")
+        log.warning(f"Empty PDF text for {doc_id}")
         return result
 
     lines = full_text.split("\n")
@@ -934,21 +942,45 @@ def main():
         ),
     })
 
+    # Per-PDF timeout handler
+    class PdfTimeout(Exception):
+        pass
+
+    def _timeout_handler(signum, frame):
+        raise PdfTimeout("PDF processing exceeded time limit")
+
     for i, listing in enumerate(new_listings):
         doc_id = listing["doc_id"]
         t0 = time.time()
         log.info(f"Processing {doc_id} ({i+1}/{len(new_listings)})...")
 
-        # Download PDF
-        pdf_bytes = download_frcl_pdf(session, doc_id)
-        if not pdf_bytes:
-            log.warning(f"  Skipping {doc_id} - could not download PDF")
-            seen_ids.add(doc_id)  # Mark as seen so we don't retry
-            continue
+        try:
+            # Set per-PDF timeout
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(PDF_TIMEOUT)
 
-        # Parse PDF
-        parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
-        log.info(f"  PDF parsed in {time.time()-t0:.1f}s — grantor={parsed.get('grantor','')[:30]}")
+            # Download PDF
+            pdf_bytes = download_frcl_pdf(session, doc_id)
+            if not pdf_bytes:
+                log.warning(f"  Skipping {doc_id} - could not download PDF")
+                seen_ids.add(doc_id)  # Mark as seen so we don't retry
+                signal.alarm(0)
+                continue
+
+            # Parse PDF
+            parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
+            signal.alarm(0)  # Cancel timeout after successful parse
+            log.info(f"  PDF parsed in {time.time()-t0:.1f}s — grantor={parsed.get('grantor','')[:30]}")
+        except PdfTimeout:
+            signal.alarm(0)
+            log.warning(f"  TIMEOUT: {doc_id} exceeded {PDF_TIMEOUT}s — skipping")
+            seen_ids.add(doc_id)
+            continue
+        except Exception as e:
+            signal.alarm(0)
+            log.warning(f"  ERROR processing {doc_id}: {e} — skipping")
+            seen_ids.add(doc_id)
+            continue
 
         # Build record
         record = {
@@ -970,6 +1002,7 @@ def main():
             "match_confidence": "none",
             "hcad_url": "",
             "clerk_url": f"https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?id={doc_id}",
+            "needs_ocr": parsed.get("needs_ocr", False),
         }
 
         # ── Enrich with HCAD data ──
