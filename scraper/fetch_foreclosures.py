@@ -642,8 +642,10 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
     log.info(f"Scraping foreclosure list for {month_name} {year}...")
 
     # First, load the search page to get ViewState
-    resp = session.get(FRCL_SEARCH_URL, timeout=30)
+    log.info(f"  Loading FRCL search page...")
+    resp = session.get(FRCL_SEARCH_URL, timeout=(10, 30))
     resp.raise_for_status()
+    log.info(f"  Search page loaded: {len(resp.text):,} bytes")
     soup = BeautifulSoup(resp.text, "html.parser")
 
     viewstate = soup.find("input", {"name": "__VIEWSTATE"})
@@ -666,8 +668,10 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         "ctl00$ContentPlaceHolder1$txtFileNo": "",
     }
 
-    resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=60)
+    log.info(f"  Submitting search form for {month_name} {year}...")
+    resp = session.post(FRCL_SEARCH_URL, data=post_data, timeout=(15, 120))
     resp.raise_for_status()
+    log.info(f"  Response received: {len(resp.text):,} bytes")
     soup = BeautifulSoup(resp.text, "html.parser")
 
     # Parse the results table
@@ -834,10 +838,19 @@ def main():
             existing_records = existing_data.get("records", [])
             log.info(f"Loaded {len(existing_records)} existing foreclosure records")
 
-    # Set up HTTP session
+    # Set up HTTP session with realistic browser headers
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Referer": "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.aspx",
     })
 
     # Get target months (next 3 months)
@@ -870,7 +883,11 @@ def main():
     new_records = []
     api_session = requests.Session()
     api_session.headers.update({
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
     })
 
     for i, listing in enumerate(new_listings):
