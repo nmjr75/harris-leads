@@ -80,7 +80,7 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 # Batch limit: process at most this many PDFs per run to stay within
 # GitHub Actions timeout.  Remaining PDFs are picked up on the next run
 # because we track seen_ids incrementally.
-MAX_PDFS_PER_RUN = 30
+MAX_PDFS_PER_RUN = 200
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 300
@@ -868,7 +868,14 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         if m:
             result["grantor"] = m.group(1).strip().rstrip(",. ")
 
-    # Pattern 4: "NAME secures the repay" (OCR-garbled version)
+    # Pattern 4: "Grantor: NAME" or "Grantor(s)/Mortgagor(s): NAME" — labeled field at top of document
+    if not result["grantor"]:
+        m = re.search(r'[Gg]rantors?(?:\(s\))?\s*(?:/\s*[Mm]ortgagors?(?:\(s\))?\s*)?\s*:\s*\n?\s*([A-Z][A-Za-z\s,\.&]+?)(?:\s*\n|\s+[Cc]urrent|\s+[Gg]rantee|\s+[Oo]riginal|\s+Instrument|\s+Property|\s+Deed|\s+Date|\s+Account)',
+                      full_text, re.IGNORECASE)
+        if m:
+            result["grantor"] = m.group(1).strip().rstrip(",. ")
+
+    # Pattern 5: "NAME secures the repay" (OCR-garbled version)
     if not result["grantor"]:
         m = re.search(r'([A-Z][A-Za-z\s]+?)\s+secures\s+the\s+repa', full_text, re.IGNORECASE)
         if m:
@@ -902,7 +909,8 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         g = re.sub(r'\s+(?:p?ayment|indebtedness|securing|of\s+the|in\s+favor|the\s+repay|but\s+not\s+limited|pursuant|default|note\s+dated|deed\s+of).*', '', g, flags=re.IGNORECASE)
         # Strip trailing "AND" when no co-borrower name follows
         g = re.sub(r'\s+AND\s*$', '', g, flags=re.IGNORECASE)
-        # Strip marital status descriptors
+        # Strip marital status descriptors and spouse prefix
+        g = re.sub(r',?\s*AND\s+SPOUSE\s+', ' AND ', g, flags=re.IGNORECASE)
         g = re.sub(r',?\s*(?:AN?\s+)?(?:UN)?MARRIED\s+(?:WO)?MAN\b', '', g, flags=re.IGNORECASE)
         g = re.sub(r',?\s*(?:HUSBAND(?:\s+AND\s+WIFE)?|WIFE(?:\s+AND\s+HUSBAND)?)\s*$', '', g, flags=re.IGNORECASE)
         # Remove trailing junk punctuation
