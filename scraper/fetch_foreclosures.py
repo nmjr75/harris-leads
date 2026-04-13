@@ -35,10 +35,11 @@ except ImportError:
 try:
     import pytesseract
     from PIL import Image
+    from pdf2image import convert_from_bytes
     HAS_OCR = True
 except ImportError:
     HAS_OCR = False
-    print("WARNING: pytesseract/Pillow not installed. OCR will be unavailable.")
+    print("WARNING: pytesseract/Pillow/pdf2image not installed. OCR will be unavailable.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Logging
@@ -69,7 +70,7 @@ MAX_PDFS_PER_RUN = 10
 OCR_DPI = 200
 
 # Per-PDF timeout in seconds — kill stuck OCR processing
-PDF_TIMEOUT = 90
+PDF_TIMEOUT = 120
 
 DASHBOARD_DIR = Path("dashboard")
 DATA_DIR = Path("data")
@@ -469,9 +470,27 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 else:
                     has_scanned_pages = True
             if has_scanned_pages and not full_text.strip():
-                log.info(f"  {doc_id} is a scanned PDF — skipping OCR, flagging for VA lookup")
-                result["needs_ocr"] = True
-                return result
+                # PDF is entirely scanned images — run OCR to extract text
+                if HAS_OCR:
+                    log.info(f"  {doc_id} is a scanned PDF — running OCR at {OCR_DPI} DPI...")
+                    try:
+                        images = convert_from_bytes(pdf_bytes, dpi=OCR_DPI)
+                        for page_num, img in enumerate(images, 1):
+                            page_text = pytesseract.image_to_string(img)
+                            if page_text.strip():
+                                full_text += page_text + "\n"
+                                log.info(f"    Page {page_num}: {len(page_text)} chars extracted via OCR")
+                            else:
+                                log.info(f"    Page {page_num}: no text found via OCR")
+                        log.info(f"  OCR complete: {len(full_text)} total chars")
+                    except Exception as e:
+                        log.warning(f"  OCR failed for {doc_id}: {e}")
+                        result["needs_ocr"] = True
+                        return result
+                else:
+                    log.info(f"  {doc_id} is a scanned PDF — OCR not available, flagging for VA lookup")
+                    result["needs_ocr"] = True
+                    return result
             elif has_scanned_pages:
                 log.info(f"  {doc_id} has some scanned pages but got text from others")
     except Exception as e:
@@ -999,8 +1018,16 @@ def main():
 
     log.info(f"Total foreclosure listings found: {len(all_listings)}")
 
-    # Filter to only new doc IDs
-    new_listings = [l for l in all_listings if l["doc_id"] not in seen_ids]
+    # Find doc IDs that need OCR reprocessing (previously failed to extract text)
+    ocr_retry_ids = set()
+    for rec in existing_records:
+        if rec.get("needs_ocr") and not rec.get("grantor"):
+            ocr_retry_ids.add(rec["doc_id"])
+    if ocr_retry_ids:
+        log.info(f"Found {len(ocr_retry_ids)} records needing OCR reprocessing")
+
+    # Filter to new doc IDs PLUS OCR retries
+    new_listings = [l for l in all_listings if l["doc_id"] not in seen_ids or l["doc_id"] in ocr_retry_ids]
     log.info(f"New listings to process: {len(new_listings)} (skipping {len(all_listings) - len(new_listings)} already seen)")
 
     if not new_listings:
