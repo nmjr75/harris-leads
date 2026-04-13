@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HCAD Legal Description Lookup</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #23273a;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-muted: #8b8fa3;
+    --accent: #7c5cfc;
+    --accent-light: #9b82fc;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --cyan: #06b6d4;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 8px;
+  }
+  .header h1 { font-size: 1.25rem; font-weight: 700; }
+  .header h1 span { color: var(--accent-light); }
+  .back-link {
+    color: var(--accent-light); text-decoration: none; font-size: 0.85rem;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .back-link:hover { text-decoration: underline; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+
+  .search-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 24px;
+  }
+  .search-box label {
+    display: block; font-size: 0.85rem; color: var(--text-muted);
+    margin-bottom: 8px; font-weight: 500;
+  }
+  .search-box textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 12px 14px;
+    font-size: 0.95rem; font-family: 'SF Mono', 'Fira Code', monospace;
+    resize: vertical; min-height: 80px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-box textarea:focus { border-color: var(--accent); }
+  .search-box textarea::placeholder { color: var(--text-muted); opacity: 0.6; }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
+  .btn {
+    padding: 10px 22px; border-radius: 8px; font-size: 0.9rem;
+    font-weight: 600; cursor: pointer; border: none;
+    transition: all 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-light); }
+  .btn-secondary { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+  .btn-secondary:hover { color: var(--text); border-color: var(--text-muted); }
+
+  .parsed-info {
+    font-size: 0.8rem; color: var(--text-muted); margin-left: auto;
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .parsed-info .tag {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 8px;
+  }
+  .parsed-info .tag b { color: var(--cyan); }
+
+  .status-msg {
+    text-align: center; padding: 20px; color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+  .status-msg.error { color: var(--red); }
+  .status-msg.loading { color: var(--orange); }
+
+  /* Results */
+  .results { display: flex; flex-direction: column; gap: 12px; }
+  .result-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+    transition: border-color 0.2s;
+  }
+  .result-card:hover { border-color: var(--accent); }
+  .result-card .address {
+    font-size: 1.1rem; font-weight: 600; color: var(--text);
+    margin-bottom: 4px;
+  }
+  .result-card .city-line {
+    font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;
+  }
+  .result-card .meta-row {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 0.8rem; color: var(--text-muted);
+  }
+  .result-card .meta-row a {
+    color: var(--accent-light); text-decoration: none;
+  }
+  .result-card .meta-row a:hover { text-decoration: underline; }
+  .result-card .key-label {
+    font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    margin-top: 6px;
+  }
+  .match-type {
+    display: inline-block; font-size: 0.7rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 4px; margin-left: 8px;
+    vertical-align: middle;
+  }
+  .match-exact { background: rgba(34,197,94,0.15); color: var(--green); }
+  .match-fuzzy { background: rgba(245,158,11,0.15); color: var(--orange); }
+
+  .result-count {
+    font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;
+  }
+
+  .examples {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px; margin-top: 24px;
+  }
+  .examples h3 {
+    font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px; font-weight: 500;
+  }
+  .example-item {
+    font-size: 0.85rem; color: var(--accent-light); cursor: pointer;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .example-item:last-child { border-bottom: none; }
+  .example-item:hover { color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>HCAD <span>Legal Description Lookup</span></h1>
+  <div style="font-size:0.75rem;color:var(--text-muted);">Harris County Appraisal District Data</div>
+</div>
+
+<div class="container">
+  <div class="search-box">
+    <label>Enter a legal description to find the property address</label>
+    <textarea id="legalInput" placeholder="LOT 71 BLOCK 13 LAKEWOOD FOREST SEC 1&#10;or&#10;LOT TWENTY-FOUR (24), IN BLOCK TWO (2), OF TIMBER RIDGE ESTATES, SECTION ONE (1)"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="doSearch()">Search</button>
+      <button class="btn btn-secondary" onclick="clearAll()">Clear</button>
+      <div class="parsed-info" id="parsedInfo"></div>
+    </div>
+  </div>
+
+  <div id="resultArea"></div>
+
+  <div class="examples" id="examplesPanel">
+    <h3>Example searches (click to try)</h3>
+    <div class="example-item" onclick="tryExample(this)">LOT 71 BLOCK 13 LAKEWOOD FOREST SEC 1</div>
+    <div class="example-item" onclick="tryExample(this)">LOT 5, BLOCK 2, WILLOWBROOK ESTATES SECTION 3</div>
+    <div class="example-item" onclick="tryExample(this)">LOT TWENTY-FOUR (24), IN BLOCK TWO (2), OF CHAMPIONS VILLAGE</div>
+    <div class="example-item" onclick="tryExample(this)">LOT 12, IN BLOCK 8, OF SPRING SHADOWS, SECTION 4</div>
+  </div>
+</div>
+
+<script>
+// ── Word-number conversion (mirrors Python words_to_number) ──
+const WORD_NUMS = {
+  "one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,
+  "eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,"thirteen":13,
+  "fourteen":14,"fifteen":15,"sixteen":16,"seventeen":17,"eighteen":18,
+  "nineteen":19,"twenty":20,"thirty":30,"forty":40,"fifty":50,
+  "sixty":60,"seventy":70,"eighty":80,"ninety":90
+};
+
+function wordsToNumber(text) {
+  if (!text) return null;
+  const clean = text.trim().toLowerCase().replace(/-/g, " ");
+  const words = clean.split(/\s+/);
+  let total = 0;
+  for (const w of words) {
+    if (WORD_NUMS[w] !== undefined) total += WORD_NUMS[w];
+    else return null;
+  }
+  return total > 0 ? total : null;
+}
+
+// ── Parse legal description (mirrors Python convert_legal_numbers) ──
+function parseLegal(text) {
+  text = text.toUpperCase().trim();
+  let lot = null, blk = null, sec = null, subdiv = null;
+
+  // Extract parenthesized numbers: LOT TWENTY-FOUR (24)
+  let m = text.match(/LOT\s+[A-Z\-\s]+\((\d+)\)/i);
+  if (m) lot = m[1];
+  m = text.match(/BLOCK\s+[A-Z\-\s]+\((\d+)\)/i);
+  if (m) blk = m[1];
+  m = text.match(/SEC(?:TION)?\s+[A-Z\-\s]+\((\d+)\)/i);
+  if (m) sec = m[1];
+
+  // Direct numeric: LOT 71
+  if (!lot) {
+    m = text.match(/LOT\s+(\d+)/i);
+    if (m) lot = m[1];
+  }
+  if (!blk) {
+    m = text.match(/BLOCK\s+(\d+)/i);
+    if (m) blk = m[1];
+  }
+  if (!sec) {
+    m = text.match(/SEC(?:TION)?\s+(\d+)/i);
+    if (m) sec = m[1];
+  }
+
+  // Word numbers without parens: LOT TWENTY-FOUR, BLOCK TWO
+  if (!lot) {
+    m = text.match(/LOT\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+IN\b|\s+OF\b|\s+BL)/i);
+    if (m) { const n = wordsToNumber(m[1]); if (n) lot = String(n); }
+  }
+  if (!blk) {
+    m = text.match(/BLOCK\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+OF\b|\s+SEC|\s+A\s)/i);
+    if (m) { const n = wordsToNumber(m[1]); if (n) blk = String(n); }
+  }
+  if (!sec) {
+    m = text.match(/SEC(?:TION)?\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+A\s|\s+IN\b|$)/i);
+    if (m) { const n = wordsToNumber(m[1]); if (n) sec = String(n); }
+  }
+
+  // Extract subdivision name — 5 patterns matching Python logic
+  // Pattern 1: "OF <NAME>, SEC..."
+  m = text.match(/(?:IN\s+BLOCK\s+\S+\s+OF|,\s+OF)\s+([A-Z][A-Z\s&']+?)(?:\s*,|\s+SEC|\s+A\s+SUB|\s+IN\s+HARRIS)/i);
+  if (m) subdiv = m[1].trim();
+
+  if (!subdiv) {
+    // Pattern 2: "BLOCK X, <NAME> SEC Y"
+    m = text.match(/BLOCK\s+\S+\s*,?\s+([A-Z][A-Z\s&']+?)(?:\s+SEC|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)/i);
+    if (m) { subdiv = m[1].trim().replace(/^OF\s+/i, ""); }
+  }
+  if (!subdiv) {
+    // Pattern 3: "BLOCK WORD (NUM) <NAME> SECTION"
+    m = text.match(/BLOCK\s+[A-Z\-\s]+\(\d+\)\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s+SEC(?:TION)?)/i);
+    if (m) subdiv = m[1].trim();
+  }
+  if (!subdiv) {
+    // Pattern 4: "BLOCK NUM <NAME> SECTION"
+    m = text.match(/BLOCK\s+\d+\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s+SEC(?:TION)?|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)/i);
+    if (m) subdiv = m[1].trim();
+  }
+  if (!subdiv) {
+    // Pattern 5: "IN BLOCK ... OF <NAME>" (may be at end of string)
+    m = text.match(/IN\s+BLOCK\s+\S+\s*,?\s+(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s*,|\s+A\s+SUB|\s+IN\s+HARRIS|$)/i);
+    if (m) subdiv = m[1].trim().replace(/^OF\s+/i, "");
+  }
+  if (!subdiv) {
+    // Pattern 6: ", OF <NAME>" at end of string (no SEC terminator)
+    m = text.match(/,\s*OF\s+([A-Z][A-Z\s&']+?)$/i);
+    if (m) subdiv = m[1].trim();
+  }
+  if (!subdiv) {
+    // Pattern 7: "BLOCK (NUM), <NAME>" at end (no SEC)
+    m = text.match(/BLOCK\s+(?:[A-Z\-\s]+)?\(?\d+\)?\s*,?\s+([A-Z][A-Z\s&']{3,})$/i);
+    if (m) subdiv = m[1].trim().replace(/^OF\s+/i, "");
+  }
+
+  // Clean subdivision
+  if (subdiv) {
+    subdiv = subdiv.replace(/^OF\s+/i, "").trim();
+    // OCR corrections
+    subdiv = subdiv.replace(/FORTST\b/gi, "FOREST");
+    subdiv = subdiv.replace(/FORST\b/gi, "FOREST");
+    subdiv = subdiv.replace(/ESTAT\b/gi, "ESTATE");
+    subdiv = subdiv.replace(/ESTAT5\b/gi, "ESTATES");
+    subdiv = subdiv.replace(/VILLAG\b/gi, "VILLAGE");
+    subdiv = subdiv.replace(/HEIGH?TS?\b/gi, "HEIGHTS");
+    subdiv = subdiv.replace(/GARDNS?\b/gi, "GARDENS");
+    subdiv = subdiv.replace(/MANOH\b/gi, "MANOR");
+    subdiv = subdiv.replace(/PLAC\b/gi, "PLACE");
+  }
+
+  return { lot, block: blk, section: sec, subdivision: subdiv, raw: text };
+}
+
+// ── HCAD lookup data ──
+let hcadData = null;
+let loadingState = "idle"; // idle | loading | loaded | error
+
+async function loadHCAD() {
+  if (loadingState === "loaded" || loadingState === "loading") return;
+  loadingState = "loading";
+  showStatus("Loading HCAD database...", "loading");
+  try {
+    const resp = await fetch("hcad_lookup.json");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    hcadData = await resp.json();
+    onDataLoaded();
+  } catch (e) {
+    // fetch fails on file:// — show the file picker option
+    loadingState = "idle";
+    document.getElementById("resultArea").innerHTML = `
+      <div class="status-msg">
+        <p>Could not auto-load HCAD database.</p>
+        <p style="margin-top:12px;">
+          <label class="btn btn-primary" style="cursor:pointer;">
+            Load hcad_lookup.json
+            <input type="file" accept=".json" id="fileInput"
+                   style="display:none;" onchange="loadFromFile(event)">
+          </label>
+        </p>
+        <p style="font-size:0.8rem;margin-top:8px;color:var(--text-muted);">
+          Select the hcad_lookup.json file from the same folder as this page.
+        </p>
+      </div>`;
+  }
+}
+
+function loadFromFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  loadingState = "loading";
+  showStatus("Loading HCAD database from file...", "loading");
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      hcadData = JSON.parse(e.target.result);
+      onDataLoaded();
+    } catch(err) {
+      loadingState = "error";
+      showStatus("Error parsing JSON file: " + err.message, "error");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function onDataLoaded() {
+  loadingState = "loaded";
+  const count = Object.keys(hcadData).length;
+  showStatus(`HCAD database loaded: ${count.toLocaleString()} legal descriptions indexed`, "");
+  setTimeout(() => {
+    if (document.getElementById("resultArea").textContent.includes("indexed"))
+      showStatus("", "");
+  }, 3000);
+}
+
+function showStatus(msg, cls) {
+  const el = document.getElementById("resultArea");
+  if (!msg) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="status-msg ${cls}">${msg}</div>`;
+}
+
+// ── Search logic ──
+function doSearch() {
+  const input = document.getElementById("legalInput").value.trim();
+  if (!input) return;
+  if (loadingState !== "loaded") {
+    showStatus("HCAD database not loaded yet. Please wait...", "error");
+    return;
+  }
+
+  const parsed = parseLegal(input);
+  showParsedInfo(parsed);
+
+  if (!parsed.subdivision || (!parsed.block && !parsed.lot)) {
+    showStatus(
+      "Could not extract enough info from your input. Include at least a subdivision name with a block or lot number, like 'LOT 5 BLOCK 2 LAKEWOOD FOREST SECTION 1' or 'LOT 129 MINNETEX PLACE'.",
+      "error"
+    );
+    return;
+  }
+
+  const results = searchHCAD(parsed);
+  renderResults(results, parsed);
+}
+
+function showParsedInfo(parsed) {
+  const el = document.getElementById("parsedInfo");
+  let tags = [];
+  if (parsed.lot) tags.push(`<span class="tag"><b>Lot</b> ${parsed.lot}</span>`);
+  if (parsed.block) tags.push(`<span class="tag"><b>Blk</b> ${parsed.block}</span>`);
+  if (parsed.section) tags.push(`<span class="tag"><b>Sec</b> ${parsed.section}</span>`);
+  if (parsed.subdivision) tags.push(`<span class="tag"><b>Subdiv</b> ${parsed.subdivision}</span>`);
+  el.innerHTML = tags.length ? tags.join("") : '<span style="color:var(--red)">Could not parse</span>';
+}
+
+function searchHCAD(parsed) {
+  const subdiv = parsed.subdivision ? parsed.subdivision.toUpperCase().replace(/\s+/g, " ").trim() : "";
+  const blk = parsed.block;
+  const lot = parsed.lot;
+  const sec = parsed.section;
+  const results = [];
+
+  // ── Strategy 1: Block-based keys (standard lot/block/subdivision) ──
+  if (subdiv && blk) {
+    const key1 = `${subdiv}|BLK${blk}`;
+    if (hcadData[key1]) {
+      results.push({ key: key1, data: hcadData[key1], matchType: "exact" });
+    }
+    // With SEC appended to subdivision
+    if (sec) {
+      const key2 = `${subdiv} SEC ${sec}|BLK${blk}`;
+      if (hcadData[key2]) {
+        results.push({ key: key2, data: hcadData[key2], matchType: "exact" });
+      }
+    }
+    if (results.length > 0) return results;
+  }
+
+  // ── Strategy 2: Lot-only keys (subdivisions without blocks) ──
+  if (subdiv && lot && !blk) {
+    const keyLot = `${subdiv}|LT${lot}`;
+    if (hcadData[keyLot]) {
+      results.push({ key: keyLot, data: hcadData[keyLot], matchType: "exact" });
+    }
+    if (sec) {
+      const keyLotSec = `${subdiv} SEC ${sec}|LT${lot}`;
+      if (hcadData[keyLotSec]) {
+        results.push({ key: keyLotSec, data: hcadData[keyLotSec], matchType: "exact" });
+      }
+    }
+    if (results.length > 0) return results;
+  }
+
+  // ── Strategy 3: Also try lot-only even when block exists (some parcels indexed both ways) ──
+  if (subdiv && lot && blk && results.length === 0) {
+    const keyLotFallback = `${subdiv}|LT${lot}`;
+    if (hcadData[keyLotFallback]) {
+      results.push({ key: keyLotFallback, data: hcadData[keyLotFallback], matchType: "exact" });
+    }
+    if (results.length > 0) return results;
+  }
+
+  // ── Strategy 4: Fuzzy match on subdivision name ──
+  if (!subdiv) return results;
+
+  const subdivWords = subdiv.split(/\s+/);
+  const fuzzyHits = [];
+
+  // Determine which suffix to search for
+  const suffixes = [];
+  if (blk) suffixes.push(`|BLK${blk}`);
+  if (lot) suffixes.push(`|LT${lot}`);
+  if (suffixes.length === 0) return results;
+
+  for (const hKey in hcadData) {
+    let matchedSuffix = false;
+    for (const suffix of suffixes) {
+      if (hKey.endsWith(suffix)) { matchedSuffix = true; break; }
+    }
+    if (!matchedSuffix) continue;
+
+    const pipeIdx = hKey.lastIndexOf("|");
+    const hSubdiv = hKey.substring(0, pipeIdx);
+
+    // If sec specified, check it matches
+    if (sec && !hSubdiv.includes(`SEC ${sec}`)) continue;
+
+    const hWords = hSubdiv.split(/\s+/);
+    let matching = 0;
+    for (const w of subdivWords) {
+      if (hWords.includes(w)) matching++;
+    }
+    const firstMatch = subdivWords.length > 0 && hWords.length > 0 && subdivWords[0] === hWords[0];
+    const score = matching / Math.max(subdivWords.length, 1);
+
+    if (firstMatch && score >= 0.5) {
+      fuzzyHits.push({ key: hKey, data: hcadData[hKey], matchType: "fuzzy", score });
+    }
+  }
+
+  fuzzyHits.sort((a, b) => b.score - a.score);
+  return fuzzyHits.slice(0, 10);
+}
+
+function renderResults(results, parsed) {
+  const area = document.getElementById("resultArea");
+  if (results.length === 0) {
+    area.innerHTML = `
+      <div class="status-msg">
+        No matches found for <b>${parsed.subdivision} BLK ${parsed.block}${parsed.section ? " SEC " + parsed.section : ""}</b>.<br>
+        <span style="font-size:0.8rem;">Try different wording or check the subdivision spelling.</span>
+      </div>`;
+    return;
+  }
+
+  let html = `<div class="result-count">${results.length} result${results.length > 1 ? "s" : ""} found</div><div class="results">`;
+  for (const r of results) {
+    const d = r.data;
+    const hcadLink = d.t ? `<a href="https://public.hcad.org/records/details.asp?cession=2026A&search_type=OwnerAddress&tab=overview&acct=${d.t}" target="_blank">HCAD Record &rarr;</a>` : "";
+    const matchBadge = r.matchType === "exact"
+      ? '<span class="match-type match-exact">EXACT</span>'
+      : '<span class="match-type match-fuzzy">FUZZY</span>';
+    const gMapLink = d.a ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(d.a + ", " + (d.c || "Houston") + ", TX " + (d.z || ""))}" target="_blank">Google Maps &rarr;</a>` : "";
+
+    html += `
+      <div class="result-card">
+        <div class="address">${d.a || "No address"}${matchBadge}</div>
+        <div class="city-line">${d.c || "Houston"}, TX ${d.z || ""}</div>
+        <div class="meta-row">
+          ${d.t ? `<span>Acct: ${d.t}</span>` : ""}
+          ${hcadLink}
+          ${gMapLink}
+        </div>
+        <div class="key-label">${r.key}</div>
+      </div>`;
+  }
+  html += "</div>";
+  area.innerHTML = html;
+}
+
+function clearAll() {
+  document.getElementById("legalInput").value = "";
+  document.getElementById("parsedInfo").innerHTML = "";
+  document.getElementById("resultArea").innerHTML = "";
+}
+
+function tryExample(el) {
+  document.getElementById("legalInput").value = el.textContent;
+  doSearch();
+}
+
+// Allow Enter to search (Shift+Enter for newline)
+document.getElementById("legalInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    doSearch();
+  }
+});
+
+// Load HCAD data on page load
+loadHCAD();
+</script>
+</body>
+</html>
