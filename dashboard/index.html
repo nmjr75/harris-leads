@@ -571,6 +571,9 @@
     <option value="clerk">Clerk Records</option>
     <option value="foreclosure">Foreclosures</option>
   </select>
+  <select id="batchFilter">
+    <option value="">All Batches</option>
+  </select>
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
@@ -907,6 +910,11 @@ async function loadData() {
         fr.prop_zip = fr.property_zip || fr.prop_zip || "";
         fr.flags = fr.flags || ["Pre-foreclosure / trustee sale"];
         fr.match_confidence = fr.match_confidence || "none";
+        // Batch tagging — records without batch_id are from pre-batch runs
+        if (!fr.batch_id) {
+          fr.batch_id = "B0";
+          fr.batch_label = "Batch 0 — Pre-batch records";
+        }
       });
       // Apply any manual edits from localStorage
       applyManualEdits(FRCL_DATA.records || []);
@@ -1052,6 +1060,31 @@ function populateFilters() {
   document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("batchFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+
+  // Populate batch filter dropdown from foreclosure records
+  const batchMap = new Map();  // batch_id → { label, count }
+  DATA.records.forEach(r => {
+    if (r.batch_id) {
+      if (!batchMap.has(r.batch_id)) {
+        batchMap.set(r.batch_id, { label: r.batch_label || r.batch_id, count: 0 });
+      }
+      batchMap.get(r.batch_id).count++;
+    }
+  });
+  const bsel = document.getElementById("batchFilter");
+  // Sort batches by batch number (B1, B2, B3...)
+  const sortedBatches = [...batchMap.entries()].sort((a, b) => {
+    const numA = parseInt(a[0].replace("B", "")) || 0;
+    const numB = parseInt(b[0].replace("B", "")) || 0;
+    return numB - numA;  // newest first
+  });
+  sortedBatches.forEach(([bid, info]) => {
+    const opt = document.createElement("option");
+    opt.value = bid;
+    opt.textContent = `${info.label} (${info.count})`;
+    bsel.appendChild(opt);
+  });
 }
 
 function getFiltered() {
@@ -1065,9 +1098,11 @@ function getFiltered() {
   const addr  = document.getElementById("addrFilter").value;
   const conf  = document.getElementById("confFilter").value;
   const src   = document.getElementById("sourceFilter").value;
+  const batch = document.getElementById("batchFilter").value;
 
   return DATA.records.filter(r => {
     if (src && (r._source || "clerk") !== src) return false;
+    if (batch && (r.batch_id || "") !== batch) return false;
     // Card filter
     if (cardFilter) {
       if (cardFilter === "addr") {
@@ -1117,6 +1152,7 @@ function resetFilters() {
   document.getElementById("addrFilter").value = "";
   document.getElementById("confFilter").value = "";
   document.getElementById("sourceFilter").value = "";
+  document.getElementById("batchFilter").value = "";
   cardFilter = null;
   selectedRows.clear();
   updateSelectionUI();
@@ -1286,7 +1322,7 @@ function exportCSV(mode) {
     "Flags","Legal Description","Amount",
     "Property Address","Property City","Property State","Property Zip",
     "Mail Address","Mail City","Mail State","Mail Zip",
-    "Match Confidence","Doc #","Source","Clerk URL","HCAD URL"
+    "Match Confidence","Doc #","Batch","Source","Clerk URL","HCAD URL"
   ];
   let csv = headers.join(",") + "\n";
   rows.forEach(r => {
@@ -1302,7 +1338,7 @@ function exportCSV(mode) {
       `"${(r.amount||'').replace(/"/g,'""')}"`,
       `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
       `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
-      r.match_confidence||"none", r.doc_num, r._source||"clerk", r.clerk_url||"", r.hcad_url||""
+      r.match_confidence||"none", r.doc_num, r.batch_id||"", r._source||"clerk", r.clerk_url||"", r.hcad_url||""
     ].join(",") + "\n";
   });
   const suffix = mode === "selected" ? "_selected" : "";
