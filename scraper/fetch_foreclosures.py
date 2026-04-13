@@ -287,9 +287,9 @@ class HCADMatcher:
 
         log.info(f"  Parsing primary address data from: real_acct.txt")
 
-        # Column mapping (71 columns, tab-delimited)
+        # Column mapping (tab-delimited, 0-indexed)
         # acct=0, mailto=2, site_addr_1=17, site_addr_3=19,
-        # mail_city=5, lgl_1=67, lgl_2=68, lgl_3=69
+        # mail_city=5, lgl_1=66, lgl_2=67, lgl_3=68
         count = 0
         for line in lines[1:]:  # skip header
             cols = line.split("\t")
@@ -319,8 +319,8 @@ class HCADMatcher:
                 self.lookup[norm_owner] = info
 
             # Legal description index
-            lgl_1 = cols[67].strip().upper() if len(cols) > 67 else ""
-            lgl_2 = cols[68].strip().upper() if len(cols) > 68 else ""
+            lgl_1 = cols[66].strip().upper() if len(cols) > 66 else ""
+            lgl_2 = cols[67].strip().upper() if len(cols) > 67 else ""
 
             if lgl_1 and lgl_2:
                 # Parse subdivision from lgl_1, block from lgl_2
