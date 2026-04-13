@@ -209,13 +209,13 @@ function parseLegal(text) {
   m = text.match(/SEC(?:TION)?\s+[A-Z\-\s]+\((\d+)\)/i);
   if (m) sec = m[1];
 
-  // Direct numeric: LOT 71
+  // Direct numeric: LOT 71, LT 4, BLOCK 13, BLK 1
   if (!lot) {
-    m = text.match(/LOT\s+(\d+)/i);
+    m = text.match(/(?:LOT|LT)\s+(\d+)/i);
     if (m) lot = m[1];
   }
   if (!blk) {
-    m = text.match(/BLOCK\s+(\d+)/i);
+    m = text.match(/(?:BLOCK|BLK)\s+(\d+)/i);
     if (m) blk = m[1];
   }
   if (!sec) {
@@ -225,11 +225,11 @@ function parseLegal(text) {
 
   // Word numbers without parens: LOT TWENTY-FOUR, BLOCK TWO
   if (!lot) {
-    m = text.match(/LOT\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+IN\b|\s+OF\b|\s+BL)/i);
+    m = text.match(/(?:LOT|LT)\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+IN\b|\s+OF\b|\s+BL)/i);
     if (m) { const n = wordsToNumber(m[1]); if (n) lot = String(n); }
   }
   if (!blk) {
-    m = text.match(/BLOCK\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+OF\b|\s+SEC|\s+A\s)/i);
+    m = text.match(/(?:BLOCK|BLK)\s+([A-Z][A-Z\-\s]+?)(?:\s*,|\s+OF\b|\s+SEC|\s+A\s)/i);
     if (m) { const n = wordsToNumber(m[1]); if (n) blk = String(n); }
   }
   if (!sec) {
@@ -237,29 +237,29 @@ function parseLegal(text) {
     if (m) { const n = wordsToNumber(m[1]); if (n) sec = String(n); }
   }
 
-  // Extract subdivision name — 5 patterns matching Python logic
+  // Extract subdivision name — patterns handle both full words and abbreviations
   // Pattern 1: "OF <NAME>, SEC..."
-  m = text.match(/(?:IN\s+BLOCK\s+\S+\s+OF|,\s+OF)\s+([A-Z][A-Z\s&']+?)(?:\s*,|\s+SEC|\s+A\s+SUB|\s+IN\s+HARRIS)/i);
+  m = text.match(/(?:IN\s+(?:BLOCK|BLK)\s+\S+\s+OF|,\s+OF)\s+([A-Z][A-Z\s&']+?)(?:\s*,|\s+SEC|\s+A\s+SUB|\s+IN\s+HARRIS)/i);
   if (m) subdiv = m[1].trim();
 
   if (!subdiv) {
-    // Pattern 2: "BLOCK X, <NAME> SEC Y"
-    m = text.match(/BLOCK\s+\S+\s*,?\s+([A-Z][A-Z\s&']+?)(?:\s+SEC|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)/i);
+    // Pattern 2: "BLOCK/BLK X, <NAME> SEC Y"
+    m = text.match(/(?:BLOCK|BLK)\s+\S+\s*,?\s+([A-Z][A-Z\s&']+?)(?:\s+SEC|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)/i);
     if (m) { subdiv = m[1].trim().replace(/^OF\s+/i, ""); }
   }
   if (!subdiv) {
     // Pattern 3: "BLOCK WORD (NUM) <NAME> SECTION"
-    m = text.match(/BLOCK\s+[A-Z\-\s]+\(\d+\)\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s+SEC(?:TION)?)/i);
+    m = text.match(/(?:BLOCK|BLK)\s+[A-Z\-\s]+\(\d+\)\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s+SEC(?:TION)?)/i);
     if (m) subdiv = m[1].trim();
   }
   if (!subdiv) {
-    // Pattern 4: "BLOCK NUM <NAME> SECTION"
-    m = text.match(/BLOCK\s+\d+\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s+SEC(?:TION)?|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)/i);
+    // Pattern 4: "BLOCK/BLK NUM <NAME> SEC/SECTION"
+    m = text.match(/(?:BLOCK|BLK)\s+\d+\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s+SEC(?:TION)?|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)/i);
     if (m) subdiv = m[1].trim();
   }
   if (!subdiv) {
-    // Pattern 5: "IN BLOCK ... OF <NAME>" (may be at end of string)
-    m = text.match(/IN\s+BLOCK\s+\S+\s*,?\s+(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s*,|\s+A\s+SUB|\s+IN\s+HARRIS|$)/i);
+    // Pattern 5: "IN BLOCK/BLK ... OF <NAME>" (may be at end of string)
+    m = text.match(/IN\s+(?:BLOCK|BLK)\s+\S+\s*,?\s+(?:OF\s+)?([A-Z][A-Z\s&']+?)(?:\s*,|\s+A\s+SUB|\s+IN\s+HARRIS|$)/i);
     if (m) subdiv = m[1].trim().replace(/^OF\s+/i, "");
   }
   if (!subdiv) {
@@ -268,8 +268,8 @@ function parseLegal(text) {
     if (m) subdiv = m[1].trim();
   }
   if (!subdiv) {
-    // Pattern 7: "BLOCK (NUM), <NAME>" at end (no SEC)
-    m = text.match(/BLOCK\s+(?:[A-Z\-\s]+)?\(?\d+\)?\s*,?\s+([A-Z][A-Z\s&']{3,})$/i);
+    // Pattern 7: "BLOCK/BLK (NUM), <NAME>" at end (no SEC)
+    m = text.match(/(?:BLOCK|BLK)\s+(?:[A-Z\-\s]+)?\(?\d+\)?\s*,?\s+([A-Z][A-Z\s&']{3,})$/i);
     if (m) subdiv = m[1].trim().replace(/^OF\s+/i, "");
   }
 
