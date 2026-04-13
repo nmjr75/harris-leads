@@ -291,6 +291,53 @@
   .addr-cell { max-width: 200px; }
   .owner-cell { max-width: 260px; word-break: break-word; font-size: 0.78rem; }
 
+  /* Editable cells (foreclosure records) */
+  .editable-cell {
+    position: relative;
+    cursor: text !important;
+    border: 1px dashed transparent;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .editable-cell:hover {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.06);
+  }
+  .editable-cell::after {
+    content: "\270E";
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    font-size: 0.65rem;
+    color: var(--accent-light);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .editable-cell:hover::after { opacity: 0.7; }
+  .editable-cell.editing {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.1);
+  }
+  .editable-cell input {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    font-size: 0.78rem;
+    padding: 3px 6px;
+    border-radius: 3px;
+    width: 100%;
+    outline: none;
+  }
+  .editable-cell input:focus { border-color: var(--accent-light); }
+  .edit-saved {
+    animation: editFlash 0.6s ease;
+  }
+  @keyframes editFlash {
+    0% { background: rgba(34,197,94,0.25); }
+    100% { background: transparent; }
+  }
+
   /* Row checkboxes */
   .row-cb, .hdr-cb {
     width: 16px; height: 16px;
@@ -535,6 +582,124 @@ let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
 const PER_PAGE = 50;
 const selectedRows = new Set();  // track selected doc_nums
 
+// ── Manual Edits (localStorage persistence) ──────────────────────
+// Keyed by doc_num → { owner: "...", prop_address: "...", prop_city: "...", ... }
+let manualEdits = {};
+try {
+  const stored = localStorage.getItem("harris_leads_edits");
+  if (stored) manualEdits = JSON.parse(stored);
+} catch(e) { manualEdits = {}; }
+
+function saveEditsToStorage() {
+  try { localStorage.setItem("harris_leads_edits", JSON.stringify(manualEdits)); } catch(e) {}
+}
+
+function applyManualEdits(records) {
+  records.forEach(r => {
+    const edits = manualEdits[r.doc_num];
+    if (edits) {
+      if (edits.owner) r.owner = edits.owner;
+      if (edits.prop_address) r.prop_address = edits.prop_address;
+      if (edits.prop_city) r.prop_city = edits.prop_city;
+      if (edits.prop_state) r.prop_state = edits.prop_state;
+      if (edits.prop_zip) r.prop_zip = edits.prop_zip;
+      if (edits.mail_address) r.mail_address = edits.mail_address;
+      if (edits.mail_city) r.mail_city = edits.mail_city;
+      if (edits.mail_state) r.mail_state = edits.mail_state;
+      if (edits.mail_zip) r.mail_zip = edits.mail_zip;
+      if (edits.amount) r.amount = edits.amount;
+    }
+  });
+}
+
+function startEdit(docNum, field, cellEl) {
+  if (cellEl.classList.contains("editing")) return;
+  cellEl.classList.add("editing");
+
+  const rec = DATA.records.find(r => r.doc_num === docNum);
+  if (!rec) return;
+
+  let currentVal = "";
+  if (field === "owner") {
+    currentVal = rec.owner || "";
+  } else if (field === "prop_address") {
+    currentVal = [rec.prop_address, rec.prop_city, rec.prop_state, rec.prop_zip].filter(Boolean).join(", ");
+  } else if (field === "mail_address") {
+    currentVal = [rec.mail_address, rec.mail_city, rec.mail_state, rec.mail_zip].filter(Boolean).join(", ");
+  } else if (field === "amount") {
+    currentVal = rec.amount || "";
+  }
+
+  const placeholders = {
+    owner: "Enter owner name…",
+    prop_address: "Enter address, city, ST zip…",
+    mail_address: "Enter address, city, ST zip…",
+    amount: "Enter amount (e.g. $250,000)…"
+  };
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = currentVal;
+  input.placeholder = placeholders[field] || "Enter value…";
+
+  cellEl.innerHTML = "";
+  cellEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  function commitEdit() {
+    const val = input.value.trim();
+    cellEl.classList.remove("editing");
+
+    if (!manualEdits[docNum]) manualEdits[docNum] = {};
+
+    if (field === "owner") {
+      rec.owner = val;
+      manualEdits[docNum].owner = val;
+      cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
+    } else if (field === "prop_address" || field === "mail_address") {
+      // Parse "address, city, ST zip" format
+      const prefix = field === "prop_address" ? "prop" : "mail";
+      const parts = val.split(",").map(s => s.trim());
+      if (parts.length >= 2) {
+        rec[prefix + "_address"] = parts[0];
+        const lastPart = parts[parts.length - 1];
+        const stZip = lastPart.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+        if (stZip) {
+          rec[prefix + "_state"] = stZip[1].toUpperCase();
+          rec[prefix + "_zip"] = stZip[2];
+          rec[prefix + "_city"] = parts.length >= 3 ? parts.slice(1, -1).join(", ") : "";
+        } else {
+          rec[prefix + "_city"] = parts.slice(1).join(", ");
+        }
+      } else {
+        rec[prefix + "_address"] = val;
+      }
+      manualEdits[docNum][prefix + "_address"] = rec[prefix + "_address"] || "";
+      manualEdits[docNum][prefix + "_city"] = rec[prefix + "_city"] || "";
+      manualEdits[docNum][prefix + "_state"] = rec[prefix + "_state"] || "";
+      manualEdits[docNum][prefix + "_zip"] = rec[prefix + "_zip"] || "";
+
+      const display = [rec[prefix + "_address"], rec[prefix + "_city"], rec[prefix + "_state"], rec[prefix + "_zip"]].filter(Boolean).join(", ");
+      cellEl.innerHTML = display || '<span style="color:var(--text-muted)">--</span>';
+    } else if (field === "amount") {
+      rec.amount = val;
+      manualEdits[docNum].amount = val;
+      cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
+    }
+
+    saveEditsToStorage();
+    cellEl.classList.add("edit-saved");
+    setTimeout(() => cellEl.classList.remove("edit-saved"), 700);
+  }
+
+  input.addEventListener("blur", commitEdit);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { e.preventDefault(); cellEl.classList.remove("editing"); renderTable(); }
+  });
+}
+
 const COLS = [
   {key: "score", label: "Score", w: "55px"},
   {key: "filed", label: "Filed", w: "90px"},
@@ -547,6 +712,7 @@ const COLS = [
   {key: "legal", label: "Legal Description", w: "200px"},
   {key: "prop_address", label: "Property Address", w: "170px"},
   {key: "mail_address", label: "Mail Address", w: "150px"},
+  {key: "amount", label: "Amount", w: "100px"},
   {key: "match_confidence", label: "Confidence", w: "80px"},
   {key: "doc_num", label: "Doc #", w: "100px"},
   {key: "link", label: "Links", w: "80px"},
@@ -592,9 +758,16 @@ async function loadData() {
         fr.doc_num = fr.doc_id || fr.doc_num || "";
         // Map legal_description to legal
         fr.legal = fr.legal_description || fr.legal || "";
+        // Map property_address → prop_address (scraper vs dashboard field names)
+        fr.prop_address = fr.property_address || fr.prop_address || "";
+        fr.prop_city = fr.property_city || fr.prop_city || "";
+        fr.prop_state = fr.property_state || fr.prop_state || "";
+        fr.prop_zip = fr.property_zip || fr.prop_zip || "";
         fr.flags = fr.flags || ["Pre-foreclosure / trustee sale"];
         fr.match_confidence = fr.match_confidence || "none";
       });
+      // Apply any manual edits from localStorage
+      applyManualEdits(FRCL_DATA.records || []);
       // Merge into main DATA
       DATA.records = DATA.records.concat(FRCL_DATA.records || []);
       DATA.total = DATA.records.length;
@@ -869,18 +1042,27 @@ function renderTable() {
       <td onclick="openModal(${rowIdx})">${r.sale_date || '<span style="color:var(--text-muted)">--</span>'}</td>
       <td onclick="openModal(${rowIdx})"><span class="type-badge">${r.doc_type}</span></td>
       <td onclick="openModal(${rowIdx})">${r.cat_label}</td>
-      <td class="owner-cell" onclick="openModal(${rowIdx})">${r.owner || ""}</td>
+      ${r._source === "foreclosure"
+        ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','owner',this)" title="Double-click to edit">${r.owner || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.owner || ""}</td>`}
       <td class="owner-cell" onclick="openModal(${rowIdx})">${grantorCol}</td>
       <td onclick="openModal(${rowIdx})">${flagsHtml}</td>
       <td onclick="openModal(${rowIdx})">${r.legal || ""}</td>
-      <td class="addr-cell" onclick="openModal(${rowIdx})">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
-      <td class="addr-cell" onclick="openModal(${rowIdx})">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>
+      ${r._source === "foreclosure"
+        ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','prop_address',this)" title="Double-click to edit">${propAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="addr-cell" onclick="openModal(${rowIdx})">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','mail_address',this)" title="Double-click to edit">${mailAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="addr-cell" onclick="openModal(${rowIdx})">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','amount',this)" title="Double-click to edit" style="font-size:0.78rem">${r.amount || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td onclick="openModal(${rowIdx})" style="font-size:0.78rem">${r.amount || '<span style="color:var(--text-muted)">--</span>'}</td>`}
       <td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
       <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="15" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="16" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
