@@ -744,8 +744,9 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             addr = m.group(1).strip()
             city = m.group(2).strip()
             zipcode = m.group(3).strip()
-            # Sanity check: city should be a real word, not OCR junk
-            if len(city) >= 3 and city.isalpha():
+            # Sanity check: city should be real words, not OCR junk
+            # Allow spaces for cities like LA PORTE, LA MARQUE, etc.
+            if len(city) >= 3 and all(c.isalpha() or c == ' ' for c in city):
                 result["property_address"] = addr
                 result["property_city"] = city
                 result["property_state"] = "TX"
@@ -763,19 +764,46 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     # Extract Property / Legal Description section
     # Try multiple patterns since OCR can garble the text
     legal_found = False
-    for pat in [
-        r'(?:described\s+as\s+follows|Property\s+to\s+be\s+sold\s+is\s+described)\s*:?\s*\n?(.*?)(?:Security\s+Instrument|Deed\s+of\s+Trust\s*:|The\s+(?:Security|Deed))',
-        r'Property\s*:\s*.*?(?:described\s+as\s+follows\s*:?)?\s*\n(.*?)(?:Security\s+Instrument|Deed\s+of\s+Trust)',
-        r'(LOT\s+[A-Z\-\s]+\(\d+\).*?(?:HARRIS\s+COUNTY|COUNTY\s*,\s*TEXAS))',
-    ]:
-        m = re.search(pat, full_text, re.DOTALL | re.IGNORECASE)
+
+    # First, check if the document references "Exhibit A" for the legal description
+    # Many foreclosure postings say "described in the attached Exhibit A"
+    exhibit_ref = re.search(
+        r'(?:described\s+in\s+(?:the\s+)?(?:attached\s+)?Exhibit\s+["\']?A["\']?|'
+        r'see\s+(?:attached\s+)?Exhibit\s+["\']?A["\']?|'
+        r'set\s+forth\s+(?:in|on)\s+(?:attached\s+)?Exhibit\s+["\']?A["\']?)',
+        full_text, re.IGNORECASE
+    )
+    if exhibit_ref:
+        # Find the "Exhibit A" header later in the document and grab text after it
+        m = re.search(
+            r'(?:^|\n)\s*(?:EXHIBIT\s+["\']?A["\']?|Exhibit\s+["\']?A["\']?)\s*[\n\r]+'
+            r'(.*?)(?:\n\s*(?:EXHIBIT\s+["\']?B|Exhibit\s+["\']?B)|$)',
+            full_text[exhibit_ref.end():], re.DOTALL | re.IGNORECASE
+        )
         if m:
             legal_block = m.group(1).strip()
             legal_block = re.sub(r'\s+', ' ', legal_block).strip()
+            # Remove boilerplate that sometimes appears at the start of Exhibit A
+            legal_block = re.sub(r'^(?:Legal\s+Description\s*:?\s*|Property\s+Description\s*:?\s*)', '', legal_block, flags=re.IGNORECASE).strip()
             if len(legal_block) > 10:
                 result["legal_description"] = legal_block
                 legal_found = True
-                break
+                log.info(f"  Legal description from Exhibit A: {legal_block[:80]}...")
+
+    if not legal_found:
+        for pat in [
+            r'(?:described\s+as\s+follows|Property\s+to\s+be\s+sold\s+is\s+described)\s*:?\s*\n?(.*?)(?:Security\s+Instrument|Deed\s+of\s+Trust\s*:|The\s+(?:Security|Deed))',
+            r'Property\s*:\s*.*?(?:described\s+as\s+follows\s*:?)?\s*\n(.*?)(?:Security\s+Instrument|Deed\s+of\s+Trust)',
+            r'(LOT\s+[A-Z\-\s]+\(\d+\).*?(?:HARRIS\s+COUNTY|COUNTY\s*,\s*TEXAS))',
+        ]:
+            m = re.search(pat, full_text, re.DOTALL | re.IGNORECASE)
+            if m:
+                legal_block = m.group(1).strip()
+                legal_block = re.sub(r'\s+', ' ', legal_block).strip()
+                if len(legal_block) > 10:
+                    result["legal_description"] = legal_block
+                    legal_found = True
+                    break
 
     # ── Clean up legal description — truncate at boundary phrases ──
     # OCR often captures text beyond the legal description into the next section
@@ -806,21 +834,41 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 ld = ld[:m.end()].strip()
         result["legal_description"] = ld
 
+    # ── Reject legal description if it's clearly boilerplate, not a real legal desc ──
+    if result["legal_description"]:
+        ld_lower = result["legal_description"].lower()
+        boilerplate_phrases = [
+            "property code", "mortgagee", "servicing agreement", "mortgage servicer",
+            "foreclosure of the lien", "virtue of a", "authorized to collect",
+            "pursuant to the", "loancare", "nationstar", "ocwen",
+        ]
+        boilerplate_count = sum(1 for phrase in boilerplate_phrases if phrase in ld_lower)
+        if boilerplate_count >= 2:
+            log.info(f"  Rejected boilerplate legal desc ({boilerplate_count} boilerplate phrases found)")
+            result["legal_description"] = ""
+
     # Extract grantor — try multiple patterns
     # Pattern 1: "executed by GRANTOR NAME"
-    m = re.search(r'(?:executed\s+by|delivered\s+by)\s+([A-Z][A-Za-z\s,\.&]+?)(?:\s*,?\s*as\s+[Gg]rantor|\s+(?:and\s+wife|delivered|executed|in\s+favor|securing|to\s+))',
+    m = re.search(r'(?:executed\s+by|delivered\s+by)\s+([A-Z][A-Za-z\s,\.&]+?)(?:\s*,?\s*as\s+[Gg]rantors?|\s+(?:and\s+wife|delivered|executed|in\s+favor|securing|to\s+))',
                   full_text, re.IGNORECASE)
     if m:
         result["grantor"] = m.group(1).strip().rstrip(",. ")
 
-    # Pattern 2: "WHEREAS, on DATE, GRANTOR NAME, ... as Grantor"
+    # Pattern 2: "WHEREAS, on DATE, GRANTOR NAME, ... as Grantor(s)"
     if not result["grantor"]:
-        m = re.search(r'WHEREAS\s*,\s*on\s+\d+/\d+/\d+\s*,\s*([A-Za-z\s,\.]+?)\s*,\s*(?:and\s+wife|as\s+[Gg]rantor)',
+        m = re.search(r'WHEREAS\s*,\s*on\s+\d+/\d+/\d+\s*,\s*([A-Za-z\s,\.]+?)\s*,\s*(?:and\s+wife|as\s+[Gg]rantors?)',
                       full_text, re.IGNORECASE)
         if m:
             result["grantor"] = m.group(1).strip().rstrip(",. ")
 
-    # Pattern 3: "NAME secures the repay" (OCR-garbled version)
+    # Pattern 3: "with NAME, as grantor(s)" — common in foreclosure postings
+    if not result["grantor"]:
+        m = re.search(r'with\s+([A-Z][A-Za-z\s,\.&]+?)\s*,?\s*as\s+[Gg]rantors?',
+                      full_text, re.IGNORECASE)
+        if m:
+            result["grantor"] = m.group(1).strip().rstrip(",. ")
+
+    # Pattern 4: "NAME secures the repay" (OCR-garbled version)
     if not result["grantor"]:
         m = re.search(r'([A-Z][A-Za-z\s]+?)\s+secures\s+the\s+repa', full_text, re.IGNORECASE)
         if m:
