@@ -449,6 +449,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     """
     result = {
         "grantor": "",
+        "co_borrower": "",
         "property_address": "",
         "property_city": "",
         "property_state": "TX",
@@ -656,22 +657,46 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         g = result["grantor"]
         # Remove newlines and everything after them (OCR artifact)
         if "\n" in g:
-            # Keep text before the first newline that starts with lowercase/junk
             parts = g.split("\n")
             clean_parts = [parts[0]]
             for p in parts[1:]:
                 p_stripped = p.strip()
-                # Keep if it looks like part of a name (e.g., "AND WIFE", "HUSBAND AND WIFE", "AN UNMARRIED WOMAN")
-                if re.match(r'^(?:AND\s+(?:WIFE|HUSBAND)|(?:AN?\s+)?(?:UN)?MARRIED|HUSBAND|WIFE|JR|SR|III?|IV)', p_stripped, re.IGNORECASE):
+                # Keep ONLY if it looks like a continuation name (e.g., "NAHTALY AULD" after "AND YUDITH")
+                # or a suffix like JR, SR, III
+                if re.match(r'^(?:[A-Z][A-Z\s\-\']+(?:,\s*(?:HUSBAND|WIFE|AN?\s+(?:UN)?MARRIED\s+(?:WO)?MAN))?)\s*$', p_stripped, re.IGNORECASE) and len(p_stripped) < 60:
+                    clean_parts.append(p_stripped)
+                elif re.match(r'^(?:JR|SR|III?|IV)\b', p_stripped, re.IGNORECASE):
                     clean_parts.append(p_stripped)
                 else:
                     break  # Stop at first non-name line
             g = " ".join(clean_parts)
-        # Remove common OCR junk phrases that get captured
-        g = re.sub(r'\s+(?:payment|ayment|indebtedness|securing|of\s+the|in\s+favor|the\s+repay|but\s+not\s+limited).*', '', g, flags=re.IGNORECASE)
+        # Remove common OCR junk phrases that get captured (tolerant of garbled first letter)
+        g = re.sub(r'\s+(?:p?ayment|indebtedness|securing|of\s+the|in\s+favor|the\s+repay|but\s+not\s+limited|pursuant|default|note\s+dated|deed\s+of).*', '', g, flags=re.IGNORECASE)
+        # Strip trailing "AND" when no co-borrower name follows
+        g = re.sub(r'\s+AND\s*$', '', g, flags=re.IGNORECASE)
+        # Strip marital status descriptors
+        g = re.sub(r',?\s*(?:AN?\s+)?(?:UN)?MARRIED\s+(?:WO)?MAN\b', '', g, flags=re.IGNORECASE)
+        g = re.sub(r',?\s*(?:HUSBAND(?:\s+AND\s+WIFE)?|WIFE(?:\s+AND\s+HUSBAND)?)\s*$', '', g, flags=re.IGNORECASE)
         # Remove trailing junk punctuation
         g = g.strip().rstrip(",. ;:")
         result["grantor"] = g
+
+    # Split borrower / co-borrower on " AND "
+    result["co_borrower"] = ""
+    if result["grantor"] and " AND " in result["grantor"].upper():
+        name_parts = re.split(r'\s+AND\s+', result["grantor"], maxsplit=1, flags=re.IGNORECASE)
+        if len(name_parts) == 2:
+            borrower = name_parts[0].strip().rstrip(",. ;:")
+            co = name_parts[1].strip().rstrip(",. ;:")
+            # Only split if both parts look like names (2+ chars, mostly alpha)
+            alpha_chars_b = sum(c.isalpha() or c == ' ' for c in borrower)
+            alpha_chars_c = sum(c.isalpha() or c == ' ' for c in co)
+            if alpha_chars_b > 3 and alpha_chars_c > 3:
+                result["grantor"] = borrower
+                # Clean marital status from co-borrower too
+                co = re.sub(r',?\s*(?:AN?\s+)?(?:UN)?MARRIED\s+(?:WO)?MAN\b', '', co, flags=re.IGNORECASE)
+                co = re.sub(r',?\s*(?:HUSBAND(?:\s+AND\s+WIFE)?|WIFE(?:\s+AND\s+HUSBAND)?)\s*$', '', co, flags=re.IGNORECASE)
+                result["co_borrower"] = co.strip().rstrip(",. ;:")
 
     # Extract amount — multiple patterns
     m = re.search(r'(?:amount\s+of|sum\s+of)\s+\$?([\d,]+(?:\.\d{2})?)', full_text, re.IGNORECASE)
