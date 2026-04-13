@@ -337,6 +337,30 @@
     0% { background: rgba(34,197,94,0.25); }
     100% { background: transparent; }
   }
+  /* Undo button */
+  .btn-undo {
+    background: rgba(239,68,68,0.15);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.3);
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-undo:hover:not(:disabled) {
+    background: rgba(239,68,68,0.25);
+    border-color: var(--red);
+  }
+  .btn-undo:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .undo-info {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
 
   /* Row checkboxes */
   .row-cb, .hdr-cb {
@@ -551,6 +575,7 @@
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
     <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
+    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
   <span class="showing-label" id="showingLabel"></span>
@@ -592,6 +617,93 @@ try {
 
 function saveEditsToStorage() {
   try { localStorage.setItem("harris_leads_edits", JSON.stringify(manualEdits)); } catch(e) {}
+}
+
+// ── Undo History ──────────────────────────────────────────────────
+// Each entry: { docNum, field, oldVal, newVal, timestamp }
+// oldVal is an object for address fields: { address, city, state, zip }
+let undoStack = [];
+try {
+  const stored = localStorage.getItem("harris_leads_undo");
+  if (stored) undoStack = JSON.parse(stored);
+} catch(e) { undoStack = []; }
+
+function saveUndoToStorage() {
+  // Keep last 50 undos max
+  if (undoStack.length > 50) undoStack = undoStack.slice(-50);
+  try { localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack)); } catch(e) {}
+}
+
+function pushUndo(docNum, field, oldVal, newVal) {
+  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now() });
+  saveUndoToStorage();
+  updateUndoUI();
+}
+
+function updateUndoUI() {
+  const btn = document.getElementById("undoBtn");
+  const info = document.getElementById("undoInfo");
+  if (!btn) return;
+  if (undoStack.length === 0) {
+    btn.disabled = true;
+    if (info) info.textContent = "";
+  } else {
+    btn.disabled = false;
+    const last = undoStack[undoStack.length - 1];
+    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal" };
+    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum}`;
+  }
+}
+
+function undoLastEdit() {
+  if (undoStack.length === 0) return;
+  const entry = undoStack.pop();
+  saveUndoToStorage();
+
+  const rec = DATA.records.find(r => r.doc_num === entry.docNum);
+  if (!rec) { updateUndoUI(); return; }
+
+  // Restore the old value
+  if (entry.field === "prop_address" || entry.field === "mail_address") {
+    const prefix = entry.field === "prop_address" ? "prop" : "mail";
+    const old = entry.oldVal || {};
+    rec[prefix + "_address"] = old.address || "";
+    rec[prefix + "_city"] = old.city || "";
+    rec[prefix + "_state"] = old.state || "";
+    rec[prefix + "_zip"] = old.zip || "";
+    // Update manualEdits
+    if (manualEdits[entry.docNum]) {
+      if (old.address || old.city || old.state || old.zip) {
+        manualEdits[entry.docNum][prefix + "_address"] = old.address || "";
+        manualEdits[entry.docNum][prefix + "_city"] = old.city || "";
+        manualEdits[entry.docNum][prefix + "_state"] = old.state || "";
+        manualEdits[entry.docNum][prefix + "_zip"] = old.zip || "";
+      } else {
+        delete manualEdits[entry.docNum][prefix + "_address"];
+        delete manualEdits[entry.docNum][prefix + "_city"];
+        delete manualEdits[entry.docNum][prefix + "_state"];
+        delete manualEdits[entry.docNum][prefix + "_zip"];
+      }
+    }
+  } else {
+    rec[entry.field] = entry.oldVal || "";
+    if (manualEdits[entry.docNum]) {
+      if (entry.oldVal) {
+        manualEdits[entry.docNum][entry.field] = entry.oldVal;
+      } else {
+        delete manualEdits[entry.docNum][entry.field];
+      }
+      // Clean up empty edit objects
+      if (Object.keys(manualEdits[entry.docNum]).length === 0) {
+        delete manualEdits[entry.docNum];
+      }
+    }
+  }
+
+  saveEditsToStorage();
+  updateUndoUI();
+  renderTable();
+  renderPagination();
 }
 
 function applyManualEdits(records) {
@@ -659,15 +771,34 @@ function startEdit(docNum, field, cellEl) {
     const val = input.value.trim();
     cellEl.classList.remove("editing");
 
+    // Skip if nothing changed
+    if (val === currentVal) {
+      cellEl.innerHTML = currentVal || '<span style="color:var(--text-muted)">--</span>';
+      if (field === "prop_address" || field === "mail_address") {
+        const pfx = field === "prop_address" ? "prop" : "mail";
+        const disp = [rec[pfx+"_address"], rec[pfx+"_city"], rec[pfx+"_state"], rec[pfx+"_zip"]].filter(Boolean).join(", ");
+        cellEl.innerHTML = disp || '<span style="color:var(--text-muted)">--</span>';
+      }
+      return;
+    }
+
     if (!manualEdits[docNum]) manualEdits[docNum] = {};
 
     if (field === "owner" || field === "co_borrower" || field === "legal") {
+      pushUndo(docNum, field, currentVal, val);
       rec[field] = val;
       manualEdits[docNum][field] = val;
       cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
     } else if (field === "prop_address" || field === "mail_address") {
-      // Parse "address, city, ST zip" format
+      // Snapshot old address components for undo
       const prefix = field === "prop_address" ? "prop" : "mail";
+      pushUndo(docNum, field, {
+        address: rec[prefix + "_address"] || "",
+        city: rec[prefix + "_city"] || "",
+        state: rec[prefix + "_state"] || "",
+        zip: rec[prefix + "_zip"] || ""
+      }, val);
+      // Parse "address, city, ST zip" format
       const parts = val.split(",").map(s => s.trim());
       if (parts.length >= 2) {
         rec[prefix + "_address"] = parts[0];
@@ -691,6 +822,7 @@ function startEdit(docNum, field, cellEl) {
       const display = [rec[prefix + "_address"], rec[prefix + "_city"], rec[prefix + "_state"], rec[prefix + "_zip"]].filter(Boolean).join(", ");
       cellEl.innerHTML = display || '<span style="color:var(--text-muted)">--</span>';
     } else if (field === "amount") {
+      pushUndo(docNum, field, currentVal, val);
       rec.amount = val;
       manualEdits[docNum].amount = val;
       cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
@@ -1317,6 +1449,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal()
 
 // ── Init ───────────────────────────────────────────────────────────
 loadData();
+updateUndoUI();
 </script>
 </body>
 </html>
