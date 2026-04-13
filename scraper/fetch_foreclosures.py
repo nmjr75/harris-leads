@@ -1394,9 +1394,6 @@ def main():
     if len(new_listings) >= 100:
         try:
             hcad.load(hcad_session)
-            # Export lookup JSON for the standalone legal-description search tool
-            lookup_path = DASHBOARD_DIR / "hcad_lookup.json"
-            hcad.export_lookup(str(lookup_path))
         except Exception as e:
             log.warning(f"HCAD bulk load failed (will use API fallback): {e}")
     else:
