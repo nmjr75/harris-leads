@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-04-12T23:41:46.080411Z",
+  "fetched_at": "2026-04-13T00:13:10.541169Z",
   "source": "Harris County Clerk - Foreclosure Postings (cclerk.hctx.net)",
   "target_months": [
     "May 2026",
@@ -7,7 +7,7 @@
     "July 2026"
   ],
   "total": 10,
-  "with_address": 0,
+  "with_address": 1,
   "records": [
     {
       "doc_id": "FRCL-2026-1275",
@@ -16,19 +16,19 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
-      "grantor": "",
-      "amount": "",
-      "mortgagee": "",
+      "date_scraped": "2026-04-13",
+      "grantor": "Trust IANCA MARES",
+      "amount": "$220,924.00",
+      "mortgagee": "the mortgagee",
       "legal_description": "",
-      "prop_address": "Not found",
-      "prop_city": "",
+      "prop_address": "3827 VINEYARD DR",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
-      "match_confidence": "none",
+      "prop_zip": "77082",
+      "match_confidence": "high",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NUNXeLVZTKlhHSbKofnpRC4yAF1U9QJAGUsVexz9ZJcoNa8aB7U65dDWZpkj0Bl4O76ntW6cEPwC+aYkVl/z6OqirhF9fvhnwNGWY4MWL8qY",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1254",
@@ -37,10 +37,10 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
-      "grantor": "",
+      "date_scraped": "2026-04-13",
+      "grantor": "ELENA PATRICIA PUENTE, AN UNMARRIED WOMAN",
       "amount": "",
-      "mortgagee": "",
+      "mortgagee": "NewRez LLC",
       "legal_description": "",
       "prop_address": "Not found",
       "prop_city": "",
@@ -49,7 +49,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVQe1z/zDvxZfHmG2hpbfpvOyAAnBZNvkawdl43VR4Q7xNuezbrXntguAuEM2BKQhAOBRTBdkYUcqJkqQOMZjrji",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1281",
@@ -58,10 +58,10 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
-      "grantor": "",
-      "amount": "",
-      "mortgagee": "",
+      "date_scraped": "2026-04-13",
+      "grantor": "SIENA LEE SCHICKEL AN UNMARRIED\nWOMAN",
+      "amount": "$139,428.00",
+      "mortgagee": "authorized to collect the debt and to administer any resulting foreclosure of the lien securing the\nProperty referenced above",
       "legal_description": "",
       "prop_address": "Not found",
       "prop_city": "",
@@ -70,7 +70,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVRUdXRphbbNCtY+AusTeJUlD5dyIDZQd9g01NbOd3mK4Wigs+/fhyQ/GR3a4S1E2fGQxmBYI0Cge+dx0/xCXGnD",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1282",
@@ -79,11 +79,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
+      "date_scraped": "2026-04-13",
       "grantor": "",
-      "amount": "",
-      "mortgagee": "",
-      "legal_description": "",
+      "amount": "$222,888.00",
+      "mortgagee": "aut ed to,\nservicing agreement with the Mortgagee",
+      "legal_description": "in the attach the Mortgagee by virtue of a s Property Code \u00a7 51.0025, the foreclosure of the lien securing the ig thes.currents,mortgagee, whose address 6. Mortgage Servicer Information. The Mortgage Servicer is aut ed to, servicing agreement with the Mortgagee. Pursuant to the Servicing Agreement Mortgage Servicer is authorized to collect the debt and to administer any Property referenced above. LOANCARE, LLC, as Mortgage Servicer, is repres is: c/o LOANCARE, LLC 3637 SENTARA WAY VIRGINIA BEACH, VA 23452 O y EO NOUAA EA FCTX_NTSS.rpt (11/17/2020)-S Ver-03 NTSS00000010557254 Page | of 3 TENESHIA HUDSPETH, COUNTY CLERK, HARRIS COUNTY, TEXAS FRCL-2026-1282 FILED 2/19/2026 9:20:15 AM 757 SUGAR HILL DR 0000010557254 LA PORTE, TX 77571 THIS INSTRUMENT APPOINTS TH DESCRIBED IN",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -91,7 +91,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVT4EUcNzkRN3Gp1GJTK8SVBuYZWdkcR1ImYL/OFYGG1bQTE1ChdLEMzEN4chKUV6HzAx7c9PlcfyMrUukLMMBkl",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1283",
@@ -100,11 +100,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
+      "date_scraped": "2026-04-13",
       "grantor": "",
       "amount": "",
-      "mortgagee": "",
-      "legal_description": "",
+      "mortgagee": "orized to represent the Mortgagee by virtue of a\nservicing agreement with the Mortgagee",
+      "legal_description": "in the attac! 6. Mortgage Servicer Information. The Mortgage Servicer is orized to represent the Mortgagee by virtue of a servicing agreement with the Mortgagee. Pursuant to the Servicing and Texas Property Code \u00a7 51,0025, the Mortgage Servicer is authorized to collect the debt and to administer i reclosure of the lien securing the Property referenced above. WELLS FARGO BANK, N.A., as Mortgag! i is representing the current mortgagee, whose address is: c/o WELLS FARGO BANK, N.A. 3476 STATEVIEW BLVD FORT MILL, SC 29715 YO \u201cesse LTCC EMNN TENESHIA HUDSPETH, COUNTY CLERK, HARRIS COUNTY, TEXAS FRCL-2026-1283 FILED 2/19/2026 9:20:15 AM 3312 ORCHID TRACE LANE 00000010732717 TRUMENT APPOINTS THE SUBSTITUTE TRUSTEE(S) IDENTIFIED TO SELL THE PROPERTY DES ED IN",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -112,7 +112,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVQ+yNO3QRRhnzkPVkE0tOcWKQ9dJrJpmX7GMyaToRHidEvTuwApcVBw99+Q3nM/0Z2sVWI9bRBetjOZSNt817mM",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1284",
@@ -121,11 +121,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
+      "date_scraped": "2026-04-13",
       "grantor": "",
-      "amount": "",
-      "mortgagee": "",
-      "legal_description": "",
+      "amount": "$132,949.00",
+      "mortgagee": "authorize\nProperty referenced above",
+      "legal_description": "LOT NINETEEN (19), IN BLOCK FOUR (4), RECORDED UNDER FILM CODE NO. 581163 OF THE MAP RECORDS OF ACCORDING TO THE MAP OR PLAT THEREO HARRIS COUNTY",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -133,7 +133,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVSCqBNxqfvl6S5eJA4dXxyYCpDMzOLREQJGpXLenMtUxllZuS4nVfq2fGDF7zDOCQrUbPbx4rSSMusKAsvtIfDb",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1285",
@@ -142,11 +142,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
-      "grantor": "",
-      "amount": "",
-      "mortgagee": "",
-      "legal_description": "",
+      "date_scraped": "2026-04-13",
+      "grantor": "DAVID MARCELINO TRUJILLO AND\nayment of the indebtednesses in the original principal\ng but not limited",
+      "amount": "$306,450.00",
+      "mortgagee": "authorized to represent the Mortgagee by virtue of a\nservicing agreement with the Mortgagee",
+      "legal_description": "iff the attached Exhibit A. 6. Mortgage Servicer Information. The Mortgage Servicer is authorized to represent the Mortgagee by virtue of a servicing agreement with the Mortgagee. Pursuant to the Servicing Agreement and Texas Property Code \u00a7 51.0025, the Mortgage Servicer is authorized to collect the debt and to administer any resulting foreclosure of the lien securing the Property referenced above. LOANCARE, LLC, as Mortgage Servicer, is representing the current mortgagee, whose address is: c/o LOANCARE, LLC 3637 SENTARA WAY VIRGINIA BEACH, VA 23452 I OA FCTX_NTSS spt (11/17/2020)-S_ Ver-03 $00000008233603 Page | of 3 TENESHIA HUDSPETH, COUNTY CLERK, HARRIS COUNTY, TEXAS FRCL-2026-1285 FILED 2/19/2026 9:20:15 AM 10810 SILVERADO TRACE DR : 00000008233603 HOUSTON, TX 77095 THIS INSTRUMENT APPOINTS THE SUBSTITUTE TRUSTEE(S) IDENTIFIED TO SELL THE PROPERTY DESCRIBED IN",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -154,7 +154,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVRh57zz7sHk4O3JxnwzRQIh0AbsF+lW1KIOi43s86sKO5yxinJ4VzIv8pzCOD7S/UDdNYsXMwxIsbSPiFVSZu0q",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1286",
@@ -163,11 +163,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
-      "grantor": "",
-      "amount": "",
-      "mortgagee": "",
-      "legal_description": "",
+      "date_scraped": "2026-04-13",
+      "grantor": "CHARLES VICTOR AULD AND YUDITH\nNAHTALY AULD, HUSBAND",
+      "amount": "$175,444.00",
+      "mortgagee": "authorized to represent the Mortgagee by virtue of a\nservicing agreement with the Mortgagee",
+      "legal_description": "in the attached Exhibit A. 6. Mortgage Servicer Information. The Mortgage Servicer is authorized to represent the Mortgagee by virtue of a servicing agreement with the Mortgagee. Pursuant to the Servicing Agreement and Texas Property Code \u00a7 51.0025, the Mortgage Servicer is authorized to collect the debt and to administer any resulting foreclosure of the lien securing \u2018the Property referenced above. LOA LC; as Mortgage Servicer, is representing the current. mortgagee, whose address is: c/o LOANCARE, LLC 3637 SENTARA WAY VIRGINIA BEACH, VA 234 FCTX_NTSS pt (11/17/2020)-S \\ NTSS00000010587574 Page 1 of 3 FRCL-2026-1286 FILED 2/19/2026 9:20:15 AM TENESHIA HUDSPETH, COUNTY CLERK, HARRIS COUNTY, TEXAS _ Date: 807 KILEY DR . : o , . 00000010587574 HOUSTON, TX 77073 : THIS INSTRUMENT APPOINTS THE SUBSTITUTE TRUSTEE(S) IDENTIFIED TO PROPERTY DESCRIBED IN",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -175,7 +175,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVSKJKgULOL5PokyAnYHdedd0kpEE2D3JnejzaJur+zBzAPDpL9YaGtLL5Ru56Ry5O/Be1/7P3XSKZENwPDDSyIw",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1287",
@@ -184,11 +184,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
+      "date_scraped": "2026-04-13",
       "grantor": "",
-      "amount": "",
+      "amount": "$428,041.00",
       "mortgagee": "",
-      "legal_description": "",
+      "legal_description": "in the ai ied Exhibit A. 6. Mortgage Servicer Information. The Mortgage: Servicer authorized to represent the Mortgagee by virtue of a servicing agreement with the Mortgagee. Pursuant to the Servicing Agreement and Texas Property Code \u00a7 51.0025, the Mortgage Servicer is authorized to collect the debt atid administer any resulting foreclosure of the lien securing the Property \u00a9 referenced above. MIDLAND MORTGAGE, VISION OF MIDFIRST BANK, as Mortgage Servicer, is representing the current mortgagee, whose address is: : c/o MIDLAND MORTGAGE, A DIVISION OF MIDFIRST 999 N.W. GRAND BLVD STE 110 OKLAHOMA CITY, OK 73118-6077 UNIAN A FCTX_NTSS.mt (11/17/2020)-S Ver-03 NTSS00000010729127 Page | of 3 TENESHIA HUDSPETH, COUNTY CLERK, HARRIS COUNTY, TEXAS FRCL-2026-1287 FILED 2/19/2026 9:20:15 AM 2016 BRISTOL CLIFF LANE 00000010729127 PEARLAND, TX 77089 THIS INSTRUMENT APPOINTS THE SUBSTITUTE TEE(S) IDENTIFIED TO SELL THE PROPERTY DESCRIBED IN",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -196,7 +196,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NdRpQgMQd0Nsa06X5vPrNVRv3GzDS5V1UE2ylIwv9yWM7RHa0EbeFfq3sNxRR0IJ8zLZCFwYIgrNQN/F7LU16AGCH40bGZzJAc3874VBJUIo",
-      "needs_ocr": true
+      "needs_ocr": false
     },
     {
       "doc_id": "FRCL-2026-1235",
@@ -205,11 +205,11 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "05/05/2026",
       "file_date": "02/19/2026",
-      "date_scraped": "2026-04-12",
-      "grantor": "",
-      "amount": "",
+      "date_scraped": "2026-04-13",
+      "grantor": "Tesia Rechette Harbour a single person",
+      "amount": "$219,942",
       "mortgagee": "",
-      "legal_description": "",
+      "legal_description": "Lot Five (5), In Block Two (2), Of Remmgton Creek Ranch Sec Five (5), A Subdivision in Harris County",
       "prop_address": "Not found",
       "prop_city": "",
       "prop_state": "TX",
@@ -217,7 +217,7 @@
       "match_confidence": "none",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NUNXeLVZTKlhHSbKofnpRC4lb3MpvwtXif6Tce7x41E8KZC7Vwr3j1Bebapqs9OsdruilKonJf581GFVq1NM6cweWMgIvTA2jO5CM258D+bf",
-      "needs_ocr": true
+      "needs_ocr": false
     }
   ]
 }
