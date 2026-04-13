@@ -188,19 +188,57 @@ def convert_legal_numbers(text: str) -> str:
 
     # Extract subdivision name
     subdiv = None
-    # Pattern: "OF <SUBDIVISION NAME>, SEC..."  or  "OF <NAME>, A SUBDIVISION"
+    # Pattern 1: "OF <SUBDIVISION NAME>, SEC..."  or  "OF <NAME>, A SUBDIVISION"
     m = re.search(r'(?:IN\s+BLOCK\s+\S+\s+OF|,\s+OF)\s+([A-Z][A-Z\s&\']+?)(?:\s*,|\s+SEC|\s+A\s+SUB|\s+IN\s+HARRIS)',
                   text, re.IGNORECASE)
     if m:
         subdiv = m.group(1).strip()
-    else:
-        # Try: "BLOCK X, <NAME> SEC Y"
+
+    if not subdiv:
+        # Pattern 2: "BLOCK X, <NAME> SEC Y"
         m = re.search(r'BLOCK\s+\S+\s*,?\s+([A-Z][A-Z\s&\']+?)(?:\s+SEC|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)',
                       text, re.IGNORECASE)
         if m:
             subdiv = m.group(1).strip()
-            # Remove leading "OF " if present
             subdiv = re.sub(r'^OF\s+', '', subdiv, flags=re.IGNORECASE)
+
+    if not subdiv:
+        # Pattern 3: "BLOCK WORD (NUM) <SUBDIVISION> SECTION" — common in foreclosure OCR
+        m = re.search(r'BLOCK\s+[A-Z\-\s]+\(\d+\)\s+([A-Z][A-Z\s&\']+?)(?:\s+SEC(?:TION)?)',
+                      text, re.IGNORECASE)
+        if m:
+            subdiv = m.group(1).strip()
+
+    if not subdiv:
+        # Pattern 4: "BLOCK NUM <SUBDIVISION> SECTION" (no parenthesized number)
+        m = re.search(r'BLOCK\s+\d+\s*,?\s*(?:OF\s+)?([A-Z][A-Z\s&\']+?)(?:\s+SEC(?:TION)?|\s*,\s*A\s+SUB|\s+IN\s+HARRIS)',
+                      text, re.IGNORECASE)
+        if m:
+            subdiv = m.group(1).strip()
+
+    if not subdiv:
+        # Pattern 5: "IN BLOCK ... OF <SUBDIVISION>" without SEC following
+        m = re.search(r'IN\s+BLOCK\s+\S+\s*,?\s+(?:OF\s+)?([A-Z][A-Z\s&\']+?)(?:\s*,|\s+A\s+SUB|\s+IN\s+HARRIS)',
+                      text, re.IGNORECASE)
+        if m:
+            subdiv = m.group(1).strip()
+            subdiv = re.sub(r'^OF\s+', '', subdiv, flags=re.IGNORECASE)
+
+    # Clean subdivision name
+    if subdiv:
+        # Strip leading "OF" that sometimes gets captured
+        subdiv = re.sub(r'^OF\s+', '', subdiv, flags=re.IGNORECASE).strip()
+        # Fix common OCR garbles in subdivision names
+        subdiv = re.sub(r'FORTST\b', 'FOREST', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'FORST\b', 'FOREST', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'ESTAT\b', 'ESTATE', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'ESTAT5\b', 'ESTATES', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'ESTAT[E3]S?\b', 'ESTATES', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'VILLAG\b', 'VILLAGE', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'HEIGH?TS?\b', 'HEIGHTS', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'GARDNS?\b', 'GARDENS', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'MANOH\b', 'MANOR', subdiv, flags=re.IGNORECASE)
+        subdiv = re.sub(r'PLAC\b', 'PLACE', subdiv, flags=re.IGNORECASE)
 
     return {
         "lot": lot_num,
@@ -339,6 +377,33 @@ class HCADMatcher:
             key_sec = f"{subdiv_norm} SEC {sec}|BLK{blk}"
             if key_sec in self.legal_index:
                 return self.legal_index[key_sec]
+
+        # Fuzzy match: find HCAD keys that contain a similar subdivision name
+        # This handles OCR garbles like "RDE FOREST" → "JADE FOREST" or "LAKEWOOD FORTST" → "LAKEWOOD FOREST"
+        if len(subdiv_norm) >= 5:
+            # Extract all words from the subdivision name
+            subdiv_words = subdiv_norm.split()
+            best_match = None
+            best_score = 0
+            suffix = f"|BLK{blk}"
+            for hcad_key in self.legal_index:
+                if not hcad_key.endswith(suffix):
+                    continue
+                hcad_subdiv = hcad_key.replace(suffix, "")
+                # Check if SEC matches when present
+                if sec and f"SEC {sec}" not in hcad_subdiv and f"SEC {sec}" in key_sec:
+                    continue
+                # Score: count matching words (at least half must match)
+                hcad_words = hcad_subdiv.split()
+                matching = sum(1 for w in subdiv_words if w in hcad_words)
+                # Also check if the first significant word matches (most reliable)
+                first_word_match = len(subdiv_words) > 0 and len(hcad_words) > 0 and subdiv_words[0] == hcad_words[0]
+                if matching >= len(subdiv_words) * 0.5 and first_word_match and matching > best_score:
+                    best_score = matching
+                    best_match = hcad_key
+            if best_match:
+                log.info(f"  Fuzzy legal match: '{subdiv_norm}' → '{best_match.split('|')[0]}'")
+                return self.legal_index[best_match]
 
         return None
 
@@ -589,6 +654,24 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             r"STREET|ROAD|DRIVE|LANE|COURT|AVENUE|BOULEVARD|PLACE|"
             r"CIRCLE|TRAIL|PARKWAY|COVE)")
 
+    # Known foreclosure auction venues and courthouse addresses — NOT property addresses
+    # These appear in every document and must be excluded
+    _VENUE_PATTERNS = [
+        r'9401\s+KNIGHT',        # Bayou City Event Center (auction venue)
+        r'401\s+KNI[GC]HT',     # OCR-garbled version of 9401 Knight
+        r'201\s+CAROLINE',       # Harris County Civil Courthouse
+        r'1001\s+PRESTON',       # Harris County Admin Building
+        r'SENTARA\s+WAY',        # LoanCare LLC (common servicer address)
+        r'CONGRESS\s+(?:AVE|ST)', # Government buildings
+    ]
+
+    def _is_venue_address(addr_str):
+        """Check if an address matches a known auction venue or courthouse."""
+        for pat in _VENUE_PATTERNS:
+            if re.search(pat, addr_str, re.IGNORECASE):
+                return True
+        return False
+
     # Check for address at top of document (first 10 lines)
     for line in lines[:10]:
         line_s = line.strip()
@@ -653,53 +736,13 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 result["property_zip"] = zipcode
                 log.info(f"  Address (broad match): {addr}, {city}, TX {zipcode}")
 
-    # ── Smart Texas Address Finder (final fallback) ──────────────
-    # Scan entire document for ALL Texas addresses, pick the best one
-    # This catches addresses in unexpected locations that the specific patterns miss
-    if not result["property_address"]:
-        tx_addresses = []
-        # Find all occurrences of "NUMBER WORDS SUFFIX ... CITY, TX ZIP" in the text
-        for m in re.finditer(
-            r'(\d{2,6}\s+[A-Z][A-Z\s]{2,30}?' + _SFX + r'\.?)'
-            r'[^A-Za-z]{0,30}?'  # up to 30 chars of non-alpha (acct #, OCR junk, commas)
-            r'([A-Z][A-Za-z\s]{2,20}?)\s*,?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)',
-            full_text, re.IGNORECASE
-        ):
-            addr = m.group(1).strip()
-            city = m.group(2).strip()
-            zipcode = m.group(3).strip()
-            # Filter out junk matches
-            if not city.isalpha() or len(city) < 3:
-                continue
-            # Skip servicer/lender addresses (Virginia Beach, etc. won't match TX)
-            # Skip addresses that are clearly the county clerk / courthouse
-            if re.search(r'CONGRESS|FANNIN|CAPITOL|COURTHOUSE', addr, re.IGNORECASE):
-                continue
-            tx_addresses.append((addr, city, zipcode, m.start()))
-
-        if len(tx_addresses) == 1:
-            # Only one Texas address found — very likely the property
-            a = tx_addresses[0]
-            result["property_address"] = a[0]
-            result["property_city"] = a[1]
-            result["property_state"] = "TX"
-            result["property_zip"] = a[2]
-            log.info(f"  Address (smart finder, sole match): {a[0]}, {a[1]}, TX {a[2]}")
-        elif len(tx_addresses) > 1:
-            # Multiple TX addresses — pick the one that appears AFTER the filing stamp
-            # or the first residential-looking one (not a PO box or suite)
-            best = None
-            for a in tx_addresses:
-                if re.search(r'P\.?O\.?\s+BOX|SUITE\s+\d|STE\s+\d|FLOOR\s+\d', a[0], re.IGNORECASE):
-                    continue  # skip commercial/PO addresses
-                if best is None:
-                    best = a
-            if best:
-                result["property_address"] = best[0]
-                result["property_city"] = best[1]
-                result["property_state"] = "TX"
-                result["property_zip"] = best[2]
-                log.info(f"  Address (smart finder, best of {len(tx_addresses)}): {best[0]}, {best[1]}, TX {best[2]}")
+    # ── Validate extracted address — reject auction venues ──────
+    if result["property_address"] and _is_venue_address(result["property_address"]):
+        log.info(f"  Rejected venue address: {result['property_address']} — not a property")
+        result["property_address"] = ""
+        result["property_city"] = ""
+        result["property_state"] = "TX"
+        result["property_zip"] = ""
 
     # Extract Property / Legal Description section
     # Try multiple patterns since OCR can garble the text
@@ -717,6 +760,35 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 result["legal_description"] = legal_block
                 legal_found = True
                 break
+
+    # ── Clean up legal description — truncate at boundary phrases ──
+    # OCR often captures text beyond the legal description into the next section
+    if result["legal_description"]:
+        ld = result["legal_description"]
+        # Cut at common boundary phrases that signal end of legal description
+        for boundary in [
+            r'(?:[,:\s]+\d*\s*Instr[ua]n?[mt]en?t\s+to[\s-]+be)',  # "Instruntent to be", "Instrament to-be"
+            r'(?:The\s+[Ii]nstr[ua]n?[mt]en?t\s+to[\s-]+be)',      # "The instrument to be"
+            r'(?:The\s+mstr[au]ment\s+to[\s-]+be)',                 # "The mstrament to be"
+            r'(?:\d+\s+[Ii]nstr[ua]n?[mt]en?t\s+to)',              # "2 Instrament to"
+            r'(?:to[\s-]+be\s+[Ff]oreclosed)',                      # "to be Foreclosed" / "to-be Foreclosed"
+            r'(?:be\s+[Ff]oreclosed\s+The)',                        # "be Foreclosed The"
+            r'(?:Security\s+Instrument)',
+            r'(?:Deed\s+of\s+Trust)',
+        ]:
+            m = re.search(boundary, ld, re.IGNORECASE)
+            if m:
+                ld = ld[:m.start()].strip()
+                break
+        # Final cleanup — strip trailing junk punctuation and stray numbers
+        ld = re.sub(r'[,:;\.\s\d]+$', '', ld)
+        # Truncate at "HARRIS COUNTY TEXAS" if still too long
+        if len(ld) > 200:
+            # Try to cut at last "HARRIS COUNTY" or "COUNTY TEXAS"
+            m = re.search(r'(?:HARRIS\s+COUNTY|COUNTY\s*,?\s*TEXAS)', ld, re.IGNORECASE)
+            if m:
+                ld = ld[:m.end()].strip()
+        result["legal_description"] = ld
 
     # Extract grantor — try multiple patterns
     # Pattern 1: "executed by GRANTOR NAME"
