@@ -599,6 +599,8 @@ function applyManualEdits(records) {
     const edits = manualEdits[r.doc_num];
     if (edits) {
       if (edits.owner) r.owner = edits.owner;
+      if (edits.co_borrower) r.co_borrower = edits.co_borrower;
+      if (edits.legal) r.legal = edits.legal;
       if (edits.prop_address) r.prop_address = edits.prop_address;
       if (edits.prop_city) r.prop_city = edits.prop_city;
       if (edits.prop_state) r.prop_state = edits.prop_state;
@@ -622,19 +624,25 @@ function startEdit(docNum, field, cellEl) {
   let currentVal = "";
   if (field === "owner") {
     currentVal = rec.owner || "";
+  } else if (field === "co_borrower") {
+    currentVal = rec.co_borrower || "";
   } else if (field === "prop_address") {
     currentVal = [rec.prop_address, rec.prop_city, rec.prop_state, rec.prop_zip].filter(Boolean).join(", ");
   } else if (field === "mail_address") {
     currentVal = [rec.mail_address, rec.mail_city, rec.mail_state, rec.mail_zip].filter(Boolean).join(", ");
   } else if (field === "amount") {
     currentVal = rec.amount || "";
+  } else if (field === "legal") {
+    currentVal = rec.legal || "";
   }
 
   const placeholders = {
     owner: "Enter owner name…",
+    co_borrower: "Enter co-borrower name…",
     prop_address: "Enter address, city, ST zip…",
     mail_address: "Enter address, city, ST zip…",
-    amount: "Enter amount (e.g. $250,000)…"
+    amount: "Enter amount (e.g. $250,000)…",
+    legal: "Enter legal description…"
   };
 
   const input = document.createElement("input");
@@ -653,9 +661,9 @@ function startEdit(docNum, field, cellEl) {
 
     if (!manualEdits[docNum]) manualEdits[docNum] = {};
 
-    if (field === "owner") {
-      rec.owner = val;
-      manualEdits[docNum].owner = val;
+    if (field === "owner" || field === "co_borrower" || field === "legal") {
+      rec[field] = val;
+      manualEdits[docNum][field] = val;
       cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
     } else if (field === "prop_address" || field === "mail_address") {
       // Parse "address, city, ST zip" format
@@ -707,6 +715,7 @@ const COLS = [
   {key: "doc_type", label: "Type", w: "55px"},
   {key: "cat_label", label: "Category", w: "160px"},
   {key: "owner", label: "Owner / Contact", w: "200px"},
+  {key: "co_borrower", label: "Co-Borrower", w: "180px"},
   {key: "grantor_name", label: "Grantor (Deceased)", w: "180px"},
   {key: "flags", label: "Flags", w: "170px"},
   {key: "legal", label: "Legal Description", w: "200px"},
@@ -753,6 +762,7 @@ async function loadData() {
         fr.filed = fr.file_date || "";
         // Map grantor to owner (the person being foreclosed on IS the owner/contact)
         fr.owner = fr.grantor || fr.grantor_name || "";
+        fr.co_borrower = fr.co_borrower || "";
         fr.grantor_name = fr.grantor || fr.grantor_name || "";
         // Map doc_id to doc_num so it shows in the Doc # column
         fr.doc_num = fr.doc_id || fr.doc_num || "";
@@ -1045,9 +1055,14 @@ function renderTable() {
       ${r._source === "foreclosure"
         ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','owner',this)" title="Double-click to edit">${r.owner || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
         : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.owner || ""}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','co_borrower',this)" title="Double-click to edit">${r.co_borrower || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.co_borrower || '<span style="color:var(--text-muted)">--</span>'}</td>`}
       <td class="owner-cell" onclick="openModal(${rowIdx})">${grantorCol}</td>
       <td onclick="openModal(${rowIdx})">${flagsHtml}</td>
-      <td onclick="openModal(${rowIdx})">${r.legal || ""}</td>
+      ${r._source === "foreclosure"
+        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','legal',this)" title="Double-click to edit">${r.legal || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td onclick="openModal(${rowIdx})">${r.legal || ""}</td>`}
       ${r._source === "foreclosure"
         ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','prop_address',this)" title="Double-click to edit">${propAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
         : `<td class="addr-cell" onclick="openModal(${rowIdx})">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
@@ -1062,7 +1077,7 @@ function renderTable() {
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="16" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="17" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -1135,7 +1150,7 @@ function exportCSV(mode) {
     rows = getFiltered();
   }
   const headers = [
-    "Score","Filed","Sale Date","Date Scraped","Type","Category","Owner / Contact","Grantor (Deceased)","Grantee (Heirs)",
+    "Score","Filed","Sale Date","Date Scraped","Type","Category","Owner / Contact","Co-Borrower","Grantor (Deceased)","Grantee (Heirs)",
     "Flags","Legal Description","Amount",
     "Property Address","Property City","Property State","Property Zip",
     "Mail Address","Mail City","Mail State","Mail Zip",
@@ -1147,6 +1162,7 @@ function exportCSV(mode) {
       r.score, r.filed, r.sale_date||"", r.date_scraped||"",
       r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
       `"${(r.owner||'').replace(/"/g,'""')}"`,
+      `"${(r.co_borrower||'').replace(/"/g,'""')}"`,
       `"${(r.grantor_name||'').replace(/"/g,'""')}"`,
       `"${(r.grantee_names||'').replace(/"/g,'""')}"`,
       `"${(r.flags||[]).join('; ')}"`,
