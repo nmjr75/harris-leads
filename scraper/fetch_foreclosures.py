@@ -45,7 +45,7 @@ def preprocess_for_ocr(img):
     """Pre-process a PIL Image for better OCR accuracy on scanned legal docs."""
     # Convert to grayscale
     img = img.convert("L")
-    # Increase contrast — makes faded text darker, background lighter
+    # Increase contrast â makes faded text darker, background lighter
     enhancer = ImageEnhance.Contrast(img)
     img = enhancer.enhance(1.8)
     # Sharpen to improve edge definition on text
@@ -57,9 +57,9 @@ def preprocess_for_ocr(img):
     img = img.convert("L")
     return img
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  Logging
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -68,9 +68,9 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  Constants
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 FRCL_SEARCH_URL = "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.aspx"
 FRCL_DOC_URL = "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx"
 CCLERK_LOGIN_URL = "https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
@@ -82,10 +82,10 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 # because we track seen_ids incrementally.
 MAX_PDFS_PER_RUN = 200
 
-# OCR resolution — 200 DPI is a good balance of speed and accuracy
+# OCR resolution â 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 300
 
-# Per-PDF timeout in seconds — kill stuck OCR processing
+# Per-PDF timeout in seconds â kill stuck OCR processing
 PDF_TIMEOUT = 120
 
 DASHBOARD_DIR = Path("dashboard")
@@ -106,9 +106,9 @@ MONTH_ABBREVS = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  Word-to-Number Converter (for legal descriptions)
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 WORD_NUMS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
@@ -123,9 +123,9 @@ def words_to_number(text: str) -> Optional[int]:
     """Convert written-out numbers to integers.
 
     Examples:
-        "TWENTY-FOUR" → 24
-        "EIGHT" → 8
-        "ONE HUNDRED TWENTY-THREE" → 123
+        "TWENTY-FOUR" â 24
+        "EIGHT" â 8
+        "ONE HUNDRED TWENTY-THREE" â 123
     """
     text = text.strip().lower().replace("-", " ")
     parts = text.split()
@@ -203,7 +203,7 @@ def convert_legal_numbers(text: str) -> str:
             subdiv = re.sub(r'^OF\s+', '', subdiv, flags=re.IGNORECASE)
 
     if not subdiv:
-        # Pattern 3: "BLOCK WORD (NUM) <SUBDIVISION> SECTION" — common in foreclosure OCR
+        # Pattern 3: "BLOCK WORD (NUM) <SUBDIVISION> SECTION" â common in foreclosure OCR
         m = re.search(r'BLOCK\s+[A-Z\-\s]+\(\d+\)\s+([A-Z][A-Z\s&\']+?)(?:\s+SEC(?:TION)?)',
                       text, re.IGNORECASE)
         if m:
@@ -249,15 +249,15 @@ def convert_legal_numbers(text: str) -> str:
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  HCAD Bulk Data Loader (shared with main scraper)
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 class HCADMatcher:
     """Loads HCAD bulk data and matches by legal description or owner name."""
 
     def __init__(self):
-        self.lookup = {}       # normalized owner name → address dict
-        self.legal_index = {}  # "SUBDIVISION|BLKn" → address dict
+        self.lookup = {}       # normalized owner name â address dict
+        self.legal_index = {}  # "SUBDIVISION|BLKn" â address dict
 
     def load(self, session: requests.Session):
         """Download and parse HCAD bulk data."""
@@ -339,7 +339,7 @@ class HCADMatcher:
         if "owners.txt" in zf.namelist():
             with zf.open("owners.txt") as f:
                 owner_lines = f.read().decode("utf-8", errors="replace").splitlines()
-            # Build a quick acct → info index so we don't scan the entire dict per row
+            # Build a quick acct â info index so we don't scan the entire dict per row
             acct_index = {}
             for existing_info in self.lookup.values():
                 a = existing_info.get("acct")
@@ -381,7 +381,7 @@ class HCADMatcher:
                 return self.legal_index[key_sec]
 
         # Fuzzy match: find HCAD keys that contain a similar subdivision name
-        # This handles OCR garbles like "RDE FOREST" → "JADE FOREST" or "LAKEWOOD FORTST" → "LAKEWOOD FOREST"
+        # This handles OCR garbles like "RDE FOREST" â "JADE FOREST" or "LAKEWOOD FORTST" â "LAKEWOOD FOREST"
         if len(subdiv_norm) >= 5:
             # Extract all words from the subdivision name
             subdiv_words = subdiv_norm.split()
@@ -404,14 +404,14 @@ class HCADMatcher:
                     best_score = matching
                     best_match = hcad_key
             if best_match:
-                log.info(f"  Fuzzy legal match: '{subdiv_norm}' → '{best_match.split('|')[0]}'")
+                log.info(f"  Fuzzy legal match: '{subdiv_norm}' â '{best_match.split('|')[0]}'")
                 return self.legal_index[best_match]
 
         return None
 
     def export_lookup(self, filepath):
         """Export the legal_index as a JSON file for the dashboard lookup tool."""
-        # Convert to a simpler format: key → { address, city, zip, acct }
+        # Convert to a simpler format: key â { address, city, zip, acct }
         lookup = {}
         for key, info in self.legal_index.items():
             lookup[key] = {
@@ -423,7 +423,7 @@ class HCADMatcher:
         with open(filepath, "w") as f:
             json.dump(lookup, f, separators=(",", ":"))
         size_mb = os.path.getsize(filepath) / (1024 * 1024)
-        log.info(f"Exported legal lookup: {len(lookup):,} entries, {size_mb:.1f} MB → {filepath}")
+        log.info(f"Exported legal lookup: {len(lookup):,} entries, {size_mb:.1f} MB â {filepath}")
 
     def match_owner(self, name: str) -> Optional[dict]:
         """Try to match by owner name (exact)."""
@@ -441,9 +441,9 @@ class HCADMatcher:
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  HCAD ArcGIS API (fallback for when bulk data doesn't match)
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 HCAD_ARCGIS_URL = (
     "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query"
 )
@@ -535,9 +535,9 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  PDF Parser
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     """Extract key fields from a foreclosure posting PDF.
 
@@ -569,10 +569,12 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                     full_text += text + "\n"
                 else:
                     has_scanned_pages = True
-            if has_scanned_pages and not full_text.strip():
-                # PDF is entirely scanned images — run OCR to extract text
+            # Trigger OCR if the PDF is scanned images — pdfplumber sometimes
+            # extracts 1-3 garbage chars from scanned pages, so check length < 20
+            if has_scanned_pages and len(full_text.strip()) < 20:
+                # PDF is entirely scanned images â run OCR to extract text
                 if HAS_OCR:
-                    log.info(f"  {doc_id} is a scanned PDF — running OCR at {OCR_DPI} DPI...")
+                    log.info(f"  {doc_id} is a scanned PDF â running OCR at {OCR_DPI} DPI...")
                     try:
                         images = convert_from_bytes(pdf_bytes, dpi=OCR_DPI)
                         # Tesseract config: PSM 6 = assume uniform block of text (best for legal docs)
@@ -598,7 +600,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                         result["needs_ocr"] = True
                         return result
                 else:
-                    log.info(f"  {doc_id} is a scanned PDF — OCR not available, flagging for VA lookup")
+                    log.info(f"  {doc_id} is a scanned PDF â OCR not available, flagging for VA lookup")
                     result["needs_ocr"] = True
                     return result
             elif has_scanned_pages:
@@ -615,34 +617,48 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     preview = full_text[:300].replace('\n', ' | ')
     log.info(f"  Text preview: {preview}")
 
-    # ── OCR Text Cleanup ──────────────────────────────────────────
+    # ââ OCR Text Cleanup ââââââââââââââââââââââââââââââââââââââââââ
     # Normalize common OCR artifacts before regex parsing
+    # Strip common OCR noise characters that aren't meaningful in legal docs
+    full_text = re.sub(r'[<>~\*\\\{\}]', ' ', full_text)
     # Collapse multiple spaces/tabs into single space
     full_text = re.sub(r'[ \t]{2,}', ' ', full_text)
     # Remove isolated single junk chars between words (OCR noise like ". : o ,")
     full_text = re.sub(r'(?<=[A-Z]) [^A-Za-z0-9\s]{1,2} (?=[A-Z])', ' ', full_text)
+    # Remove isolated single-char noise at start of lines (common OCR artifact)
+    full_text = re.sub(r'(?m)^[^A-Za-z0-9\s]{1,3}\s+', '', full_text)
     # Fix common OCR letter substitutions in key words
     full_text = re.sub(r'\bGrant0r\b', 'Grantor', full_text)
     full_text = re.sub(r'\b[Cc]0unty\b', 'County', full_text)
     full_text = re.sub(r'\bpr0perty\b', 'property', full_text, flags=re.IGNORECASE)
-    # Fix "| " → "l " (pipe misread as lowercase L) in common contexts
+    full_text = re.sub(r'\bSP[Q0O](?:USE|OSE)\b', 'SPOUSE', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'\bSUBSTITUTE\s+TR[U0]STEE\b', 'SUBSTITUTE TRUSTEE', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'\bN[O0]TICE\b', 'NOTICE', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'\bM[O0]RTGAG[O0]R\b', 'MORTGAGOR', full_text, flags=re.IGNORECASE)
+    # Fix "| " â "l " (pipe misread as lowercase L) in common contexts
     full_text = re.sub(r'\|(?=\s+of\s)', 'l', full_text)
     # Normalize curly/smart quotes to straight
     full_text = full_text.replace('\u2018', "'").replace('\u2019', "'")
     full_text = full_text.replace('\u201c', '"').replace('\u201d', '"')
     # Strip null bytes and control characters (except newlines)
     full_text = re.sub(r'[\x00-\x09\x0b\x0c\x0e-\x1f]', '', full_text)
+    # Collapse runs of dots/periods (OCR artifact from scanned table lines)
+    full_text = re.sub(r'\.{2,}', ' ', full_text)
+    # Remove stray single dots surrounded by spaces (not decimal points)
+    full_text = re.sub(r'(?<!\d)\.\s+(?!\d)', ' ', full_text)
+    # Final whitespace normalization after all cleanup
+    full_text = re.sub(r'[ \t]{2,}', ' ', full_text)
 
     lines = full_text.split("\n")
 
-    # ── Try Format A: labeled fields ──
-    # NOTE: Do NOT return early — fall through to Format B for address extraction
+    # ââ Try Format A: labeled fields ââ
+    # NOTE: Do NOT return early â fall through to Format B for address extraction
     # and more robust grantor patterns, since Format A doesn't extract addresses.
-    if "Grantor(s):" in full_text or "Grantor (s):" in full_text:
+    if "Grantor(s):" in full_text or "Grantor (s):" in full_text or re.search(r'Grantor\s*\(?s?\)?\s*/\s*Mortgagor', full_text, re.IGNORECASE):
         for i, line in enumerate(lines):
             line_s = line.strip()
 
-            # Grantor — check same line first, then next line
+            # Grantor â check same line first, then next line
             m = re.match(r'Grantor\s*\(s?\)\s*:\s*(.+)', line_s, re.IGNORECASE)
             if m:
                 val = m.group(1).strip()
@@ -650,7 +666,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 if val and not re.match(r'^(Current|Legal|Amount|Date|Property|Instrument)\b', val, re.IGNORECASE):
                     result["grantor"] = val
             elif re.match(r'Grantor\s*\(s?\)\s*:?\s*$', line_s, re.IGNORECASE):
-                # Label on its own line — grab the NEXT non-empty line as the grantor name
+                # Label on its own line â grab the NEXT non-empty line as the grantor name
                 for j in range(i + 1, min(i + 3, len(lines))):
                     next_line = lines[j].strip()
                     if next_line and len(next_line) > 2:
@@ -659,7 +675,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                             result["grantor"] = next_line
                         break
 
-            # Grantor(s)/Mortgagor(s): NAME — table header format
+            # Grantor(s)/Mortgagor(s): NAME â table header format
             if not result["grantor"]:
                 m = re.match(r'Grantor\s*\(?s?\)?\s*/\s*Mortgagor\s*\(?s?\)?\s*:?\s*(.+)', line_s, re.IGNORECASE)
                 if m:
@@ -667,12 +683,12 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                     if val and len(val) > 2:
                         result["grantor"] = val
 
-            # Legal Description — same line or next line
+            # Legal Description â same line or next line
             m = re.match(r'Legal\s+Description\s*:\s*(.+)', line_s, re.IGNORECASE)
             if m:
                 result["legal_description"] = m.group(1).strip()
             elif re.match(r'Legal\s+Description\s*:?\s*$', line_s, re.IGNORECASE):
-                # Label alone — grab following lines as legal description
+                # Label alone â grab following lines as legal description
                 legal_parts = []
                 for j in range(i + 1, min(i + 5, len(lines))):
                     next_line = lines[j].strip()
@@ -684,7 +700,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 if legal_parts:
                     result["legal_description"] = " ".join(legal_parts)
 
-            # Property Address — Format A sometimes has this
+            # Property Address â Format A sometimes has this
             if not result["property_address"]:
                 m = re.match(r'Property\s+Address\s*:\s*(.+)', line_s, re.IGNORECASE)
                 if m:
@@ -695,11 +711,11 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             if m:
                 result["amount"] = "$" + m.group(1)
 
-            # Date of Sale — strip time/hours portion
+            # Date of Sale â strip time/hours portion
             m = re.match(r'Date\s+of\s+Sale\s*:\s*(.+)', line_s, re.IGNORECASE)
             if m:
                 raw_date = m.group(1).strip()
-                # Clean: "May 5, 2026 between the hours..." → "May 5, 2026"
+                # Clean: "May 5, 2026 between the hours..." â "May 5, 2026"
                 cleaned = re.sub(r'\s+between\s+.*', '', raw_date, flags=re.IGNORECASE)
                 result["sale_date"] = cleaned
 
@@ -711,13 +727,13 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         log.info(f"  Format A extracted: grantor={result['grantor'][:30] if result['grantor'] else '(empty)'}, legal={'yes' if result['legal_description'] else 'no'}")
         # Fall through to Format B patterns for address extraction and grantor enhancement
 
-    # ── Format B: Structured paragraphs ──
+    # ââ Format B: Structured paragraphs ââ
     # Street suffixes (including full words for OCR accuracy)
     _SFX = (r"(?:ST|RD|DR|LN|CT|AVE|BLVD|WAY|PL|CIR|TRL|PKWY|CV|"
             r"STREET|ROAD|DRIVE|LANE|COURT|AVENUE|BOULEVARD|PLACE|"
             r"CIRCLE|TRAIL|PARKWAY|COVE)")
 
-    # Known foreclosure auction venues and courthouse addresses — NOT property addresses
+    # Known foreclosure auction venues and courthouse addresses â NOT property addresses
     # These appear in every document and must be excluded
     _VENUE_PATTERNS = [
         r'9401\s+KNIGHT',        # Bayou City Event Center (auction venue)
@@ -806,9 +822,9 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 result["property_zip"] = zipcode
                 log.info(f"  Address (broad match): {addr}, {city}, TX {zipcode}")
 
-    # ── Validate extracted address — reject auction venues ──────
+    # ââ Validate extracted address â reject auction venues ââââââ
     if result["property_address"] and _is_venue_address(result["property_address"]):
-        log.info(f"  Rejected venue address: {result['property_address']} — not a property")
+        log.info(f"  Rejected venue address: {result['property_address']} â not a property")
         result["property_address"] = ""
         result["property_city"] = ""
         result["property_state"] = "TX"
@@ -858,7 +874,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                     legal_found = True
                     break
 
-    # ── Clean up legal description — truncate at boundary phrases ──
+    # ââ Clean up legal description â truncate at boundary phrases ââ
     # OCR often captures text beyond the legal description into the next section
     if result["legal_description"]:
         ld = result["legal_description"]
@@ -877,7 +893,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             if m:
                 ld = ld[:m.start()].strip()
                 break
-        # Final cleanup — strip trailing junk punctuation and stray numbers
+        # Final cleanup â strip trailing junk punctuation and stray numbers
         ld = re.sub(r'[,:;\.\s\d]+$', '', ld)
         # Truncate at "HARRIS COUNTY TEXAS" if still too long
         if len(ld) > 200:
@@ -887,7 +903,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 ld = ld[:m.end()].strip()
         result["legal_description"] = ld
 
-    # ── Reject legal description if it's clearly boilerplate, not a real legal desc ──
+    # ââ Reject legal description if it's clearly boilerplate, not a real legal desc ââ
     if result["legal_description"]:
         ld_lower = result["legal_description"].lower()
         boilerplate_phrases = [
@@ -900,7 +916,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             log.info(f"  Rejected boilerplate legal desc ({boilerplate_count} boilerplate phrases found)")
             result["legal_description"] = ""
 
-    # Extract grantor — try multiple patterns (skip if Format A already found one)
+    # Extract grantor â try multiple patterns (skip if Format A already found one)
     # Pattern 1: "executed by GRANTOR NAME"
     if not result["grantor"]:
         m = re.search(r'(?:executed\s+by|delivered\s+by)\s+([A-Z][A-Za-z\s,\.&]+?)(?:\s*,?\s*as\s+[Gg]rantors?|\s+(?:and\s+wife|delivered|executed|in\s+favor|securing|to\s+))',
@@ -915,14 +931,14 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         if m:
             result["grantor"] = m.group(1).strip().rstrip(",. ")
 
-    # Pattern 3: "with NAME, as grantor(s)" — common in foreclosure postings
+    # Pattern 3: "with NAME, as grantor(s)" â common in foreclosure postings
     if not result["grantor"]:
         m = re.search(r'with\s+([A-Z][A-Za-z\s,\.&]+?)\s*,?\s*as\s+[Gg]rantors?',
                       full_text, re.IGNORECASE)
         if m:
             result["grantor"] = m.group(1).strip().rstrip(",. ")
 
-    # Pattern 4: "Grantor: NAME" or "Grantor(s)/Mortgagor(s): NAME" — labeled field at top of document
+    # Pattern 4: "Grantor: NAME" or "Grantor(s)/Mortgagor(s): NAME" â labeled field at top of document
     if not result["grantor"]:
         m = re.search(r'[Gg]rantors?(?:\(s\))?\s*(?:/\s*[Mm]ortgagors?(?:\(s\))?\s*)?\s*:\s*\n?\s*([A-Z][A-Za-z\s,\.&]+?)(?:\s*\n|\s+[Cc]urrent|\s+[Gg]rantee|\s+[Oo]riginal|\s+Instrument|\s+Property|\s+Deed|\s+Date|\s+Account)',
                       full_text, re.IGNORECASE)
@@ -941,9 +957,56 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 name = " ".join(parts[-3:])
             result["grantor"] = name.rstrip(",. ")
 
-    # Clean up grantor — remove OCR junk that gets appended after the name
+    # Pattern 6: Table-format OCR — "Grantor(s)/Mortgagor(s)" header row
+    if not result["grantor"]:
+        m = re.search(
+            r'[Gg]rantor\s*\(?s?\)?\s*(?:/\s*[Mm]ortgagor\s*\(?s?\)?\s*)?'
+            r'[\s:,.\-|]*'
+            r'\d{1,2}/\d{1,2}/\d{2,4}'
+            r'[\s:,.\-|]*'
+            r'([A-Z][A-Z\s,\.&\'\-]+?)'
+            r'(?:\s+(?:SINGLE|MARRIED|AN?\s+(?:UN)?MARRIED|SPOUSE|A\s+SINGLE)\b|\s+[Cc]urrent|\s+[Ii]nstrument|\s+[Ll]egal|\s+[Aa]ccount|\s+[Dd]ate|\s*$)',
+            full_text
+        )
+        if m:
+            name = m.group(1).strip().rstrip(",. ;:")
+            if len(name.split()) >= 2 and sum(c.isalpha() for c in name) > len(name) * 0.6:
+                result["grantor"] = name
+                log.info(f"  Pattern 6 (table-format OCR): {name[:40]}")
+
+    # Pattern 7: Standalone date + ALL_CAPS_NAME (OCR'd scanned table)
+    if not result["grantor"]:
+        for m in re.finditer(
+            r'(\d{1,2}/\d{1,2}/\d{2,4})\s+'
+            r'([A-Z][A-Z\s\'\-]{3,50}?)'
+            r'(?:\s+(?:SINGLE|MARRIED|AN?\s+(?:UN)?MARRIED|AND\s+SPOUSE|A\s+SINGLE|A\s+MARRIED)\b)',
+            full_text
+        ):
+            name = m.group(2).strip().rstrip(",. ;:")
+            if len(name.split()) >= 2 and not re.match(r'^(?:NOTICE|DEED|HARRIS|STATE|COUNTY)\b', name):
+                result["grantor"] = name
+                log.info(f"  Pattern 7 (date+name): {name[:40]}")
+                break
+
+    # Pattern 8: "executed by NAME" with OCR garbled "executed"
+    if not result["grantor"]:
+        m = re.search(
+            r'(?:ex[ec]{1,2}uted|deliver[eo]d)\s+by\s+'
+            r'([A-Z][A-Z\s,\.&\'\-]+?)'
+            r'(?:\s*,?\s*(?:as\s+[Gg]rantors?|and\s+wife|delivered|executed|in\s+favor|securing|to\s+|Deed|a\s+[Dd]eed))',
+            full_text
+        )
+        if m:
+            result["grantor"] = m.group(1).strip().rstrip(",. ")
+            log.info(f"  Pattern 8 (executed by, OCR): {result['grantor'][:40]}")
+
+    # Clean up grantor â remove OCR junk that gets appended after the name
     if result["grantor"]:
         g = result["grantor"]
+        # Remove leading "by " prefix (artifact from "executed by" capture)
+        g = re.sub(r'^by\s+', '', g, flags=re.IGNORECASE)
+        # Remove leading OCR noise chars
+        g = re.sub(r'^[^A-Za-z]+', '', g)
         # Remove newlines and everything after them (OCR artifact)
         if "\n" in g:
             parts = g.split("\n")
@@ -988,7 +1051,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 co = re.sub(r',?\s*(?:HUSBAND(?:\s+AND\s+WIFE)?|WIFE(?:\s+AND\s+HUSBAND)?)\s*$', '', co, flags=re.IGNORECASE)
                 result["co_borrower"] = co.strip().rstrip(",. ;:")
 
-    # Extract amount — multiple patterns
+    # Extract amount â multiple patterns
     m = re.search(r'(?:amount\s+of|sum\s+of)\s+\$?([\d,]+(?:\.\d{2})?)', full_text, re.IGNORECASE)
     if m:
         result["amount"] = "$" + m.group(1)
@@ -1012,7 +1075,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         if m:
             result["sale_date"] = f"{m.group(1)} {m.group(2)}, {m.group(3)}"
 
-    # Extract mortgagee / servicer — multiple patterns
+    # Extract mortgagee / servicer â multiple patterns
     for mort_pat in [
         r'[Cc]urrent\s+[Mm]ortgagee\s*:\s*([A-Z][A-Za-z\s,\.&]+?)(?:\s*\n|\s*$)',
         r'mortgage\s+servicer\s+(?:is|for)\s+([A-Z][A-Za-z\s,\.&]+?)(?:\s*,\s*whose|\s*\.)',
@@ -1034,9 +1097,9 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     return result
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  FRCL List Scraper
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def get_target_months() -> list:
     """Return the next 3 months as (year, month_number) tuples."""
     now = datetime.now()
@@ -1101,8 +1164,8 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
             log.info(f"  No results found for {month_name} {year}")
             return records
 
-    # Parse all pages — with safety limits to prevent infinite loops
-    MAX_PAGES = 100  # Hard cap: 100 pages × 20 results = 2,000 max
+    # Parse all pages â with safety limits to prevent infinite loops
+    MAX_PAGES = 100  # Hard cap: 100 pages Ã 20 results = 2,000 max
     page_num = 1
     seen_doc_ids = set()
 
@@ -1155,17 +1218,17 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
         new_on_page = len(records) - prev_count
         log.info(f"  Page {page_num}: {new_on_page} new records (total: {len(records)})")
 
-        # If this page added zero new records, we've seen them all — stop
+        # If this page added zero new records, we've seen them all â stop
         if new_on_page == 0 and page_num > 1:
-            log.info(f"  No new records on page {page_num} — pagination complete")
+            log.info(f"  No new records on page {page_num} â pagination complete")
             break
 
         # Hard cap to prevent runaway loops
         if page_num >= MAX_PAGES:
-            log.warning(f"  Hit max page limit ({MAX_PAGES}) — stopping pagination")
+            log.warning(f"  Hit max page limit ({MAX_PAGES}) â stopping pagination")
             break
 
-        # Check for next page — pager row has class "pagination-ys"
+        # Check for next page â pager row has class "pagination-ys"
         pager = soup.find("tr", class_="pagination-ys")
         if not pager:
             break
@@ -1189,7 +1252,7 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
             if dots_links:
                 next_link = dots_links[-1]  # last "..." = forward
             if not next_link:
-                log.info(f"  No more page links found — pagination complete")
+                log.info(f"  No more page links found â pagination complete")
                 break
 
         # Get the postback for the next page
@@ -1230,9 +1293,9 @@ def scrape_frcl_list(session: requests.Session, year: int, month: int) -> list:
     return records
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  Login to County Clerk (required to download PDF documents)
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def login_to_cclerk(session: requests.Session) -> bool:
     """Log in to the Harris County Clerk website.
 
@@ -1246,7 +1309,7 @@ def login_to_cclerk(session: requests.Session) -> bool:
     password = os.environ.get("CCLERK_PASSWORD", "")
 
     if not username or not password:
-        log.warning("CCLERK_USERNAME / CCLERK_PASSWORD not set — PDF downloads will fail")
+        log.warning("CCLERK_USERNAME / CCLERK_PASSWORD not set â PDF downloads will fail")
         return False
 
     try:
@@ -1298,9 +1361,9 @@ def login_to_cclerk(session: requests.Session) -> bool:
         return False
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  PDF Downloader
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def download_frcl_pdf(session: requests.Session, doc_id: str,
                       pdf_url: str = "") -> Optional[bytes]:
     """Download a foreclosure PDF using its encrypted viewer URL.
@@ -1319,7 +1382,7 @@ def download_frcl_pdf(session: requests.Session, doc_id: str,
 
         # Check if we got redirected to the login page
         if "Login.aspx" in resp.url:
-            log.warning(f"  Redirected to login page — session expired!")
+            log.warning(f"  Redirected to login page â session expired!")
             return None
 
         # Check if we got a PDF
@@ -1337,9 +1400,9 @@ def download_frcl_pdf(session: requests.Session, doc_id: str,
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 #  Main
-# ═══════════════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def main():
     log.info("Harris County Foreclosure Scraper")
     today = datetime.now().strftime("%Y-%m-%d")
@@ -1377,7 +1440,7 @@ def main():
     next_batch_num = max(existing_batch_nums, default=0) + 1
     batch_id = f"B{next_batch_num}"
     now_ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
-    batch_label = f"Batch {next_batch_num} — {now_ts}"
+    batch_label = f"Batch {next_batch_num} â {now_ts}"
     log.info(f"This run: {batch_id} ({batch_label})")
 
     # Set up HTTP session with realistic browser headers
@@ -1398,7 +1461,7 @@ def main():
     # Log in to county clerk (required to download PDFs)
     logged_in = login_to_cclerk(session)
     if not logged_in:
-        log.warning("Proceeding without login — PDF downloads may fail")
+        log.warning("Proceeding without login â PDF downloads may fail")
 
     # Get target months (next 3 months)
     target_months = get_target_months()
@@ -1418,13 +1481,13 @@ def main():
     for rec in existing_records:
         if rec.get("needs_ocr") and not rec.get("grantor"):
             ocr_retry_ids.add(rec["doc_id"])
-        # Re-process records that have no grantor AND no address — parser likely failed
+        # Re-process records that have no grantor AND no address â parser likely failed
         elif not rec.get("grantor") and (not rec.get("prop_address") or rec.get("prop_address") == "Not found"):
             reparse_ids.add(rec["doc_id"])
     if ocr_retry_ids:
         log.info(f"Found {len(ocr_retry_ids)} records needing OCR reprocessing")
     if reparse_ids:
-        log.info(f"Found {len(reparse_ids)} records with missing grantor+address — will re-parse")
+        log.info(f"Found {len(reparse_ids)} records with missing grantor+address â will re-parse")
 
     # Filter to new doc IDs PLUS OCR retries PLUS records needing re-parsing
     retry_ids = ocr_retry_ids | reparse_ids
@@ -1459,13 +1522,13 @@ def main():
         except Exception as e:
             log.warning(f"HCAD bulk load failed (will use API fallback): {e}")
     else:
-        log.info("Small batch — skipping HCAD bulk download, using ArcGIS API only")
+        log.info("Small batch â skipping HCAD bulk download, using ArcGIS API only")
 
     # Re-login before PDF downloads (session may have gone stale during HCAD load)
     log.info("Re-authenticating with county clerk before PDF downloads...")
     logged_in = login_to_cclerk(session)
     if not logged_in:
-        log.warning("Re-login failed — PDF downloads may fail")
+        log.warning("Re-login failed â PDF downloads may fail")
 
     # Process each new listing
     new_records = []
@@ -1481,7 +1544,7 @@ def main():
     log.info(f"=== Starting PDF processing: {len(new_listings)} PDFs to download ===")
 
     # Diagnostic: dump full extracted text for first 5 PDFs to help debug parsing
-    DIAG_LIMIT = 5
+    DIAG_LIMIT = 10
     diag_count = 0
 
     # Per-PDF timeout handler
@@ -1512,7 +1575,7 @@ def main():
             # Parse PDF
             parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
             signal.alarm(0)  # Cancel timeout after successful parse
-            log.info(f"  PDF parsed in {time.time()-t0:.1f}s — grantor={parsed.get('grantor','')[:30]}")
+            log.info(f"  PDF parsed in {time.time()-t0:.1f}s â grantor={parsed.get('grantor','')[:30]}")
 
             # Diagnostic: dump full extracted text for first N PDFs
             if diag_count < DIAG_LIMIT:
@@ -1532,12 +1595,12 @@ def main():
                     log.info(f"  DIAG ERROR for {doc_id}: {de}")
         except PdfTimeout:
             signal.alarm(0)
-            log.warning(f"  TIMEOUT: {doc_id} exceeded {PDF_TIMEOUT}s — skipping")
+            log.warning(f"  TIMEOUT: {doc_id} exceeded {PDF_TIMEOUT}s â skipping")
             seen_ids.add(doc_id)
             continue
         except Exception as e:
             signal.alarm(0)
-            log.warning(f"  ERROR processing {doc_id}: {e} — skipping")
+            log.warning(f"  ERROR processing {doc_id}: {e} â skipping")
             seen_ids.add(doc_id)
             continue
 
@@ -1567,7 +1630,7 @@ def main():
             "needs_ocr": parsed.get("needs_ocr", False),
         }
 
-        # ── Enrich with HCAD data ──
+        # ââ Enrich with HCAD data ââ
         # Step 1: If we got address from PDF, we're done (high confidence)
         if record["prop_address"]:
             record["match_confidence"] = "high"
@@ -1620,7 +1683,7 @@ def main():
         new_records.append(record)
         seen_ids.add(doc_id)
         elapsed = time.time() - t0
-        log.info(f"  Done {doc_id} in {elapsed:.1f}s — addr={record['prop_address'][:40]}")
+        log.info(f"  Done {doc_id} in {elapsed:.1f}s â addr={record['prop_address'][:40]}")
 
         # Rate limit between PDF downloads
         time.sleep(0.3)
