@@ -339,6 +339,12 @@ class HCADMatcher:
         if "owners.txt" in zf.namelist():
             with zf.open("owners.txt") as f:
                 owner_lines = f.read().decode("utf-8", errors="replace").splitlines()
+            # Build a quick acct → info index so we don't scan the entire dict per row
+            acct_index = {}
+            for existing_info in self.lookup.values():
+                a = existing_info.get("acct")
+                if a and a not in acct_index:
+                    acct_index[a] = existing_info
             added = 0
             for line in owner_lines[1:]:
                 cols = line.split("\t")
@@ -347,13 +353,9 @@ class HCADMatcher:
                 acct = cols[0].strip()
                 name = cols[2].strip().upper()
                 norm = re.sub(r'\s+', ' ', name).strip()
-                if norm and norm not in self.lookup:
-                    # Find the address from the main lookup by acct
-                    for existing_name, existing_info in self.lookup.items():
-                        if existing_info.get("acct") == acct:
-                            self.lookup[norm] = existing_info
-                            added += 1
-                            break
+                if norm and norm not in self.lookup and acct in acct_index:
+                    self.lookup[norm] = acct_index[acct]
+                    added += 1
             log.info(f"  owners.txt: added {added:,} supplemental name variants")
 
     def match_legal(self, parsed_legal: dict) -> Optional[dict]:
