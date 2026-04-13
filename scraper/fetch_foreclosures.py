@@ -611,6 +611,10 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         log.warning(f"Empty PDF text for {doc_id}")
         return result
 
+    # Debug: log first 300 chars of extracted text to help diagnose parsing issues
+    preview = full_text[:300].replace('\n', ' | ')
+    log.info(f"  Text preview: {preview}")
+
     # ── OCR Text Cleanup ──────────────────────────────────────────
     # Normalize common OCR artifacts before regex parsing
     # Collapse multiple spaces/tabs into single space
@@ -632,19 +636,59 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     lines = full_text.split("\n")
 
     # ── Try Format A: labeled fields ──
+    # NOTE: Do NOT return early — fall through to Format B for address extraction
+    # and more robust grantor patterns, since Format A doesn't extract addresses.
     if "Grantor(s):" in full_text or "Grantor (s):" in full_text:
-        for line in lines:
+        for i, line in enumerate(lines):
             line_s = line.strip()
 
-            # Grantor
+            # Grantor — check same line first, then next line
             m = re.match(r'Grantor\s*\(s?\)\s*:\s*(.+)', line_s, re.IGNORECASE)
             if m:
-                result["grantor"] = m.group(1).strip()
+                val = m.group(1).strip()
+                # Reject if it's just another label (e.g., "Grantor(s): Current Mortgagee:")
+                if val and not re.match(r'^(Current|Legal|Amount|Date|Property|Instrument)\b', val, re.IGNORECASE):
+                    result["grantor"] = val
+            elif re.match(r'Grantor\s*\(s?\)\s*:?\s*$', line_s, re.IGNORECASE):
+                # Label on its own line — grab the NEXT non-empty line as the grantor name
+                for j in range(i + 1, min(i + 3, len(lines))):
+                    next_line = lines[j].strip()
+                    if next_line and len(next_line) > 2:
+                        # Make sure it's a name, not another label
+                        if not re.match(r'^(Current|Legal|Amount|Date|Property|Instrument|Account)\b', next_line, re.IGNORECASE):
+                            result["grantor"] = next_line
+                        break
 
-            # Legal Description
+            # Grantor(s)/Mortgagor(s): NAME — table header format
+            if not result["grantor"]:
+                m = re.match(r'Grantor\s*\(?s?\)?\s*/\s*Mortgagor\s*\(?s?\)?\s*:?\s*(.+)', line_s, re.IGNORECASE)
+                if m:
+                    val = m.group(1).strip()
+                    if val and len(val) > 2:
+                        result["grantor"] = val
+
+            # Legal Description — same line or next line
             m = re.match(r'Legal\s+Description\s*:\s*(.+)', line_s, re.IGNORECASE)
             if m:
                 result["legal_description"] = m.group(1).strip()
+            elif re.match(r'Legal\s+Description\s*:?\s*$', line_s, re.IGNORECASE):
+                # Label alone — grab following lines as legal description
+                legal_parts = []
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    next_line = lines[j].strip()
+                    if not next_line:
+                        break
+                    if re.match(r'^(Amount|Date|Current|Instrument|Account|Grantor)\b', next_line, re.IGNORECASE):
+                        break
+                    legal_parts.append(next_line)
+                if legal_parts:
+                    result["legal_description"] = " ".join(legal_parts)
+
+            # Property Address — Format A sometimes has this
+            if not result["property_address"]:
+                m = re.match(r'Property\s+Address\s*:\s*(.+)', line_s, re.IGNORECASE)
+                if m:
+                    result["property_address"] = m.group(1).strip()
 
             # Amount
             m = re.match(r'Amount\s*:\s*\$?([\d,\.]+)', line_s, re.IGNORECASE)
@@ -664,7 +708,8 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             if m:
                 result["mortgagee"] = m.group(1).strip()
 
-        return result
+        log.info(f"  Format A extracted: grantor={result['grantor'][:30] if result['grantor'] else '(empty)'}, legal={'yes' if result['legal_description'] else 'no'}")
+        # Fall through to Format B patterns for address extraction and grantor enhancement
 
     # ── Format B: Structured paragraphs ──
     # Street suffixes (including full words for OCR accuracy)
@@ -691,29 +736,35 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
         return False
 
     # Check for address at top of document (first 10 lines)
-    for line in lines[:10]:
-        line_s = line.strip()
-        if not line_s or not line_s[0].isdigit():
-            continue
-        # Pattern: "15647 COUNTESSWELLS DRIVE, HUMBLE, TX 77346"
-        m = re.match(r'^(\d+\s+[A-Z][A-Z\s]+?' + _SFX + r'\.?)\s*[,]?\s*'
-                     r'([A-Z]+)\s*[,]?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)',
-                     line_s, re.IGNORECASE)
-        if m:
-            result["property_address"] = m.group(1).strip()
-            result["property_city"] = m.group(2).strip()
-            result["property_state"] = "TX"
-            result["property_zip"] = m.group(3).strip()
-            break
+    if not result["property_address"]:
+        for line in lines[:10]:
+            line_s = line.strip()
+            if not line_s or not line_s[0].isdigit():
+                continue
+            # Pattern: "15647 COUNTESSWELLS DRIVE, HUMBLE, TX 77346"
+            m = re.match(r'^(\d+\s+[A-Z][A-Z\s]+?' + _SFX + r'\.?)\s*[,]?\s*'
+                         r'([A-Z]+)\s*[,]?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)',
+                         line_s, re.IGNORECASE)
+            if m:
+                result["property_address"] = m.group(1).strip()
+                result["property_city"] = m.group(2).strip()
+                result["property_state"] = "TX"
+                result["property_zip"] = m.group(3).strip()
+                break
 
-    # Check for "Commonly known as:" line
+    # Check for "Commonly known as:" line (support multi-word cities like LA PORTE)
     if not result["property_address"]:
         m = re.search(r'[Cc]ommonly\s+known\s+as\s*:?\s*(\d+\s+[A-Z][A-Z\s]+?' + _SFX + r'\.?)\s*[,]?\s*'
-                      r'([A-Z]+)\s*[,]?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)', full_text, re.IGNORECASE)
+                      r'([A-Z][A-Z\s]*?)\s*[,]?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)', full_text, re.IGNORECASE)
         if m:
-            result["property_address"] = m.group(1).strip()
-            result["property_city"] = m.group(2).strip()
-            result["property_zip"] = m.group(3).strip()
+            addr = m.group(1).strip()
+            city = m.group(2).strip()
+            if len(city) >= 3 and all(c.isalpha() or c == ' ' for c in city):
+                result["property_address"] = addr
+                result["property_city"] = city
+                result["property_zip"] = m.group(3).strip()
+                if not _is_venue_address(addr):
+                    log.info(f"  Address (commonly known as): {addr}, {city}")
 
     # Check for address after clerk filing stamp (common in OCR'd foreclosure docs)
     # Pattern: "FRCL-2026-XXXX FILED date\n ADDRESS LINE \n acct# \n CITY, TX ZIP"
@@ -849,12 +900,13 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             log.info(f"  Rejected boilerplate legal desc ({boilerplate_count} boilerplate phrases found)")
             result["legal_description"] = ""
 
-    # Extract grantor — try multiple patterns
+    # Extract grantor — try multiple patterns (skip if Format A already found one)
     # Pattern 1: "executed by GRANTOR NAME"
-    m = re.search(r'(?:executed\s+by|delivered\s+by)\s+([A-Z][A-Za-z\s,\.&]+?)(?:\s*,?\s*as\s+[Gg]rantors?|\s+(?:and\s+wife|delivered|executed|in\s+favor|securing|to\s+))',
-                  full_text, re.IGNORECASE)
-    if m:
-        result["grantor"] = m.group(1).strip().rstrip(",. ")
+    if not result["grantor"]:
+        m = re.search(r'(?:executed\s+by|delivered\s+by)\s+([A-Z][A-Za-z\s,\.&]+?)(?:\s*,?\s*as\s+[Gg]rantors?|\s+(?:and\s+wife|delivered|executed|in\s+favor|securing|to\s+))',
+                      full_text, re.IGNORECASE)
+        if m:
+            result["grantor"] = m.group(1).strip().rstrip(",. ")
 
     # Pattern 2: "WHEREAS, on DATE, GRANTOR NAME, ... as Grantor(s)"
     if not result["grantor"]:
@@ -976,6 +1028,9 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 result["mortgagee"] = name
                 break
 
+    log.info(f"  Parse result: grantor={result['grantor'][:40] if result['grantor'] else '(none)'} | "
+             f"addr={result['property_address'][:40] if result['property_address'] else '(none)'} | "
+             f"legal={'yes' if result['legal_description'] else 'no'}")
     return result
 
 
@@ -1359,14 +1414,21 @@ def main():
 
     # Find doc IDs that need OCR reprocessing (previously failed to extract text)
     ocr_retry_ids = set()
+    reparse_ids = set()
     for rec in existing_records:
         if rec.get("needs_ocr") and not rec.get("grantor"):
             ocr_retry_ids.add(rec["doc_id"])
+        # Re-process records that have no grantor AND no address — parser likely failed
+        elif not rec.get("grantor") and (not rec.get("prop_address") or rec.get("prop_address") == "Not found"):
+            reparse_ids.add(rec["doc_id"])
     if ocr_retry_ids:
         log.info(f"Found {len(ocr_retry_ids)} records needing OCR reprocessing")
+    if reparse_ids:
+        log.info(f"Found {len(reparse_ids)} records with missing grantor+address — will re-parse")
 
-    # Filter to new doc IDs PLUS OCR retries
-    new_listings = [l for l in all_listings if l["doc_id"] not in seen_ids or l["doc_id"] in ocr_retry_ids]
+    # Filter to new doc IDs PLUS OCR retries PLUS records needing re-parsing
+    retry_ids = ocr_retry_ids | reparse_ids
+    new_listings = [l for l in all_listings if l["doc_id"] not in seen_ids or l["doc_id"] in retry_ids]
     log.info(f"New listings to process: {len(new_listings)} (skipping {len(all_listings) - len(new_listings)} already seen)")
 
     if not new_listings:
@@ -1418,6 +1480,10 @@ def main():
 
     log.info(f"=== Starting PDF processing: {len(new_listings)} PDFs to download ===")
 
+    # Diagnostic: dump full extracted text for first 5 PDFs to help debug parsing
+    DIAG_LIMIT = 5
+    diag_count = 0
+
     # Per-PDF timeout handler
     class PdfTimeout(Exception):
         pass
@@ -1447,6 +1513,23 @@ def main():
             parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
             signal.alarm(0)  # Cancel timeout after successful parse
             log.info(f"  PDF parsed in {time.time()-t0:.1f}s — grantor={parsed.get('grantor','')[:30]}")
+
+            # Diagnostic: dump full extracted text for first N PDFs
+            if diag_count < DIAG_LIMIT:
+                diag_count += 1
+                try:
+                    with pdfplumber.open(BytesIO(pdf_bytes)) as dpdf:
+                        diag_text = ""
+                        for pg in dpdf.pages:
+                            diag_text += (pg.extract_text() or "") + "\n"
+                    log.info(f"  ===== DIAGNOSTIC TEXT DUMP ({doc_id}) =====")
+                    # Print first 2000 chars so we can see the actual content
+                    for chunk_start in range(0, min(len(diag_text), 2000), 200):
+                        chunk = diag_text[chunk_start:chunk_start + 200].replace('\n', ' | ')
+                        log.info(f"  DIAG[{chunk_start}]: {chunk}")
+                    log.info(f"  ===== END DIAGNOSTIC ({doc_id}, total {len(diag_text)} chars) ====="  )
+                except Exception as de:
+                    log.info(f"  DIAG ERROR for {doc_id}: {de}")
         except PdfTimeout:
             signal.alarm(0)
             log.warning(f"  TIMEOUT: {doc_id} exceeded {PDF_TIMEOUT}s — skipping")
