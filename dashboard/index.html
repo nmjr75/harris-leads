@@ -577,7 +577,7 @@ async function loadData() {
     const fResp = await fetch("foreclosures.json");
     if (fResp.ok) {
       FRCL_DATA = await fResp.json();
-      // Normalize foreclosure records into the same shape
+      // Normalize foreclosure records into the same shape as main scraper records
       (FRCL_DATA.records || []).forEach(fr => {
         fr._source = "foreclosure";
         fr.cat = "FRCL";
@@ -585,7 +585,13 @@ async function loadData() {
         fr.doc_type = "FRCL";
         fr.score = fr.score || 80;  // default high score for foreclosures
         fr.filed = fr.file_date || "";
-        fr.owner = fr.grantor_name || "";
+        // Map grantor to owner (the person being foreclosed on IS the owner/contact)
+        fr.owner = fr.grantor || fr.grantor_name || "";
+        fr.grantor_name = fr.grantor || fr.grantor_name || "";
+        // Map doc_id to doc_num so it shows in the Doc # column
+        fr.doc_num = fr.doc_id || fr.doc_num || "";
+        // Map legal_description to legal
+        fr.legal = fr.legal_description || fr.legal || "";
         fr.flags = fr.flags || ["Pre-foreclosure / trustee sale"];
         fr.match_confidence = fr.match_confidence || "none";
       });
