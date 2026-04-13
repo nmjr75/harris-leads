@@ -1164,6 +1164,21 @@ def main():
             existing_records = existing_data.get("records", [])
             log.info(f"Loaded {len(existing_records)} existing foreclosure records")
 
+    # Generate batch ID for this run (B1, B2, B3, ...)
+    existing_batch_nums = set()
+    for rec in existing_records:
+        bid = rec.get("batch_id", "")
+        if bid.startswith("B"):
+            try:
+                existing_batch_nums.add(int(bid[1:]))
+            except ValueError:
+                pass
+    next_batch_num = max(existing_batch_nums, default=0) + 1
+    batch_id = f"B{next_batch_num}"
+    now_ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    batch_label = f"Batch {next_batch_num} — {now_ts}"
+    log.info(f"This run: {batch_id} ({batch_label})")
+
     # Set up HTTP session with realistic browser headers
     session = requests.Session()
     session.headers.update({
@@ -1306,7 +1321,10 @@ def main():
             "sale_date": listing["sale_date"] or parsed.get("sale_date", ""),
             "file_date": listing["file_date"],
             "date_scraped": today,
+            "batch_id": batch_id,
+            "batch_label": batch_label,
             "grantor": parsed.get("grantor", ""),
+            "co_borrower": parsed.get("co_borrower", ""),
             "amount": parsed.get("amount", ""),
             "mortgagee": parsed.get("mortgagee", ""),
             "legal_description": parsed.get("legal_description", ""),
