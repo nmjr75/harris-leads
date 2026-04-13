@@ -1113,7 +1113,7 @@ def main():
             "Chrome/124.0.0.0 Safari/537.36"
         ),
     })
-    if len(new_listings) >= 25:
+    if len(new_listings) >= 100:
         try:
             hcad.load(hcad_session)
         except Exception as e:
