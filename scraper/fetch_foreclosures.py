@@ -64,7 +64,7 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 # Batch limit: process at most this many PDFs per run to stay within
 # GitHub Actions timeout.  Remaining PDFs are picked up on the next run
 # because we track seen_ids incrementally.
-MAX_PDFS_PER_RUN = 10
+MAX_PDFS_PER_RUN = 30
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
 OCR_DPI = 200
@@ -569,6 +569,45 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             result["property_city"] = m.group(2).strip()
             result["property_zip"] = m.group(3).strip()
 
+    # Check for address after clerk filing stamp (common in OCR'd foreclosure docs)
+    # Pattern: "FRCL-2026-XXXX FILED date\n ADDRESS LINE \n acct# \n CITY, TX ZIP"
+    if not result["property_address"]:
+        m = re.search(
+            r'FRCL-\d{4}-\d+\s+FILED\s+[\d/]+\s+[\d:]+\s*[AP]?M?\s*'
+            r'(\d+\s+[A-Z][A-Z\s]+?' + _SFX + r'\.?)\s*'
+            r'(?:\d{10,16}\s*)?'  # optional account number
+            r'([A-Z][A-Z\s]*?)\s*,?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)',
+            full_text, re.IGNORECASE
+        )
+        if m:
+            result["property_address"] = m.group(1).strip()
+            result["property_city"] = m.group(2).strip()
+            result["property_state"] = "TX"
+            result["property_zip"] = m.group(3).strip()
+            log.info(f"  Address from filing stamp: {result['property_address']}, {result['property_city']}")
+
+    # Broader fallback: find "NUMBER STREET ... CITY, TX ZIP" anywhere in text
+    # Tolerant of OCR junk characters between street and city
+    if not result["property_address"]:
+        m = re.search(
+            r'(\d+\s+[A-Z][A-Z\s]+?' + _SFX + r')'
+            r'[\s\.\:,o_]*'  # allow OCR junk chars between street and acct#
+            r'(?:\d{10,16}[\s\.\:,]*)?'  # optional account number with junk
+            r'([A-Z][A-Z\s]+?)\s*,?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)',
+            full_text, re.IGNORECASE
+        )
+        if m:
+            addr = m.group(1).strip()
+            city = m.group(2).strip()
+            zipcode = m.group(3).strip()
+            # Sanity check: city should be a real word, not OCR junk
+            if len(city) >= 3 and city.isalpha():
+                result["property_address"] = addr
+                result["property_city"] = city
+                result["property_state"] = "TX"
+                result["property_zip"] = zipcode
+                log.info(f"  Address (broad match): {addr}, {city}, TX {zipcode}")
+
     # Extract Property / Legal Description section
     # Try multiple patterns since OCR can garble the text
     legal_found = False
@@ -611,6 +650,28 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
             if len(parts) > 4:
                 name = " ".join(parts[-3:])
             result["grantor"] = name.rstrip(",. ")
+
+    # Clean up grantor — remove OCR junk that gets appended after the name
+    if result["grantor"]:
+        g = result["grantor"]
+        # Remove newlines and everything after them (OCR artifact)
+        if "\n" in g:
+            # Keep text before the first newline that starts with lowercase/junk
+            parts = g.split("\n")
+            clean_parts = [parts[0]]
+            for p in parts[1:]:
+                p_stripped = p.strip()
+                # Keep if it looks like part of a name (e.g., "AND WIFE", "HUSBAND AND WIFE", "AN UNMARRIED WOMAN")
+                if re.match(r'^(?:AND\s+(?:WIFE|HUSBAND)|(?:AN?\s+)?(?:UN)?MARRIED|HUSBAND|WIFE|JR|SR|III?|IV)', p_stripped, re.IGNORECASE):
+                    clean_parts.append(p_stripped)
+                else:
+                    break  # Stop at first non-name line
+            g = " ".join(clean_parts)
+        # Remove common OCR junk phrases that get captured
+        g = re.sub(r'\s+(?:payment|ayment|indebtedness|securing|of\s+the|in\s+favor|the\s+repay|but\s+not\s+limited).*', '', g, flags=re.IGNORECASE)
+        # Remove trailing junk punctuation
+        g = g.strip().rstrip(",. ;:")
+        result["grantor"] = g
 
     # Extract amount — multiple patterns
     m = re.search(r'(?:amount\s+of|sum\s+of)\s+\$?([\d,]+(?:\.\d{2})?)', full_text, re.IGNORECASE)
