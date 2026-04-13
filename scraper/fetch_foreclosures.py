@@ -407,6 +407,22 @@ class HCADMatcher:
 
         return None
 
+    def export_lookup(self, filepath):
+        """Export the legal_index as a JSON file for the dashboard lookup tool."""
+        # Convert to a simpler format: key → { address, city, zip, acct }
+        lookup = {}
+        for key, info in self.legal_index.items():
+            lookup[key] = {
+                "a": info.get("prop_address", ""),
+                "c": info.get("prop_city", ""),
+                "z": info.get("prop_zip", ""),
+                "t": info.get("acct", ""),
+            }
+        with open(filepath, "w") as f:
+            json.dump(lookup, f, separators=(",", ":"))
+        size_mb = os.path.getsize(filepath) / (1024 * 1024)
+        log.info(f"Exported legal lookup: {len(lookup):,} entries, {size_mb:.1f} MB → {filepath}")
+
     def match_owner(self, name: str) -> Optional[dict]:
         """Try to match by owner name (exact)."""
         norm = re.sub(r'\s+', ' ', name.upper()).strip()
@@ -481,11 +497,11 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
 
     # Build street from split fields
     parts = []
-    pfx = (best.get("site_str_pfx") or "").strip()
-    num = (best.get("site_str_num") or "").strip()
-    sname = (best.get("site_str_name") or "").strip()
-    sfx = (best.get("site_str_sfx") or "").strip()
-    sdir = (best.get("site_str_sfx_dir") or "").strip()
+    pfx = str(best.get("site_str_pfx") or "").strip()
+    num = str(best.get("site_str_num") or "").strip()
+    sname = str(best.get("site_str_name") or "").strip()
+    sfx = str(best.get("site_str_sfx") or "").strip()
+    sdir = str(best.get("site_str_sfx_dir") or "").strip()
     if pfx:
         parts.append(pfx)
     if num:
@@ -501,10 +517,10 @@ def hcad_api_search(session: requests.Session, name: str) -> Optional[dict]:
     if not street:
         return None
 
-    city = (best.get("site_city") or "").strip()
-    zipcode = (best.get("site_zip") or "").strip()
-    acct = (best.get("HCAD_NUM") or "").strip()
-    owner = (best.get("owner_name_1") or "").strip()
+    city = str(best.get("site_city") or "").strip()
+    zipcode = str(best.get("site_zip") or "").strip()
+    acct = str(best.get("HCAD_NUM") or "").strip()
+    owner = str(best.get("owner_name_1") or "").strip()
 
     log.info(f"HCAD API: found residential '{owner}' -> {street}, {city} {zipcode}")
     return {
@@ -1320,6 +1336,9 @@ def main():
     if len(new_listings) >= 100:
         try:
             hcad.load(hcad_session)
+            # Export lookup JSON for the standalone legal-description search tool
+            lookup_path = DASHBOARD_DIR / "hcad_lookup.json"
+            hcad.export_lookup(str(lookup_path))
         except Exception as e:
             log.warning(f"HCAD bulk load failed (will use API fallback): {e}")
     else:
