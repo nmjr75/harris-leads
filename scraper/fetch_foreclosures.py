@@ -34,12 +34,28 @@ except ImportError:
 # OCR for scanned image PDFs
 try:
     import pytesseract
-    from PIL import Image
+    from PIL import Image, ImageFilter, ImageEnhance
     from pdf2image import convert_from_bytes
     HAS_OCR = True
 except ImportError:
     HAS_OCR = False
     print("WARNING: pytesseract/Pillow/pdf2image not installed. OCR will be unavailable.")
+
+def preprocess_for_ocr(img):
+    """Pre-process a PIL Image for better OCR accuracy on scanned legal docs."""
+    # Convert to grayscale
+    img = img.convert("L")
+    # Increase contrast — makes faded text darker, background lighter
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(1.8)
+    # Sharpen to improve edge definition on text
+    img = img.filter(ImageFilter.SHARPEN)
+    # Adaptive threshold: convert to pure black & white
+    # Use a threshold that works well for legal docs (slightly above midpoint)
+    img = img.point(lambda x: 255 if x > 140 else 0, mode='1')
+    # Convert back to grayscale for Tesseract (some modes need 8-bit)
+    img = img.convert("L")
+    return img
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Logging
@@ -67,7 +83,7 @@ HCAD_BULK_URL = "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
 MAX_PDFS_PER_RUN = 30
 
 # OCR resolution — 200 DPI is a good balance of speed and accuracy
-OCR_DPI = 200
+OCR_DPI = 300
 
 # Per-PDF timeout in seconds — kill stuck OCR processing
 PDF_TIMEOUT = 120
@@ -476,8 +492,18 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                     log.info(f"  {doc_id} is a scanned PDF — running OCR at {OCR_DPI} DPI...")
                     try:
                         images = convert_from_bytes(pdf_bytes, dpi=OCR_DPI)
+                        # Tesseract config: PSM 6 = assume uniform block of text (best for legal docs)
+                        tess_config = "--psm 6"
                         for page_num, img in enumerate(images, 1):
-                            page_text = pytesseract.image_to_string(img)
+                            # Pre-process image for better OCR accuracy
+                            processed = preprocess_for_ocr(img)
+                            page_text = pytesseract.image_to_string(processed, config=tess_config)
+                            # If preprocessing produced poor results, retry with original
+                            if len(page_text.strip()) < 50:
+                                page_text_raw = pytesseract.image_to_string(img, config=tess_config)
+                                if len(page_text_raw.strip()) > len(page_text.strip()):
+                                    page_text = page_text_raw
+                                    log.info(f"    Page {page_num}: fallback to raw image ({len(page_text)} chars)")
                             if page_text.strip():
                                 full_text += page_text + "\n"
                                 log.info(f"    Page {page_num}: {len(page_text)} chars extracted via OCR")
@@ -501,6 +527,24 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     if not full_text.strip():
         log.warning(f"Empty PDF text for {doc_id}")
         return result
+
+    # ── OCR Text Cleanup ──────────────────────────────────────────
+    # Normalize common OCR artifacts before regex parsing
+    # Collapse multiple spaces/tabs into single space
+    full_text = re.sub(r'[ \t]{2,}', ' ', full_text)
+    # Remove isolated single junk chars between words (OCR noise like ". : o ,")
+    full_text = re.sub(r'(?<=[A-Z]) [^A-Za-z0-9\s]{1,2} (?=[A-Z])', ' ', full_text)
+    # Fix common OCR letter substitutions in key words
+    full_text = re.sub(r'\bGrant0r\b', 'Grantor', full_text)
+    full_text = re.sub(r'\b[Cc]0unty\b', 'County', full_text)
+    full_text = re.sub(r'\bpr0perty\b', 'property', full_text, flags=re.IGNORECASE)
+    # Fix "| " → "l " (pipe misread as lowercase L) in common contexts
+    full_text = re.sub(r'\|(?=\s+of\s)', 'l', full_text)
+    # Normalize curly/smart quotes to straight
+    full_text = full_text.replace('\u2018', "'").replace('\u2019', "'")
+    full_text = full_text.replace('\u201c', '"').replace('\u201d', '"')
+    # Strip null bytes and control characters (except newlines)
+    full_text = re.sub(r'[\x00-\x09\x0b\x0c\x0e-\x1f]', '', full_text)
 
     lines = full_text.split("\n")
 
@@ -608,6 +652,54 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 result["property_state"] = "TX"
                 result["property_zip"] = zipcode
                 log.info(f"  Address (broad match): {addr}, {city}, TX {zipcode}")
+
+    # ── Smart Texas Address Finder (final fallback) ──────────────
+    # Scan entire document for ALL Texas addresses, pick the best one
+    # This catches addresses in unexpected locations that the specific patterns miss
+    if not result["property_address"]:
+        tx_addresses = []
+        # Find all occurrences of "NUMBER WORDS SUFFIX ... CITY, TX ZIP" in the text
+        for m in re.finditer(
+            r'(\d{2,6}\s+[A-Z][A-Z\s]{2,30}?' + _SFX + r'\.?)'
+            r'[^A-Za-z]{0,30}?'  # up to 30 chars of non-alpha (acct #, OCR junk, commas)
+            r'([A-Z][A-Za-z\s]{2,20}?)\s*,?\s*(?:TX|TEXAS)\s+(\d{5}(?:-\d{4})?)',
+            full_text, re.IGNORECASE
+        ):
+            addr = m.group(1).strip()
+            city = m.group(2).strip()
+            zipcode = m.group(3).strip()
+            # Filter out junk matches
+            if not city.isalpha() or len(city) < 3:
+                continue
+            # Skip servicer/lender addresses (Virginia Beach, etc. won't match TX)
+            # Skip addresses that are clearly the county clerk / courthouse
+            if re.search(r'CONGRESS|FANNIN|CAPITOL|COURTHOUSE', addr, re.IGNORECASE):
+                continue
+            tx_addresses.append((addr, city, zipcode, m.start()))
+
+        if len(tx_addresses) == 1:
+            # Only one Texas address found — very likely the property
+            a = tx_addresses[0]
+            result["property_address"] = a[0]
+            result["property_city"] = a[1]
+            result["property_state"] = "TX"
+            result["property_zip"] = a[2]
+            log.info(f"  Address (smart finder, sole match): {a[0]}, {a[1]}, TX {a[2]}")
+        elif len(tx_addresses) > 1:
+            # Multiple TX addresses — pick the one that appears AFTER the filing stamp
+            # or the first residential-looking one (not a PO box or suite)
+            best = None
+            for a in tx_addresses:
+                if re.search(r'P\.?O\.?\s+BOX|SUITE\s+\d|STE\s+\d|FLOOR\s+\d', a[0], re.IGNORECASE):
+                    continue  # skip commercial/PO addresses
+                if best is None:
+                    best = a
+            if best:
+                result["property_address"] = best[0]
+                result["property_city"] = best[1]
+                result["property_state"] = "TX"
+                result["property_zip"] = best[2]
+                log.info(f"  Address (smart finder, best of {len(tx_addresses)}): {best[0]}, {best[1]}, TX {best[2]}")
 
     # Extract Property / Legal Description section
     # Try multiple patterns since OCR can garble the text
