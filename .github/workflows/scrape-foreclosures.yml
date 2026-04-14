@@ -42,7 +42,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml pdfplumber pytesseract Pillow pdf2image
+          pip install requests beautifulsoup4 lxml pdfplumber pytesseract Pillow pdf2image google-generativeai
 
       - name: Create output directories
         run: |
@@ -52,6 +52,7 @@ jobs:
         env:
           CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}
           CCLERK_PASSWORD: ${{ secrets.CCLERK_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python scraper/fetch_foreclosures.py
 
       - name: Verify output
