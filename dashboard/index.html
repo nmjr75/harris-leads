@@ -27,6 +27,7 @@
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
+    padding-bottom: 40px;
   }
 
   /* Header */
@@ -607,6 +608,22 @@
 
 <div class="pagination" id="pagination"></div>
 
+<!-- User Selector Modal -->
+<div class="modal-overlay" id="userSelectOverlay" style="display:none">
+  <div class="modal" style="max-width:360px;text-align:center;padding:32px">
+    <h2 style="margin-bottom:4px;font-size:1.1rem">Who are you?</h2>
+    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px">Select your name so edits are tracked</p>
+    <div id="userButtons" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- Logged-in user bar -->
+<div id="userBar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 24px;font-size:0.72rem;color:var(--text-muted);display:none;align-items:center;gap:12px;z-index:99">
+  <span>Logged in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
+  <button onclick="changeUser()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:2px 8px;font-size:0.65rem;cursor:pointer">Switch</button>
+  <span style="margin-left:auto" id="editSyncStatus"></span>
+</div>
+
 <!-- Detail Modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
   <div class="modal" id="modalContent"></div>
@@ -624,7 +641,49 @@ let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
 let perPage = 50;
 const selectedRows = new Set();  // track selected doc_nums
 
-// ── Manual Edits (localStorage persistence) ──────────────────────
+// ── Google Sheets Integration ────────────────────────────────────
+const GSHEET_URL = "https://script.google.com/macros/s/AKfycbyD6vpa4ZuMiT_C21Jveo52UtuJ4DFJ2HthdhYWh3AcrC4D4AU8gIsgcJgLYcPjaFo/exec";
+const TEAM_MEMBERS = ["Nelson", "Nelly", "Bismarck", "Bernabe"];
+let currentUser = localStorage.getItem("harris_leads_user") || "";
+
+function showUserSelector() {
+  const overlay = document.getElementById("userSelectOverlay");
+  const btns = document.getElementById("userButtons");
+  btns.innerHTML = "";
+  TEAM_MEMBERS.forEach(name => {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.style.cssText = "padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.9rem;cursor:pointer;font-weight:600;transition:all 0.2s";
+    b.onmouseover = () => { b.style.borderColor = "var(--accent)"; b.style.background = "var(--accent)"; b.style.color = "#fff"; };
+    b.onmouseout = () => { b.style.borderColor = "var(--border)"; b.style.background = "var(--surface2)"; b.style.color = "var(--text)"; };
+    b.onclick = () => selectUser(name);
+    btns.appendChild(b);
+  });
+  overlay.style.display = "flex";
+}
+
+function selectUser(name) {
+  currentUser = name;
+  localStorage.setItem("harris_leads_user", name);
+  document.getElementById("userSelectOverlay").style.display = "none";
+  document.getElementById("currentUserLabel").textContent = name;
+  document.getElementById("userBar").style.display = "flex";
+}
+
+function changeUser() {
+  showUserSelector();
+}
+
+function initUserBar() {
+  if (currentUser) {
+    document.getElementById("currentUserLabel").textContent = currentUser;
+    document.getElementById("userBar").style.display = "flex";
+  } else {
+    showUserSelector();
+  }
+}
+
+// ── Manual Edits (Google Sheets + localStorage cache) ────────────
 // Keyed by doc_num → { owner: "...", prop_address: "...", prop_city: "...", ... }
 let manualEdits = {};
 try {
@@ -634,6 +693,55 @@ try {
 
 function saveEditsToStorage() {
   try { localStorage.setItem("harris_leads_edits", JSON.stringify(manualEdits)); } catch(e) {}
+}
+
+// Sync edit to Google Sheet (non-blocking)
+function syncEditToSheet(docNum, field, oldVal, newVal) {
+  const status = document.getElementById("editSyncStatus");
+  if (status) status.textContent = "Saving...";
+  fetch(GSHEET_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "edit",
+      docNum: docNum,
+      field: field,
+      oldVal: typeof oldVal === "object" ? JSON.stringify(oldVal) : (oldVal || ""),
+      newVal: typeof newVal === "object" ? JSON.stringify(newVal) : (newVal || ""),
+      user: currentUser || "Unknown"
+    }),
+    headers: { "Content-Type": "text/plain" }
+  })
+  .then(r => r.json())
+  .then(d => { if (status) status.textContent = "Saved"; setTimeout(() => { if (status) status.textContent = ""; }, 2000); })
+  .catch(e => { if (status) status.textContent = "Sync error"; });
+}
+
+// Load edits from Google Sheet on startup
+async function loadEditsFromSheet() {
+  try {
+    const resp = await fetch(GSHEET_URL);
+    const rows = await resp.json();
+    if (!rows || rows.length <= 1) return; // empty or just headers
+    // rows[0] might be headers, data starts at 1
+    const startIdx = (rows[0] && rows[0][0] === "docNum") ? 1 : 0;
+    for (let i = startIdx; i < rows.length; i++) {
+      const [docNum, field, newVal, user, ts, oldVal] = rows[i];
+      if (!docNum || !field) continue;
+      if (!manualEdits[docNum]) manualEdits[docNum] = {};
+      // For address fields, the value might be JSON
+      if ((field === "prop_address" || field === "mail_address") && newVal) {
+        try {
+          // If it's a full address string like "123 Main, Houston, TX 77001", just store it
+          manualEdits[docNum][field] = newVal;
+        } catch(e) {
+          manualEdits[docNum][field] = newVal;
+        }
+      } else {
+        manualEdits[docNum][field] = newVal;
+      }
+    }
+    saveEditsToStorage();
+  } catch(e) { /* Sheet not available, use localStorage cache */ }
 }
 
 // ── Undo History ──────────────────────────────────────────────────
@@ -652,9 +760,11 @@ function saveUndoToStorage() {
 }
 
 function pushUndo(docNum, field, oldVal, newVal) {
-  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now() });
+  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now(), user: currentUser || "Unknown" });
   saveUndoToStorage();
   updateUndoUI();
+  // Sync to Google Sheet
+  syncEditToSheet(docNum, field, oldVal, newVal);
 }
 
 function updateUndoUI() {
@@ -668,7 +778,7 @@ function updateUndoUI() {
     btn.disabled = false;
     const last = undoStack[undoStack.length - 1];
     const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal" };
-    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum}`;
+    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum}${last.user ? ' by ' + last.user : ''}`;
   }
 }
 
@@ -890,6 +1000,9 @@ const DISTRESS_FLAGS = new Set([
 
 // ── Load Data ──────────────────────────────────────────────────────
 async function loadData() {
+  // Load shared edits from Google Sheet first
+  await loadEditsFromSheet();
+
   const resp = await fetch("records.json");
   DATA = await resp.json();
 
@@ -1622,6 +1735,7 @@ function closeModal() {
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
 // ── Init ───────────────────────────────────────────────────────────
+initUserBar();
 loadData();
 updateUndoUI();
 </script>
