@@ -574,6 +574,11 @@
   <select id="batchFilter">
     <option value="">All Batches</option>
   </select>
+  <select id="saleMonthFilter"><option value="">All Sale Months</option></select>
+  <span style="font-size:0.72rem;color:var(--text-muted);">Filed:</span>
+  <input type="date" id="filedFrom" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed from date">
+  <span style="font-size:0.72rem;color:var(--text-muted);">to</span>
+  <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
@@ -581,7 +586,16 @@
     <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
-  <span class="showing-label" id="showingLabel"></span>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <span style="font-size:0.72rem;color:var(--text-muted);">Show:</span>
+    <select id="perpageSelect" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:68px">
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+      <option value="150">150</option>
+      <option value="all">All</option>
+    </select>
+    <span class="showing-label" id="showingLabel"></span>
+  </div>
 </div>
 
 <div class="table-wrap">
@@ -607,7 +621,7 @@ let sortAsc = false;
 let currentPage = 1;
 let cardFilter = null;    // active stat-card filter
 let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
-const PER_PAGE = 50;
+let perPage = 50;
 const selectedRows = new Set();  // track selected doc_nums
 
 // ── Manual Edits (localStorage persistence) ──────────────────────
@@ -1051,6 +1065,35 @@ function populateFilters() {
     fsel.appendChild(opt);
   });
 
+  // Populate sale month filter from sale_date field (auto-populates as new months are scraped)
+  const saleMonths = new Map();
+  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  DATA.records.forEach(r => {
+    if (r.sale_date) {
+      const d = new Date(r.sale_date);
+      if (!isNaN(d)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        if (!saleMonths.has(key)) saleMonths.set(key, 0);
+        saleMonths.set(key, saleMonths.get(key) + 1);
+      }
+    }
+  });
+  const smSel = document.getElementById("saleMonthFilter");
+  [...saleMonths.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([key, count]) => {
+    const [y, m] = key.split("-");
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = `${monthNames[parseInt(m)-1]} ${y} (${count})`;
+    smSel.appendChild(opt);
+  });
+
+  // Per-page selector
+  document.getElementById("perpageSelect").addEventListener("change", function() {
+    perPage = this.value === "all" ? Infinity : parseInt(this.value);
+    currentPage = 1;
+    applyFilters();
+  });
+
   // Live filtering
   document.getElementById("searchInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
   document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
@@ -1061,6 +1104,9 @@ function populateFilters() {
   document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("batchFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("saleMonthFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("filedFrom").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("filedTo").addEventListener("change", () => { currentPage = 1; applyFilters(); });
 
   // Populate batch filter dropdown from foreclosure records
   const batchMap = new Map();  // batch_id → { label, count }
@@ -1099,10 +1145,24 @@ function getFiltered() {
   const conf  = document.getElementById("confFilter").value;
   const src   = document.getElementById("sourceFilter").value;
   const batch = document.getElementById("batchFilter").value;
+  const saleMonth = document.getElementById("saleMonthFilter").value;
+  const filedFrom = document.getElementById("filedFrom").value;
+  const filedTo   = document.getElementById("filedTo").value;
 
   return DATA.records.filter(r => {
     if (src && (r._source || "clerk") !== src) return false;
     if (batch && (r.batch_id || "") !== batch) return false;
+    // Sale month filter (by sale_date)
+    if (saleMonth && r.sale_date) {
+      const d = new Date(r.sale_date);
+      if (!isNaN(d)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        if (key !== saleMonth) return false;
+      } else return false;
+    } else if (saleMonth && !r.sale_date) return false;
+    // Filed date range filter
+    if (filedFrom && r.filed && r.filed < filedFrom) return false;
+    if (filedTo && r.filed && r.filed > filedTo) return false;
     // Card filter
     if (cardFilter) {
       if (cardFilter === "addr") {
@@ -1153,6 +1213,9 @@ function resetFilters() {
   document.getElementById("confFilter").value = "";
   document.getElementById("sourceFilter").value = "";
   document.getElementById("batchFilter").value = "";
+  document.getElementById("saleMonthFilter").value = "";
+  document.getElementById("filedFrom").value = "";
+  document.getElementById("filedTo").value = "";
   cardFilter = null;
   selectedRows.clear();
   updateSelectionUI();
@@ -1184,7 +1247,8 @@ function sortData() {
 // ── Table Render ───────────────────────────────────────────────────
 function renderTable() {
   // Header with checkbox
-  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
+  const effectivePP = perPage === Infinity ? filtered.length : perPage;
+  const pageData = filtered.slice((currentPage - 1) * effectivePP, (currentPage - 1) * effectivePP + effectivePP);
   const allPageSelected = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
 
   let thead = `<tr><th style="width:32px"><input type="checkbox" class="hdr-cb" ${allPageSelected ? 'checked' : ''} onchange="togglePageAll(this.checked)"></th>`;
@@ -1210,7 +1274,7 @@ function renderTable() {
     const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
     const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
 
-    const rowIdx = (currentPage - 1) * PER_PAGE + filtered.indexOf(r);
+    const rowIdx = (currentPage - 1) * perPage + filtered.indexOf(r);
     const grantorCol = (r.cat === "PROBATE" || r.cat === "FRCL") ? (r.grantor_name || '<span style="color:var(--text-muted)">--</span>') : '<span style="color:var(--text-muted)">--</span>';
 
     html += `<tr class="${isSelected ? 'selected' : ''}" data-idx="${rowIdx}">
@@ -1260,13 +1324,15 @@ function toggleRow(docNum, checked) {
     if (cb) tr.classList.toggle("selected", cb.checked);
   });
   // Update header checkbox
-  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
+  const ePP2 = perPage === Infinity ? filtered.length : perPage;
+  const pageData = filtered.slice((currentPage - 1) * ePP2, (currentPage - 1) * ePP2 + ePP2);
   const hdrCb = document.querySelector(".hdr-cb");
   if (hdrCb) hdrCb.checked = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
 }
 
 function togglePageAll(checked) {
-  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
+  const ePP3 = perPage === Infinity ? filtered.length : perPage;
+  const pageData = filtered.slice((currentPage - 1) * ePP3, (currentPage - 1) * ePP3 + ePP3);
   pageData.forEach(r => {
     if (checked) selectedRows.add(r.doc_num);
     else selectedRows.delete(r.doc_num);
@@ -1285,7 +1351,8 @@ function updateSelectionUI() {
 
 // ── Pagination ─────────────────────────────────────────────────────
 function renderPagination() {
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
+  const ePP = perPage === Infinity ? filtered.length : perPage;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ePP));
   if (totalPages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
 
   let html = `<button ${currentPage === 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">&laquo; Prev</button>`;
@@ -1341,11 +1408,30 @@ function exportCSV(mode) {
       r.match_confidence||"none", r.doc_num, r.batch_id||"", r._source||"clerk", r.clerk_url||"", r.hcad_url||""
     ].join(",") + "\n";
   });
-  const suffix = mode === "selected" ? "_selected" : "";
+  // Smart filename based on active filters
+  const fParts = [];
+  const _src = document.getElementById("sourceFilter").value;
+  const _sm = document.getElementById("saleMonthFilter").value;
+  const _batch = document.getElementById("batchFilter").value;
+  const _type = document.getElementById("typeFilter").value;
+  const _ff = document.getElementById("filedFrom").value;
+  const _ft = document.getElementById("filedTo").value;
+  if (_src) fParts.push(_src);
+  if (_sm) fParts.push("sale-" + _sm);
+  if (_batch) fParts.push(_batch);
+  if (_type) fParts.push(_type.toLowerCase());
+  if (_ff || _ft) fParts.push("filed-" + (_ff||"start") + "-to-" + (_ft||"end"));
+  if (cardFilter && cardFilter !== "all") fParts.push(cardFilter === "addr" ? "with-addr" : cardFilter.replace("cat:","").toLowerCase());
+  if (mode === "selected") fParts.push("selected-" + rows.length);
+  const datePart = new Date().toISOString().slice(0,10);
+  let filename = "harris_leads";
+  if (fParts.length > 0) filename += "_" + fParts.join("_");
+  filename += "_" + datePart + ".csv";
+  filename = filename.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
   const blob = new Blob([csv], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}${suffix}.csv`;
+  a.download = filename;
   a.click();
 }
 
