@@ -1375,6 +1375,51 @@ function goPage(p) {
   document.querySelector(".table-wrap").scrollIntoView({behavior: "smooth"});
 }
 
+// ── Name Splitting ────────────────────────────────────────────────
+// Suffixes that stay with last name
+const NAME_SUFFIXES = new Set(["sr","jr","ii","iii","iv","v","esq","md","phd","dds","dvm"]);
+
+function splitName(fullName) {
+  if (!fullName) return { first: "", middle: "", last: "" };
+  // Strip leading "by " prefix (common in foreclosure grantor fields)
+  let name = fullName.replace(/^by\s+/i, "").trim();
+  if (!name) return { first: "", middle: "", last: "" };
+
+  // Split into parts, handling commas for suffixes like ", Sr" or ", Jr"
+  // First check if there's a suffix after a comma
+  let suffix = "";
+  const commaMatch = name.match(/^(.+?),\s*(Sr|Jr|II|III|IV|V|Esq|MD|PhD|DDS|DVM)\.?$/i);
+  if (commaMatch) {
+    name = commaMatch[1].trim();
+    suffix = ", " + commaMatch[2];
+  }
+
+  const parts = name.split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) return { first: "", middle: "", last: "" };
+  if (parts.length === 1) return { first: toTitleCase(parts[0]), middle: "", last: "" };
+
+  // Check if last word is a suffix without comma (e.g. "John Smith Jr")
+  if (parts.length >= 3 && NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase().replace(/\.$/,""))) {
+    suffix = ", " + parts.pop();
+  }
+
+  if (parts.length === 2) {
+    return { first: toTitleCase(parts[0]), middle: "", last: toTitleCase(parts[1]) + suffix };
+  }
+
+  // 3+ parts: first word = first, last word = last, everything in between = middle
+  const first = toTitleCase(parts[0]);
+  const last = toTitleCase(parts[parts.length - 1]) + suffix;
+  const middle = parts.slice(1, -1).map(toTitleCase).join(" ");
+  return { first, middle, last };
+}
+
+function toTitleCase(s) {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
 // ── CSV Export ─────────────────────────────────────────────────────
 function exportCSV(mode) {
   let rows;
@@ -1385,26 +1430,33 @@ function exportCSV(mode) {
     rows = getFiltered();
   }
   const headers = [
-    "Score","Filed","Sale Date","Date Scraped","Type","Category","Owner / Contact","Co-Borrower","Grantor (Deceased)","Grantee (Heirs)",
-    "Flags","Legal Description","Amount",
+    "Score","Filed","Sale Date","Date Scraped","Type","Category",
+    "Owner First Name","Owner Middle Name","Owner Last Name",
+    "Co-Borrower First Name","Co-Borrower Middle Name","Co-Borrower Last Name",
+    "Grantor First Name","Grantor Middle Name","Grantor Last Name",
+    "Grantee (Heirs)",
     "Property Address","Property City","Property State","Property Zip",
     "Mail Address","Mail City","Mail State","Mail Zip",
+    "Flags","Legal Description","Amount",
     "Match Confidence","Doc #","Batch","Source","Clerk URL","HCAD URL"
   ];
   let csv = headers.join(",") + "\n";
   rows.forEach(r => {
+    const owner = splitName(r.owner);
+    const coBorrower = splitName(r.co_borrower);
+    const grantor = splitName(r.grantor_name);
     csv += [
       r.score, r.filed, r.sale_date||"", r.date_scraped||"",
       r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
-      `"${(r.owner||'').replace(/"/g,'""')}"`,
-      `"${(r.co_borrower||'').replace(/"/g,'""')}"`,
-      `"${(r.grantor_name||'').replace(/"/g,'""')}"`,
+      `"${owner.first}"`, `"${owner.middle}"`, `"${owner.last}"`,
+      `"${coBorrower.first}"`, `"${coBorrower.middle}"`, `"${coBorrower.last}"`,
+      `"${grantor.first}"`, `"${grantor.middle}"`, `"${grantor.last}"`,
       `"${(r.grantee_names||'').replace(/"/g,'""')}"`,
+      `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
+      `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
       `"${(r.flags||[]).join('; ')}"`,
       `"${(r.legal||'').replace(/"/g,'""')}"`,
       `"${(r.amount||'').replace(/"/g,'""')}"`,
-      `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
-      `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
       r.match_confidence||"none", r.doc_num, r.batch_id||"", r._source||"clerk", r.clerk_url||"", r.hcad_url||""
     ].join(",") + "\n";
   });
