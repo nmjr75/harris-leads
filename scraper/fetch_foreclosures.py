@@ -737,7 +737,7 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
     # These appear in every document and must be excluded
     # --- Harris County & surrounding area cities/communities ---
     # Used to validate extracted addresses are actual properties, not attorney/servicer offices
-    Rejected non-Harris = {
+    _HARRIS_COUNTY_CITIES = {
         # Incorporated cities (fully or partially in Harris County)
         "HOUSTON", "BAYTOWN", "BELLAIRE", "BUNKER HILL VILLAGE", "DEER PARK",
         "EL LAGO", "FRIENDSWOOD", "GALENA PARK", "HEDWIG VILLAGE", "HILSHIRE VILLAGE",
