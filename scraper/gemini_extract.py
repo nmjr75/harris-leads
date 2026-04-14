@@ -1,7 +1,7 @@
 """
 Gemini Vision API extraction for Harris County foreclosure PDFs.
 
-Uses Google Gemini 2.0 Flash to extract structured data from PDF images.
+Uses Google Gemini 2.5 Flash to extract structured data from PDF images.
 Falls back to None (triggering OCR pipeline) if Gemini is unavailable or fails.
 """
 
@@ -64,7 +64,7 @@ def parse_pdf_with_gemini(pdf_bytes, doc_id):
             "- Return ONLY the JSON object, no markdown fences, no other text."
         )
 
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
 
         # Convert first page to PNG bytes for Gemini
         img_buf = BytesIO()
