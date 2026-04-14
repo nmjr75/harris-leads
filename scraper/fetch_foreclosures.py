@@ -1485,7 +1485,9 @@ def main():
     next_batch_num = max(existing_batch_nums, default=0) + 1
     batch_id = f"B{next_batch_num}"
     now_ts = datetime.now(CT).strftime("%Y-%m-%d %I:%M %p %Z")
-    batch_label = f"Batch {next_batch_num} Ã¢ÂÂ {now_ts}"
+    run_number = os.environ.get("GITHUB_RUN_NUMBER", "")
+    run_tag = f"Run #{run_number} / " if run_number else ""
+    batch_label = f"{run_tag}Batch {next_batch_num} Ã¢ÂÂ {now_ts}"
     log.info(f"This run: {batch_id} ({batch_label})")
 
     # Set up HTTP session with realistic browser headers
@@ -3245,7 +3247,9 @@ def main():
     next_batch_num = max(existing_batch_nums, default=0) + 1
     batch_id = f"B{next_batch_num}"
     now_ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
-    batch_label = f"Batch {next_batch_num} â {now_ts}"
+    run_number2 = os.environ.get("GITHUB_RUN_NUMBER", "")
+    run_tag2 = f"Run #{run_number2} / " if run_number2 else ""
+    batch_label = f"{run_tag2}Batch {next_batch_num} â {now_ts}"
     log.info(f"This run: {batch_id} ({batch_label})")
 
     # Set up HTTP session with realistic browser headers
