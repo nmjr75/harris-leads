@@ -522,7 +522,9 @@
     .search-input { width: 100%; }
     .bar-label { width: 80px; font-size: 0.65rem; }
   }
-</style>
+
+    #saleMonthFilter{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;}
+    </style>
 </head>
 <body>
 
@@ -574,6 +576,7 @@
   <select id="batchFilter">
     <option value="">All Batches</option>
   </select>
+      <select id="saleMonthFilter" onchange="applyFilters()"><option value="">All Sale Months</option></select>
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
@@ -581,7 +584,8 @@
     <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
-  <span class="showing-label" id="showingLabel"></span>
+  <div style="display:flex;align-items:center;gap:8px;margin:8px 20px 0 20px"><label style="color:var(--text-muted);font-size:13px">Per page:</label><select id="perPageSelect" onchange="changePerPage()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px"><option value="50">50</option><option value="100">100</option><option value="150">150</option><option value="200">200</option><option value="99999">All</option></select></div>
+    <span class="showing-label" id="showingLabel"></span>
 </div>
 
 <div class="table-wrap">
@@ -607,7 +611,7 @@ let sortAsc = false;
 let currentPage = 1;
 let cardFilter = null;    // active stat-card filter
 let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
-const PER_PAGE = 50;
+let PER_PAGE = 50;
 const selectedRows = new Set();  // track selected doc_nums
 
 // ── Manual Edits (localStorage persistence) ──────────────────────
@@ -932,7 +936,7 @@ async function loadData() {
 
   buildStats();
   buildCharts();
-  populateFilters();
+  populateFilters(); populateSaleMonths();
   applyFilters();
 }
 
@@ -1033,7 +1037,9 @@ function buildCharts() {
 }
 
 // ── Filters ────────────────────────────────────────────────────────
-function populateFilters() {
+function populateSaleMonths(){const sel=document.getElementById("saleMonthFilter");if(!sel)return;const ms=new Set();DATA.forEach(r=>{const sd=r.sale_date||"";if(sd){const d=new Date(sd);if(!isNaN(d))ms.add(d.toLocaleString("en-US",{month:"long",year:"numeric"}));}});const sorted=[...ms].sort((a,b)=>new Date(a)-new Date(b));sel.innerHTML='<option value="">All Sale Months</option>';sorted.forEach(mo=>{const o=document.createElement("option");o.value=mo;o.textContent=mo;sel.appendChild(o);});}
+
+  function populateFilters() {
   const types = [...new Set(DATA.records.map(r => r.doc_type))].sort();
   const sel = document.getElementById("typeFilter");
   types.forEach(t => {
@@ -1100,7 +1106,8 @@ function getFiltered() {
   const src   = document.getElementById("sourceFilter").value;
   const batch = document.getElementById("batchFilter").value;
 
-  return DATA.records.filter(r => {
+  const smSel=document.getElementById("saleMonthFilter");if(smSel&&smSel.value){const smv=smSel.value;rows=rows.filter(r=>{const sd=r.sale_date||"";if(!sd)return false;const d=new Date(sd);return !isNaN(d)&&d.toLocaleString("en-US",{month:"long",year:"numeric"})===smv;});}
+    return DATA.records.filter(r => {
     if (src && (r._source || "clerk") !== src) return false;
     if (batch && (r.batch_id || "") !== batch) return false;
     // Card filter
@@ -1144,7 +1151,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
-  document.getElementById("searchInput").value = "";
+const smf=document.getElementById("saleMonthFilter");if(smf)smf.value="";  document.getElementById("searchInput").value = "";
   document.getElementById("typeFilter").value = "";
   document.getElementById("scoreMin").value = "";
   document.getElementById("scoreMax").value = "";
@@ -1284,7 +1291,9 @@ function updateSelectionUI() {
 }
 
 // ── Pagination ─────────────────────────────────────────────────────
-function renderPagination() {
+function changePerPage(){PER_PAGE=parseInt(document.getElementById("perPageSelect").value)||50;currentPage=0;renderTable();renderPagination();}
+
+  function renderPagination() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   if (totalPages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
 
@@ -1345,7 +1354,7 @@ function exportCSV(mode) {
   const blob = new Blob([csv], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}${suffix}.csv`;
+  a.download=(function(){const sm=document.getElementById("saleMonthFilter");const v=sm&&sm.value?sm.value.replace(/ /g,"-").toLowerCase():"all";return "harris_leads_"+v+"_"+new Date().toISOString().slice(0,10)+".csv";})();
   a.click();
 }
 
