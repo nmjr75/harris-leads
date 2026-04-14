@@ -3,186 +3,120 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Harris County Motivated Seller Leads — SiftLeads</title>
+<title>Harris County Motivated Seller Leads</title>
 <style>
   :root {
-    --bg: #0a0c12;
-    --surface: #13161f;
-    --surface2: #1c2030;
-    --surface3: #252a3a;
-    --border: #2a2f45;
-    --border-light: #353b55;
-    --text: #e8eaf4;
-    --text-muted: #7d829a;
-    --text-dim: #5a5f75;
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #23273a;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-muted: #8b8fa3;
     --accent: #7c5cfc;
     --accent-light: #9b82fc;
-    --accent-glow: rgba(124,92,252,0.12);
     --green: #22c55e;
-    --green-dim: rgba(34,197,94,0.12);
     --red: #ef4444;
-    --red-dim: rgba(239,68,68,0.12);
     --orange: #f59e0b;
-    --orange-dim: rgba(245,158,11,0.12);
     --blue: #3b82f6;
-    --blue-dim: rgba(59,130,246,0.12);
     --cyan: #06b6d4;
-    --radius: 10px;
-    --radius-sm: 6px;
-    --shadow: 0 2px 12px rgba(0,0,0,0.25);
-    --shadow-lg: 0 8px 32px rgba(0,0,0,0.35);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
   }
 
-  /* ── Top Navigation Bar ─────────────────────────────────────── */
-  .topbar {
+  /* Header */
+  .header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    padding: 0 28px;
-    height: 56px;
-    background: var(--surface);
+    align-items: center;
+    padding: 16px 24px;
     border-bottom: 1px solid var(--border);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    flex-wrap: wrap;
+    gap: 8px;
   }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .brand-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--accent), #a78bfa);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 900;
-    font-size: 0.85rem;
-    color: #fff;
-    letter-spacing: -0.02em;
-  }
-  .brand-text h1 {
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
-  }
-  .brand-text h1 span { color: var(--accent-light); }
-  .brand-text .subtitle {
-    font-size: 0.6rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 500;
-  }
-  .topbar-meta {
-    text-align: right;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-  }
-  .topbar-meta .date-range { color: var(--accent-light); font-weight: 600; }
-  .topbar-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    background: var(--green-dim);
-    color: var(--green);
-    margin-left: 6px;
-  }
+  .header h1 { font-size: 1.25rem; font-weight: 700; }
+  .header h1 span { color: var(--accent-light); }
+  .header-meta { font-size: 0.75rem; color: var(--text-muted); text-align: right; }
 
-  /* ── Stat Cards ─────────────────────────────────────────────── */
+  /* Stat Cards */
   .stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 10px;
-    padding: 16px 28px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 16px 24px;
   }
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: 10px;
     padding: 14px 16px;
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
   }
-  .stat-card:hover { border-color: var(--border-light); transform: translateY(-1px); box-shadow: var(--shadow); }
-  .stat-card.active { border-color: var(--accent); background: var(--surface2); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
+  .stat-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .stat-card.active { border-color: var(--accent); background: var(--surface2); }
   .stat-card .value {
-    font-size: 1.6rem;
+    font-size: 1.75rem;
     font-weight: 800;
     line-height: 1.1;
     color: var(--accent-light);
-    letter-spacing: -0.02em;
   }
   .stat-card .label {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     margin-top: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 500;
+    letter-spacing: 0.04em;
   }
   .stat-card.total .value { color: var(--text); }
   .stat-card.addr .value  { color: var(--green); }
+
+  /* Score badge on cards */
   .stat-card .pct {
     position: absolute;
     top: 8px;
     right: 10px;
-    font-size: 0.6rem;
-    color: var(--text-dim);
-    font-weight: 600;
+    font-size: 0.65rem;
+    color: var(--text-muted);
   }
 
-  /* ── Charts Row ─────────────────────────────────────────────── */
+  /* Charts row */
   .charts-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    padding: 0 28px 12px;
+    gap: 12px;
+    padding: 0 24px 12px;
   }
   .chart-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px 18px;
+    border-radius: 10px;
+    padding: 16px;
   }
   .chart-card h3 {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
     color: var(--text-muted);
     margin-bottom: 12px;
-    letter-spacing: 0.05em;
-    font-weight: 600;
+    letter-spacing: 0.04em;
   }
-  .bar-chart { display: flex; flex-direction: column; gap: 5px; }
+  .bar-chart { display: flex; flex-direction: column; gap: 6px; }
   .bar-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
   }
-  .bar-label { width: 115px; text-align: right; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.7rem; }
+  .bar-label { width: 120px; text-align: right; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bar-track { flex: 1; height: 18px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; display: flex; align-items: center; padding-left: 6px; font-size: 0.62rem; font-weight: 600; color: #fff; }
-  .bar-count { width: 35px; text-align: right; font-weight: 600; font-size: 0.72rem; flex-shrink: 0; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; display: flex; align-items: center; padding-left: 6px; font-size: 0.65rem; font-weight: 600; color: #fff; }
+  .bar-count { width: 35px; text-align: right; font-weight: 600; font-size: 0.75rem; flex-shrink: 0; }
 
   /* Score distribution */
   .score-dist { display: flex; align-items: flex-end; gap: 3px; height: 80px; }
@@ -204,76 +138,57 @@
     transform: translateX(-50%);
     background: #000;
     color: #fff;
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     padding: 2px 6px;
     border-radius: 4px;
     white-space: nowrap;
     margin-bottom: 4px;
   }
   .score-bar:hover .tooltip { display: block; }
-  .score-labels { display: flex; justify-content: space-between; font-size: 0.58rem; color: var(--text-dim); margin-top: 4px; }
+  .score-labels { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--text-muted); margin-top: 4px; }
 
-  /* ── Filter Toolbar ─────────────────────────────────────────── */
-  .toolbar {
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 28px;
+  /* Filters */
+  .filters {
     display: flex;
-    flex-wrap: wrap;
     gap: 8px;
+    padding: 12px 24px;
+    flex-wrap: wrap;
     align-items: center;
   }
-  .toolbar-section {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .toolbar-divider {
-    width: 1px;
-    height: 24px;
-    background: var(--border);
-    margin: 0 4px;
-  }
-  .toolbar input, .toolbar select {
-    background: var(--surface2);
+  .filters input, .filters select {
+    background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 6px 10px;
-    font-size: 0.78rem;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.8rem;
     outline: none;
     transition: border-color 0.2s;
-    font-family: inherit;
   }
-  .toolbar input:focus, .toolbar select:focus { border-color: var(--accent); }
-  .toolbar input::placeholder { color: var(--text-dim); }
-  .search-input { width: 180px; }
-  .score-input { width: 64px; }
-  .score-range { display: flex; align-items: center; gap: 3px; }
-  .score-range span { color: var(--text-dim); font-size: 0.72rem; }
-
+  .filters input:focus, .filters select:focus { border-color: var(--accent); }
+  .filters input::placeholder { color: var(--text-muted); }
+  .search-input { width: 200px; }
+  .score-input { width: 72px; }
+  .score-range { display: flex; align-items: center; gap: 4px; }
+  .score-range span { color: var(--text-muted); font-size: 0.75rem; }
   .btn {
-    padding: 6px 12px;
+    padding: 7px 14px;
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface2);
+    border-radius: 6px;
+    background: var(--surface);
     color: var(--text);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s;
-    font-family: inherit;
-    font-weight: 500;
   }
-  .btn:hover { border-color: var(--accent); background: var(--surface3); }
+  .btn:hover { border-color: var(--accent); }
   .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  .btn-accent:hover { background: var(--accent-light); border-color: var(--accent-light); }
+  .btn-accent:hover { background: var(--accent-light); }
   .btn-green { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
-  .btn-green:hover { opacity: 0.9; }
-  .btn-green:disabled { opacity: 0.3; cursor: default; }
+  .btn-green:hover { opacity: 0.85; }
+  .btn-green:disabled { opacity: 0.4; cursor: default; }
   .export-group { display: flex; gap: 4px; align-items: center; }
-  .selected-count { font-size: 0.68rem; color: rgba(255,255,255,0.8); font-weight: 600; margin-left: 2px; }
-
+  .selected-count { font-size: 0.7rem; color: var(--green); font-weight: 600; margin-left: 2px; }
   .filter-tag {
     display: inline-flex;
     align-items: center;
@@ -282,61 +197,43 @@
     color: #fff;
     padding: 3px 10px;
     border-radius: 12px;
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     font-weight: 600;
   }
   .filter-tag .x { cursor: pointer; opacity: 0.7; }
   .filter-tag .x:hover { opacity: 1; }
+  .showing-label { font-size: 0.75rem; color: var(--text-muted); margin-left: auto; }
 
-  .toolbar-right {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .showing-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
-
-  /* Per-page selector */
-  .perpage-group {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-  }
-  .perpage-group label { font-weight: 500; white-space: nowrap; }
-
-  /* ── Table ──────────────────────────────────────────────────── */
+  /* Table */
   .table-wrap {
     overflow-x: auto;
-    padding: 0 28px 24px;
+    padding: 0 24px 24px;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
   }
   thead th {
     position: sticky;
-    top: 56px;
+    top: 0;
     background: var(--surface);
     padding: 10px 8px;
     text-align: left;
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     color: var(--text-muted);
     border-bottom: 2px solid var(--border);
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    letter-spacing: 0.04em;
-    font-weight: 600;
+    letter-spacing: 0.03em;
   }
   thead th:hover { color: var(--accent-light); }
-  thead th .sort-arrow { margin-left: 3px; font-size: 0.58rem; }
+  thead th .sort-arrow { margin-left: 3px; font-size: 0.6rem; }
   tbody tr {
     border-bottom: 1px solid var(--border);
-    transition: background 0.12s;
+    transition: background 0.15s;
   }
   tbody tr:hover { background: var(--surface2); }
   td { padding: 10px 8px; vertical-align: top; }
@@ -348,129 +245,294 @@
     display: inline-block;
     padding: 2px 10px;
     border-radius: 10px;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-weight: 700;
   }
-  .score-high { background: var(--green-dim); color: var(--green); }
-  .score-med  { background: var(--orange-dim); color: var(--orange); }
-  .score-low  { background: rgba(139,143,163,0.12); color: var(--text-muted); }
+  .score-high { background: rgba(34,197,94,0.15); color: var(--green); }
+  .score-med  { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .score-low  { background: rgba(139,143,163,0.15); color: var(--text-muted); }
   .type-badge {
     display: inline-block;
     padding: 1px 6px;
     border-radius: 4px;
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 700;
-    background: var(--surface3);
+    background: var(--surface2);
     border: 1px solid var(--border);
   }
   .flag-pill {
     display: inline-block;
     padding: 1px 7px;
     border-radius: 8px;
-    font-size: 0.58rem;
+    font-size: 0.6rem;
     font-weight: 600;
     margin: 1px 2px;
     white-space: nowrap;
   }
-  .flag-pill.distress { background: var(--red-dim); color: var(--red); }
-  .flag-pill.info     { background: var(--blue-dim); color: var(--blue); }
-  .flag-pill.fresh    { background: var(--green-dim); color: var(--green); }
+  .flag-pill.distress { background: rgba(239,68,68,0.15); color: var(--red); }
+  .flag-pill.info     { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .flag-pill.fresh    { background: rgba(34,197,94,0.15); color: var(--green); }
 
+  /* Confidence badges */
   .conf-pill {
     display: inline-block;
     padding: 2px 8px;
     border-radius: 8px;
-    font-size: 0.62rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
   }
-  .conf-high   { background: var(--green-dim); color: var(--green); }
-  .conf-medium { background: var(--orange-dim); color: var(--orange); }
-  .conf-low    { background: var(--red-dim); color: var(--red); }
-  .conf-none   { background: rgba(139,143,163,0.08); color: var(--text-dim); }
-  td a { color: var(--accent-light); text-decoration: none; font-weight: 500; }
+  .conf-high   { background: rgba(34,197,94,0.18); color: var(--green); }
+  .conf-medium { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .conf-low    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .conf-none   { background: rgba(139,143,163,0.12); color: var(--text-muted); }
+  td a { color: var(--accent-light); text-decoration: none; }
   td a:hover { text-decoration: underline; }
   .addr-cell { max-width: 200px; }
-  .owner-cell { max-width: 260px; word-break: break-word; }
+  .owner-cell { max-width: 260px; word-break: break-word; font-size: 0.78rem; }
 
+  /* Editable cells (foreclosure records) */
+  .editable-cell {
+    position: relative;
+    cursor: text !important;
+    border: 1px dashed transparent;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .editable-cell:hover {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.06);
+  }
+  .editable-cell::after {
+    content: "\270E";
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    font-size: 0.65rem;
+    color: var(--accent-light);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .editable-cell:hover::after { opacity: 0.7; }
+  .editable-cell.editing {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.1);
+  }
+  .editable-cell input {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    font-size: 0.78rem;
+    padding: 3px 6px;
+    border-radius: 3px;
+    width: 100%;
+    outline: none;
+  }
+  .editable-cell input:focus { border-color: var(--accent-light); }
+  .edit-saved {
+    animation: editFlash 0.6s ease;
+  }
+  @keyframes editFlash {
+    0% { background: rgba(34,197,94,0.25); }
+    100% { background: transparent; }
+  }
+  /* Undo button */
+  .btn-undo {
+    background: rgba(239,68,68,0.15);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.3);
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-undo:hover:not(:disabled) {
+    background: rgba(239,68,68,0.25);
+    border-color: var(--red);
+  }
+  .btn-undo:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .undo-info {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+
+  /* Row checkboxes */
   .row-cb, .hdr-cb {
-    width: 15px; height: 15px;
+    width: 16px; height: 16px;
     accent-color: var(--accent);
     cursor: pointer;
   }
-  tbody tr.selected { background: var(--accent-glow); }
-  tbody tr.selected:hover { background: rgba(124,92,252,0.16); }
+  tbody tr.selected { background: rgba(124,92,252,0.08); }
+  tbody tr.selected:hover { background: rgba(124,92,252,0.14); }
+  tbody tr td:not(:first-child) { cursor: pointer; }
 
-  /* ── Pagination ─────────────────────────────────────────────── */
+  /* Detail Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .modal-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    flex: 1;
+    word-break: break-word;
+  }
+  .modal-header .cat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-score {
+    font-size: 1.5rem;
+    font-weight: 800;
+  }
+  .modal-score-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .modal-score-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .modal-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .modal-section {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-section:last-child { border-bottom: none; }
+  .modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .modal-field-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+  }
+  .modal-field-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .modal-field-value a { color: var(--accent-light); text-decoration: none; font-size: 0.78rem; }
+  .modal-field-value a:hover { text-decoration: underline; }
+  .modal-addr-block {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 4px;
+  }
+  .modal-addr-block .addr-line {
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+  .modal-addr-block .addr-city {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* Pagination */
   .pagination {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 5px;
-    padding: 16px 28px;
+    gap: 6px;
+    padding: 16px 24px;
   }
   .pagination button {
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 5px 11px;
-    font-size: 0.78rem;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.15s;
-    font-family: inherit;
   }
   .pagination button:hover { border-color: var(--accent); }
   .pagination button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .pagination button:disabled { opacity: 0.3; cursor: default; }
-  .page-info { font-size: 0.72rem; color: var(--text-muted); }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  .page-info { font-size: 0.75rem; color: var(--text-muted); }
 
-  /* ── Footer ─────────────────────────────────────────────────── */
-  .footer {
-    text-align: center;
-    padding: 20px 28px 28px;
-    font-size: 0.65rem;
-    color: var(--text-dim);
-    border-top: 1px solid var(--border);
-    margin-top: 8px;
-  }
-  .footer a { color: var(--accent-light); text-decoration: none; }
-  .footer a:hover { text-decoration: underline; }
-
-  /* ── Responsive ─────────────────────────────────────────────── */
+  /* Responsive */
   @media (max-width: 768px) {
     .stats { grid-template-columns: repeat(2, 1fr); }
     .charts-row { grid-template-columns: 1fr; }
-    .topbar { padding: 0 14px; }
-    .toolbar { padding: 8px 14px; }
+    .header { padding: 12px 16px; }
+    .filters { padding: 8px 16px; }
     .table-wrap { padding: 0 8px 16px; }
     .search-input { width: 100%; }
-    .bar-label { width: 80px; font-size: 0.62rem; }
-    .toolbar-divider { display: none; }
-    .brand-text .subtitle { display: none; }
+    .bar-label { width: 80px; font-size: 0.65rem; }
   }
 </style>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
 
-<!-- Top Navigation -->
-<div class="topbar">
-  <div class="brand">
-    <div class="brand-icon">SL</div>
-    <div class="brand-text">
-      <h1>Harris County <span>Motivated Sellers</span></h1>
-      <div class="subtitle">Real-Time Distress Lead Intelligence</div>
-    </div>
-  </div>
-  <div class="topbar-meta" id="meta"></div>
+<div class="header">
+  <h1>Harris County <span>Motivated Sellers</span></h1>
+  <div class="header-meta" id="meta"></div>
 </div>
 
-<!-- Stat Cards -->
 <div class="stats" id="stats"></div>
 
-<!-- Charts -->
 <div class="charts-row" id="chartsRow">
   <div class="chart-card">
     <h3>Leads by Category</h3>
@@ -483,61 +545,45 @@
   </div>
 </div>
 
-<!-- Filter Toolbar -->
-<div class="toolbar" id="filtersBar">
-  <div class="toolbar-section">
-    <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#…">
+<div class="filters" id="filtersBar">
+  <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
+  <select id="typeFilter"><option value="">All Types</option></select>
+  <div class="score-range">
+    <input type="number" class="score-input" id="scoreMin" placeholder="Min" min="0" max="100">
+    <span>–</span>
+    <input type="number" class="score-input" id="scoreMax" placeholder="Max" min="0" max="100">
   </div>
-  <div class="toolbar-divider"></div>
-  <div class="toolbar-section">
-    <select id="typeFilter"><option value="">All Types</option></select>
-    <select id="monthFilter"><option value="">All Months</option></select>
-    <select id="flagFilter"><option value="">All Flags</option></select>
-  </div>
-  <div class="toolbar-divider"></div>
-  <div class="toolbar-section">
-    <div class="score-range">
-      <input type="number" class="score-input" id="scoreMin" placeholder="Min" min="0" max="100">
-      <span>–</span>
-      <input type="number" class="score-input" id="scoreMax" placeholder="Max" min="0" max="100">
-    </div>
-    <select id="addrFilter">
-      <option value="">All</option>
-      <option value="with">With Address</option>
-      <option value="without">Without Address</option>
-    </select>
-    <select id="confFilter">
-      <option value="">All Confidence</option>
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
-      <option value="none">None</option>
-    </select>
-  </div>
-  <div class="toolbar-divider"></div>
-  <div class="toolbar-section">
-    <button class="btn" onclick="resetFilters()">Reset</button>
-    <div class="export-group">
-      <button class="btn btn-accent" onclick="exportCSV('all')">⬇ Export All</button>
-      <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>⬇ Selected <span class="selected-count" id="selCount"></span></button>
-    </div>
+  <select id="flagFilter"><option value="">All Flags</option></select>
+  <select id="addrFilter">
+    <option value="">All</option>
+    <option value="with">With Address</option>
+    <option value="without">Without Address</option>
+  </select>
+  <select id="confFilter">
+    <option value="">All Confidence</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+    <option value="none">None</option>
+  </select>
+  <select id="sourceFilter">
+    <option value="">All Sources</option>
+    <option value="clerk">Clerk Records</option>
+    <option value="foreclosure">Foreclosures</option>
+  </select>
+  <select id="batchFilter">
+    <option value="">All Batches</option>
+  </select>
+  <button class="btn" onclick="resetFilters()">Reset</button>
+  <div class="export-group">
+    <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
+    <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
+    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
-  <div class="toolbar-right">
-    <div class="perpage-group">
-      <label>Show:</label>
-      <select id="perpageSelect">
-        <option value="50" selected>50</option>
-        <option value="100">100</option>
-        <option value="150">150</option>
-        <option value="all">All</option>
-      </select>
-    </div>
-    <span class="showing-label" id="showingLabel"></span>
-  </div>
+  <span class="showing-label" id="showingLabel"></span>
 </div>
 
-<!-- Table -->
 <div class="table-wrap">
   <table>
     <thead id="thead"></thead>
@@ -545,34 +591,272 @@
   </table>
 </div>
 
-<!-- Pagination -->
 <div class="pagination" id="pagination"></div>
 
-<!-- Footer -->
-<div class="footer">
-  Harris County Clerk public records &middot; Data refreshed automatically &middot; Built with <a href="#">SiftLeads</a>
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
 </div>
 
 <script>
 let DATA = null;
+let FRCL_DATA = null;  // foreclosure records
 let filtered = [];
 let sortCol = "score";
 let sortAsc = false;
 let currentPage = 1;
-let cardFilter = null;
-let perPage = 50;
-const selectedRows = new Set();
+let cardFilter = null;    // active stat-card filter
+let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
+const PER_PAGE = 50;
+const selectedRows = new Set();  // track selected doc_nums
+
+// ── Manual Edits (localStorage persistence) ──────────────────────
+// Keyed by doc_num → { owner: "...", prop_address: "...", prop_city: "...", ... }
+let manualEdits = {};
+try {
+  const stored = localStorage.getItem("harris_leads_edits");
+  if (stored) manualEdits = JSON.parse(stored);
+} catch(e) { manualEdits = {}; }
+
+function saveEditsToStorage() {
+  try { localStorage.setItem("harris_leads_edits", JSON.stringify(manualEdits)); } catch(e) {}
+}
+
+// ── Undo History ──────────────────────────────────────────────────
+// Each entry: { docNum, field, oldVal, newVal, timestamp }
+// oldVal is an object for address fields: { address, city, state, zip }
+let undoStack = [];
+try {
+  const stored = localStorage.getItem("harris_leads_undo");
+  if (stored) undoStack = JSON.parse(stored);
+} catch(e) { undoStack = []; }
+
+function saveUndoToStorage() {
+  // Keep last 50 undos max
+  if (undoStack.length > 50) undoStack = undoStack.slice(-50);
+  try { localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack)); } catch(e) {}
+}
+
+function pushUndo(docNum, field, oldVal, newVal) {
+  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now() });
+  saveUndoToStorage();
+  updateUndoUI();
+}
+
+function updateUndoUI() {
+  const btn = document.getElementById("undoBtn");
+  const info = document.getElementById("undoInfo");
+  if (!btn) return;
+  if (undoStack.length === 0) {
+    btn.disabled = true;
+    if (info) info.textContent = "";
+  } else {
+    btn.disabled = false;
+    const last = undoStack[undoStack.length - 1];
+    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal" };
+    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum}`;
+  }
+}
+
+function undoLastEdit() {
+  if (undoStack.length === 0) return;
+  const entry = undoStack.pop();
+  saveUndoToStorage();
+
+  const rec = DATA.records.find(r => r.doc_num === entry.docNum);
+  if (!rec) { updateUndoUI(); return; }
+
+  // Restore the old value
+  if (entry.field === "prop_address" || entry.field === "mail_address") {
+    const prefix = entry.field === "prop_address" ? "prop" : "mail";
+    const old = entry.oldVal || {};
+    rec[prefix + "_address"] = old.address || "";
+    rec[prefix + "_city"] = old.city || "";
+    rec[prefix + "_state"] = old.state || "";
+    rec[prefix + "_zip"] = old.zip || "";
+    // Update manualEdits
+    if (manualEdits[entry.docNum]) {
+      if (old.address || old.city || old.state || old.zip) {
+        manualEdits[entry.docNum][prefix + "_address"] = old.address || "";
+        manualEdits[entry.docNum][prefix + "_city"] = old.city || "";
+        manualEdits[entry.docNum][prefix + "_state"] = old.state || "";
+        manualEdits[entry.docNum][prefix + "_zip"] = old.zip || "";
+      } else {
+        delete manualEdits[entry.docNum][prefix + "_address"];
+        delete manualEdits[entry.docNum][prefix + "_city"];
+        delete manualEdits[entry.docNum][prefix + "_state"];
+        delete manualEdits[entry.docNum][prefix + "_zip"];
+      }
+    }
+  } else {
+    rec[entry.field] = entry.oldVal || "";
+    if (manualEdits[entry.docNum]) {
+      if (entry.oldVal) {
+        manualEdits[entry.docNum][entry.field] = entry.oldVal;
+      } else {
+        delete manualEdits[entry.docNum][entry.field];
+      }
+      // Clean up empty edit objects
+      if (Object.keys(manualEdits[entry.docNum]).length === 0) {
+        delete manualEdits[entry.docNum];
+      }
+    }
+  }
+
+  saveEditsToStorage();
+  updateUndoUI();
+  renderTable();
+  renderPagination();
+}
+
+function applyManualEdits(records) {
+  records.forEach(r => {
+    const edits = manualEdits[r.doc_num];
+    if (edits) {
+      if (edits.owner) r.owner = edits.owner;
+      if (edits.co_borrower) r.co_borrower = edits.co_borrower;
+      if (edits.legal) r.legal = edits.legal;
+      if (edits.prop_address) r.prop_address = edits.prop_address;
+      if (edits.prop_city) r.prop_city = edits.prop_city;
+      if (edits.prop_state) r.prop_state = edits.prop_state;
+      if (edits.prop_zip) r.prop_zip = edits.prop_zip;
+      if (edits.mail_address) r.mail_address = edits.mail_address;
+      if (edits.mail_city) r.mail_city = edits.mail_city;
+      if (edits.mail_state) r.mail_state = edits.mail_state;
+      if (edits.mail_zip) r.mail_zip = edits.mail_zip;
+      if (edits.amount) r.amount = edits.amount;
+    }
+  });
+}
+
+function startEdit(docNum, field, cellEl) {
+  if (cellEl.classList.contains("editing")) return;
+  cellEl.classList.add("editing");
+
+  const rec = DATA.records.find(r => r.doc_num === docNum);
+  if (!rec) return;
+
+  let currentVal = "";
+  if (field === "owner") {
+    currentVal = rec.owner || "";
+  } else if (field === "co_borrower") {
+    currentVal = rec.co_borrower || "";
+  } else if (field === "prop_address") {
+    currentVal = [rec.prop_address, rec.prop_city, rec.prop_state, rec.prop_zip].filter(Boolean).join(", ");
+  } else if (field === "mail_address") {
+    currentVal = [rec.mail_address, rec.mail_city, rec.mail_state, rec.mail_zip].filter(Boolean).join(", ");
+  } else if (field === "amount") {
+    currentVal = rec.amount || "";
+  } else if (field === "legal") {
+    currentVal = rec.legal || "";
+  }
+
+  const placeholders = {
+    owner: "Enter owner name…",
+    co_borrower: "Enter co-borrower name…",
+    prop_address: "Enter address, city, ST zip…",
+    mail_address: "Enter address, city, ST zip…",
+    amount: "Enter amount (e.g. $250,000)…",
+    legal: "Enter legal description…"
+  };
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = currentVal;
+  input.placeholder = placeholders[field] || "Enter value…";
+
+  cellEl.innerHTML = "";
+  cellEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  function commitEdit() {
+    const val = input.value.trim();
+    cellEl.classList.remove("editing");
+
+    // Skip if nothing changed
+    if (val === currentVal) {
+      cellEl.innerHTML = currentVal || '<span style="color:var(--text-muted)">--</span>';
+      if (field === "prop_address" || field === "mail_address") {
+        const pfx = field === "prop_address" ? "prop" : "mail";
+        const disp = [rec[pfx+"_address"], rec[pfx+"_city"], rec[pfx+"_state"], rec[pfx+"_zip"]].filter(Boolean).join(", ");
+        cellEl.innerHTML = disp || '<span style="color:var(--text-muted)">--</span>';
+      }
+      return;
+    }
+
+    if (!manualEdits[docNum]) manualEdits[docNum] = {};
+
+    if (field === "owner" || field === "co_borrower" || field === "legal") {
+      pushUndo(docNum, field, currentVal, val);
+      rec[field] = val;
+      manualEdits[docNum][field] = val;
+      cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
+    } else if (field === "prop_address" || field === "mail_address") {
+      // Snapshot old address components for undo
+      const prefix = field === "prop_address" ? "prop" : "mail";
+      pushUndo(docNum, field, {
+        address: rec[prefix + "_address"] || "",
+        city: rec[prefix + "_city"] || "",
+        state: rec[prefix + "_state"] || "",
+        zip: rec[prefix + "_zip"] || ""
+      }, val);
+      // Parse "address, city, ST zip" format
+      const parts = val.split(",").map(s => s.trim());
+      if (parts.length >= 2) {
+        rec[prefix + "_address"] = parts[0];
+        const lastPart = parts[parts.length - 1];
+        const stZip = lastPart.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+        if (stZip) {
+          rec[prefix + "_state"] = stZip[1].toUpperCase();
+          rec[prefix + "_zip"] = stZip[2];
+          rec[prefix + "_city"] = parts.length >= 3 ? parts.slice(1, -1).join(", ") : "";
+        } else {
+          rec[prefix + "_city"] = parts.slice(1).join(", ");
+        }
+      } else {
+        rec[prefix + "_address"] = val;
+      }
+      manualEdits[docNum][prefix + "_address"] = rec[prefix + "_address"] || "";
+      manualEdits[docNum][prefix + "_city"] = rec[prefix + "_city"] || "";
+      manualEdits[docNum][prefix + "_state"] = rec[prefix + "_state"] || "";
+      manualEdits[docNum][prefix + "_zip"] = rec[prefix + "_zip"] || "";
+
+      const display = [rec[prefix + "_address"], rec[prefix + "_city"], rec[prefix + "_state"], rec[prefix + "_zip"]].filter(Boolean).join(", ");
+      cellEl.innerHTML = display || '<span style="color:var(--text-muted)">--</span>';
+    } else if (field === "amount") {
+      pushUndo(docNum, field, currentVal, val);
+      rec.amount = val;
+      manualEdits[docNum].amount = val;
+      cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
+    }
+
+    saveEditsToStorage();
+    cellEl.classList.add("edit-saved");
+    setTimeout(() => cellEl.classList.remove("edit-saved"), 700);
+  }
+
+  input.addEventListener("blur", commitEdit);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { e.preventDefault(); cellEl.classList.remove("editing"); renderTable(); }
+  });
+}
 
 const COLS = [
   {key: "score", label: "Score", w: "55px"},
   {key: "filed", label: "Filed", w: "90px"},
+  {key: "sale_date", label: "Sale Date", w: "90px"},
   {key: "doc_type", label: "Type", w: "55px"},
   {key: "cat_label", label: "Category", w: "160px"},
-  {key: "owner", label: "Owner", w: "220px"},
+  {key: "owner", label: "Owner / Contact", w: "200px"},
+  {key: "co_borrower", label: "Co-Borrower", w: "180px"},
+  {key: "grantor_name", label: "Grantor (Deceased)", w: "180px"},
   {key: "flags", label: "Flags", w: "170px"},
   {key: "legal", label: "Legal Description", w: "200px"},
   {key: "prop_address", label: "Property Address", w: "170px"},
   {key: "mail_address", label: "Mail Address", w: "150px"},
+  {key: "amount", label: "Amount", w: "100px"},
   {key: "match_confidence", label: "Confidence", w: "80px"},
   {key: "doc_num", label: "Doc #", w: "100px"},
   {key: "link", label: "Links", w: "80px"},
@@ -581,7 +865,7 @@ const COLS = [
 const CAT_COLORS = {
   LP: "#ef4444", NOFC: "#f59e0b", TAXLIEN: "#f97316", LIEN: "#eab308",
   JUD: "#a855f7", LEVY: "#ec4899", PROBATE: "#06b6d4", BNKRCY: "#6366f1",
-  REL: "#64748b",
+  REL: "#64748b", FRCL: "#dc2626",
 };
 
 const DISTRESS_FLAGS = new Set([
@@ -590,28 +874,61 @@ const DISTRESS_FLAGS = new Set([
   "Probate / estate", "Bankruptcy",
 ]);
 
-// ── Month Helpers ─────────────────────────────────────────────────
-const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-function getMonthKey(filedStr) {
-  // filed format expected: "YYYY-MM-DD" or "MM/DD/YYYY" etc.
-  if (!filedStr) return null;
-  const d = new Date(filedStr);
-  if (isNaN(d)) return null;
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-}
-function monthLabel(key) {
-  const [y, m] = key.split("-");
-  return `${MONTH_NAMES[parseInt(m)-1]} ${y}`;
-}
-
-// ── Load Data ─────────────────────────────────────────────────────
+// ── Load Data ──────────────────────────────────────────────────────
 async function loadData() {
   const resp = await fetch("records.json");
   DATA = await resp.json();
 
-  const updated = new Date(DATA.fetched_at).toLocaleDateString("en-US", {month:"short",day:"numeric",year:"numeric"});
-  document.getElementById("meta").innerHTML =
-    `<span class="date-range">${DATA.date_range.from} → ${DATA.date_range.to}</span><br>Updated ${updated}<span class="topbar-badge">Live</span>`;
+  // Mark all main records as source "clerk"
+  DATA.records.forEach(r => { r._source = "clerk"; });
+
+  // Try loading foreclosure records (may not exist yet)
+  try {
+    const fResp = await fetch("foreclosures.json");
+    if (fResp.ok) {
+      FRCL_DATA = await fResp.json();
+      // Normalize foreclosure records into the same shape as main scraper records
+      (FRCL_DATA.records || []).forEach(fr => {
+        fr._source = "foreclosure";
+        fr.cat = "FRCL";
+        fr.cat_label = "Foreclosure Posting";
+        fr.doc_type = "FRCL";
+        fr.score = fr.score || 80;  // default high score for foreclosures
+        fr.filed = fr.file_date || "";
+        // Map grantor to owner (the person being foreclosed on IS the owner/contact)
+        fr.owner = fr.grantor || fr.grantor_name || "";
+        fr.co_borrower = fr.co_borrower || "";
+        fr.grantor_name = fr.grantor || fr.grantor_name || "";
+        // Map doc_id to doc_num so it shows in the Doc # column
+        fr.doc_num = fr.doc_id || fr.doc_num || "";
+        // Map legal_description to legal
+        fr.legal = fr.legal_description || fr.legal || "";
+        // Map property_address → prop_address (scraper vs dashboard field names)
+        fr.prop_address = fr.property_address || fr.prop_address || "";
+        fr.prop_city = fr.property_city || fr.prop_city || "";
+        fr.prop_state = fr.property_state || fr.prop_state || "";
+        fr.prop_zip = fr.property_zip || fr.prop_zip || "";
+        fr.flags = fr.flags || ["Pre-foreclosure / trustee sale"];
+        fr.match_confidence = fr.match_confidence || "none";
+        // Batch tagging — records without batch_id are from pre-batch runs
+        if (!fr.batch_id) {
+          fr.batch_id = "B0";
+          fr.batch_label = "Batch 0 — Pre-batch records";
+        }
+      });
+      // Apply any manual edits from localStorage
+      applyManualEdits(FRCL_DATA.records || []);
+      // Merge into main DATA
+      DATA.records = DATA.records.concat(FRCL_DATA.records || []);
+      DATA.total = DATA.records.length;
+    }
+  } catch(e) { /* foreclosures.json not yet available */ }
+
+  let metaHtml = `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}`;
+  if (FRCL_DATA) {
+    metaHtml += `<br>Foreclosures: ${FRCL_DATA.total || 0} postings`;
+  }
+  document.getElementById("meta").innerHTML = metaHtml;
 
   buildStats();
   buildCharts();
@@ -619,7 +936,7 @@ async function loadData() {
   applyFilters();
 }
 
-// ── Stat Cards ────────────────────────────────────────────────────
+// ── Stat Cards ─────────────────────────────────────────────────────
 function buildStats() {
   const cats = {};
   DATA.records.forEach(r => { cats[r.cat] = (cats[r.cat] || 0) + 1; });
@@ -638,7 +955,8 @@ function buildStats() {
       <div class="pct">${pct}%</div>
     </div>`;
 
-  const catOrder = ["LP","NOFC","TAXLIEN","LIEN","JUD","LEVY","PROBATE","BNKRCY","REL"];
+  // Top categories as cards
+  const catOrder = ["FRCL","LP","NOFC","TAXLIEN","LIEN","JUD","LEVY","PROBATE","BNKRCY","REL"];
   const catLabels = {};
   DATA.records.forEach(r => { catLabels[r.cat] = r.cat_label; });
 
@@ -656,7 +974,12 @@ function buildStats() {
 }
 
 function toggleCardFilter(filter) {
-  cardFilter = (cardFilter === filter) ? null : filter;
+  if (cardFilter === filter) {
+    cardFilter = null;
+  } else {
+    cardFilter = filter;
+  }
+  // Highlight active card
   document.querySelectorAll(".stat-card").forEach(el => {
     el.classList.toggle("active", el.dataset.filter === cardFilter);
   });
@@ -664,8 +987,9 @@ function toggleCardFilter(filter) {
   applyFilters();
 }
 
-// ── Charts ────────────────────────────────────────────────────────
+// ── Charts ─────────────────────────────────────────────────────────
 function buildCharts() {
+  // Category bar chart
   const cats = {};
   const catLabels = {};
   DATA.records.forEach(r => {
@@ -677,7 +1001,7 @@ function buildCharts() {
 
   let barHtml = "";
   sortedCats.forEach(([cat, count]) => {
-    if (cat === "REL") return;
+    if (cat === "REL") return;  // skip releases from chart
     const pct = (count / maxCat * 100).toFixed(0);
     const color = CAT_COLORS[cat] || "#7c5cfc";
     const shortLabel = (catLabels[cat] || cat).replace(/ \/ /g, "/").substring(0, 20);
@@ -690,6 +1014,7 @@ function buildCharts() {
   });
   document.getElementById("catChart").innerHTML = barHtml;
 
+  // Score distribution
   const buckets = {};
   for (let i = 30; i <= 100; i += 5) buckets[i] = 0;
   DATA.records.forEach(r => {
@@ -707,9 +1032,8 @@ function buildCharts() {
   document.getElementById("scoreChart").innerHTML = scoreHtml;
 }
 
-// ── Filters ───────────────────────────────────────────────────────
+// ── Filters ────────────────────────────────────────────────────────
 function populateFilters() {
-  // Type filter
   const types = [...new Set(DATA.records.map(r => r.doc_type))].sort();
   const sel = document.getElementById("typeFilter");
   types.forEach(t => {
@@ -718,21 +1042,6 @@ function populateFilters() {
     sel.appendChild(opt);
   });
 
-  // Month filter
-  const monthKeys = new Set();
-  DATA.records.forEach(r => {
-    const mk = getMonthKey(r.filed);
-    if (mk) monthKeys.add(mk);
-  });
-  const sortedMonths = [...monthKeys].sort().reverse(); // newest first
-  const msel = document.getElementById("monthFilter");
-  sortedMonths.forEach(mk => {
-    const opt = document.createElement("option");
-    opt.value = mk; opt.textContent = monthLabel(mk);
-    msel.appendChild(opt);
-  });
-
-  // Flag filter
   const flags = new Set();
   DATA.records.forEach(r => (r.flags || []).forEach(f => flags.add(f)));
   const fsel = document.getElementById("flagFilter");
@@ -742,54 +1051,45 @@ function populateFilters() {
     fsel.appendChild(opt);
   });
 
-  // Per-page selector
-  document.getElementById("perpageSelect").addEventListener("change", function() {
-    perPage = this.value === "all" ? Infinity : parseInt(this.value);
-    currentPage = 1;
-    applyFilters();
-  });
-
   // Live filtering
-  const ids = ["searchInput","typeFilter","monthFilter","scoreMin","scoreMax","flagFilter","addrFilter","confFilter"];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    const evt = el.tagName === "INPUT" ? "input" : "change";
-    el.addEventListener(evt, () => { currentPage = 1; applyFilters(); });
+  document.getElementById("searchInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreMin").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreMax").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("flagFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("batchFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+
+  // Populate batch filter dropdown from foreclosure records
+  const batchMap = new Map();  // batch_id → { label, count }
+  DATA.records.forEach(r => {
+    if (r.batch_id) {
+      if (!batchMap.has(r.batch_id)) {
+        batchMap.set(r.batch_id, { label: r.batch_label || r.batch_id, count: 0 });
+      }
+      batchMap.get(r.batch_id).count++;
+    }
   });
-}
-
-function getActiveFilterDesc() {
-  // Build a description of currently active filters for smart filenames
-  const parts = [];
-  const type  = document.getElementById("typeFilter").value;
-  const month = document.getElementById("monthFilter").value;
-  const flag  = document.getElementById("flagFilter").value;
-  const addr  = document.getElementById("addrFilter").value;
-  const conf  = document.getElementById("confFilter").value;
-  const sMin  = document.getElementById("scoreMin").value;
-  const sMax  = document.getElementById("scoreMax").value;
-  const q     = document.getElementById("searchInput").value.trim();
-
-  if (cardFilter && cardFilter !== "all") {
-    if (cardFilter === "addr") parts.push("with-address");
-    else parts.push(cardFilter.replace("cat:", "").toLowerCase());
-  }
-  if (type) parts.push(type.toLowerCase());
-  if (month) parts.push(month); // e.g. "2026-03"
-  if (flag) parts.push(flag.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase().replace(/-+/g, "-"));
-  if (addr === "with") parts.push("with-addr");
-  if (addr === "without") parts.push("no-addr");
-  if (conf) parts.push("conf-" + conf);
-  if (sMin || sMax) parts.push("score-" + (sMin || "0") + "-" + (sMax || "100"));
-  if (q) parts.push(q.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase().substring(0, 20));
-
-  return parts;
+  const bsel = document.getElementById("batchFilter");
+  // Sort batches by batch number (B1, B2, B3...)
+  const sortedBatches = [...batchMap.entries()].sort((a, b) => {
+    const numA = parseInt(a[0].replace("B", "")) || 0;
+    const numB = parseInt(b[0].replace("B", "")) || 0;
+    return numB - numA;  // newest first
+  });
+  sortedBatches.forEach(([bid, info]) => {
+    const opt = document.createElement("option");
+    opt.value = bid;
+    opt.textContent = `${info.label} (${info.count})`;
+    bsel.appendChild(opt);
+  });
 }
 
 function getFiltered() {
   const q     = document.getElementById("searchInput").value.toLowerCase();
   const type  = document.getElementById("typeFilter").value;
-  const month = document.getElementById("monthFilter").value;
   const sMin  = parseInt(document.getElementById("scoreMin").value);
   const sMax  = parseInt(document.getElementById("scoreMax").value);
   const minScore = isNaN(sMin) ? 0 : sMin;
@@ -797,24 +1097,29 @@ function getFiltered() {
   const flag  = document.getElementById("flagFilter").value;
   const addr  = document.getElementById("addrFilter").value;
   const conf  = document.getElementById("confFilter").value;
+  const src   = document.getElementById("sourceFilter").value;
+  const batch = document.getElementById("batchFilter").value;
 
   return DATA.records.filter(r => {
+    if (src && (r._source || "clerk") !== src) return false;
+    if (batch && (r.batch_id || "") !== batch) return false;
+    // Card filter
     if (cardFilter) {
       if (cardFilter === "addr") {
         if (!r.prop_address || !r.prop_address.trim()) return false;
       } else if (cardFilter.startsWith("cat:")) {
         if (r.cat !== cardFilter.slice(4)) return false;
       }
+      // "all" = no filter
     }
     if (type && r.doc_type !== type) return false;
-    if (month && getMonthKey(r.filed) !== month) return false;
     if (r.score < minScore || r.score > maxScore) return false;
     if (flag && !(r.flags || []).includes(flag)) return false;
     if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
     if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
     if (conf && (r.match_confidence || "none") !== conf) return false;
     if (q) {
-      const hay = [r.owner, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
+      const hay = [r.owner, r.grantor_name, r.grantee_names, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
         .join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
@@ -828,6 +1133,7 @@ function applyFilters() {
   renderTable();
   renderPagination();
 
+  // Active filter tag
   let tag = "";
   if (cardFilter && cardFilter !== "all") {
     const label = cardFilter === "addr" ? "With Address" : cardFilter.replace("cat:", "");
@@ -840,12 +1146,13 @@ function applyFilters() {
 function resetFilters() {
   document.getElementById("searchInput").value = "";
   document.getElementById("typeFilter").value = "";
-  document.getElementById("monthFilter").value = "";
   document.getElementById("scoreMin").value = "";
   document.getElementById("scoreMax").value = "";
   document.getElementById("flagFilter").value = "";
   document.getElementById("addrFilter").value = "";
   document.getElementById("confFilter").value = "";
+  document.getElementById("sourceFilter").value = "";
+  document.getElementById("batchFilter").value = "";
   cardFilter = null;
   selectedRows.clear();
   updateSelectionUI();
@@ -854,7 +1161,7 @@ function resetFilters() {
   applyFilters();
 }
 
-// ── Sort ──────────────────────────────────────────────────────────
+// ── Sort ───────────────────────────────────────────────────────────
 function sortBy(col) {
   if (sortCol === col) { sortAsc = !sortAsc; }
   else { sortCol = col; sortAsc = col === "filed"; }
@@ -874,11 +1181,10 @@ function sortData() {
   });
 }
 
-// ── Table Render ──────────────────────────────────────────────────
+// ── Table Render ───────────────────────────────────────────────────
 function renderTable() {
-  const effectivePerPage = perPage === Infinity ? filtered.length : perPage;
-  const start = (currentPage - 1) * effectivePerPage;
-  const pageData = filtered.slice(start, start + effectivePerPage);
+  // Header with checkbox
+  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
   const allPageSelected = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
 
   let thead = `<tr><th style="width:32px"><input type="checkbox" class="hdr-cb" ${allPageSelected ? 'checked' : ''} onchange="togglePageAll(this.checked)"></th>`;
@@ -889,6 +1195,7 @@ function renderTable() {
   thead += "</tr>";
   document.getElementById("thead").innerHTML = thead;
 
+  // Body (paginated)
   let html = "";
   pageData.forEach(r => {
     const scoreCls = r.score >= 70 ? "score-high" : r.score >= 50 ? "score-med" : "score-low";
@@ -903,23 +1210,42 @@ function renderTable() {
     const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
     const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
 
-    html += `<tr class="${isSelected ? 'selected' : ''}">
+    const rowIdx = (currentPage - 1) * PER_PAGE + filtered.indexOf(r);
+    const grantorCol = (r.cat === "PROBATE" || r.cat === "FRCL") ? (r.grantor_name || '<span style="color:var(--text-muted)">--</span>') : '<span style="color:var(--text-muted)">--</span>';
+
+    html += `<tr class="${isSelected ? 'selected' : ''}" data-idx="${rowIdx}">
       <td><input type="checkbox" class="row-cb" ${isSelected ? 'checked' : ''} onchange="toggleRow('${r.doc_num}', this.checked)"></td>
-      <td class="score-cell"><span class="score-pill ${scoreCls}">${r.score}</span></td>
-      <td>${r.filed || ""}</td>
-      <td><span class="type-badge">${r.doc_type}</span></td>
-      <td>${r.cat_label}</td>
-      <td class="owner-cell">${r.owner || ""}</td>
-      <td>${flagsHtml}</td>
-      <td>${r.legal || ""}</td>
-      <td class="addr-cell">${propAddr || '<span style="color:var(--text-dim)">—</span>'}</td>
-      <td class="addr-cell">${mailAddr || '<span style="color:var(--text-dim)">—</span>'}</td>
-      <td><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
-      <td style="font-size:0.68rem">${r.doc_num}</td>
-      <td style="font-size:0.68rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
+      <td class="score-cell" onclick="openModal(${rowIdx})"><span class="score-pill ${scoreCls}">${r.score}</span></td>
+      <td onclick="openModal(${rowIdx})">${r.filed || ""}</td>
+      <td onclick="openModal(${rowIdx})">${r.sale_date || '<span style="color:var(--text-muted)">--</span>'}</td>
+      <td onclick="openModal(${rowIdx})"><span class="type-badge">${r.doc_type}</span></td>
+      <td onclick="openModal(${rowIdx})">${r.cat_label}</td>
+      ${r._source === "foreclosure"
+        ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','owner',this)" title="Double-click to edit">${r.owner || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.owner || ""}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','co_borrower',this)" title="Double-click to edit">${r.co_borrower || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.co_borrower || '<span style="color:var(--text-muted)">--</span>'}</td>`}
+      <td class="owner-cell" onclick="openModal(${rowIdx})">${grantorCol}</td>
+      <td onclick="openModal(${rowIdx})">${flagsHtml}</td>
+      ${r._source === "foreclosure"
+        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','legal',this)" title="Double-click to edit">${r.legal || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td onclick="openModal(${rowIdx})">${r.legal || ""}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','prop_address',this)" title="Double-click to edit">${propAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="addr-cell" onclick="openModal(${rowIdx})">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','mail_address',this)" title="Double-click to edit">${mailAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td class="addr-cell" onclick="openModal(${rowIdx})">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
+      ${r._source === "foreclosure"
+        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','amount',this)" title="Double-click to edit" style="font-size:0.78rem">${r.amount || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
+        : `<td onclick="openModal(${rowIdx})" style="font-size:0.78rem">${r.amount || '<span style="color:var(--text-muted)">--</span>'}</td>`}
+      <td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
+      <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
+      <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text-dim)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="17" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -927,22 +1253,20 @@ function toggleRow(docNum, checked) {
   if (checked) selectedRows.add(docNum);
   else selectedRows.delete(docNum);
   updateSelectionUI();
+  // Update the row highlight without full re-render
   const rows = document.querySelectorAll("tbody tr");
   rows.forEach(tr => {
     const cb = tr.querySelector(".row-cb");
     if (cb) tr.classList.toggle("selected", cb.checked);
   });
-  const effectivePerPage = perPage === Infinity ? filtered.length : perPage;
-  const start = (currentPage - 1) * effectivePerPage;
-  const pageData = filtered.slice(start, start + effectivePerPage);
+  // Update header checkbox
+  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
   const hdrCb = document.querySelector(".hdr-cb");
   if (hdrCb) hdrCb.checked = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
 }
 
 function togglePageAll(checked) {
-  const effectivePerPage = perPage === Infinity ? filtered.length : perPage;
-  const start = (currentPage - 1) * effectivePerPage;
-  const pageData = filtered.slice(start, start + effectivePerPage);
+  const pageData = filtered.slice((currentPage - 1) * PER_PAGE, (currentPage - 1) * PER_PAGE + PER_PAGE);
   pageData.forEach(r => {
     if (checked) selectedRows.add(r.doc_num);
     else selectedRows.delete(r.doc_num);
@@ -959,20 +1283,19 @@ function updateSelectionUI() {
   badge.textContent = count > 0 ? `(${count})` : "";
 }
 
-// ── Pagination ────────────────────────────────────────────────────
+// ── Pagination ─────────────────────────────────────────────────────
 function renderPagination() {
-  const effectivePerPage = perPage === Infinity ? filtered.length : perPage;
-  const totalPages = Math.max(1, Math.ceil(filtered.length / effectivePerPage));
+  const totalPages = Math.ceil(filtered.length / PER_PAGE);
   if (totalPages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
 
   let html = `<button ${currentPage === 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">&laquo; Prev</button>`;
   const start = Math.max(1, currentPage - 3);
   const end = Math.min(totalPages, currentPage + 3);
-  if (start > 1) html += `<button onclick="goPage(1)">1</button><span class="page-info">…</span>`;
+  if (start > 1) html += `<button onclick="goPage(1)">1</button><span class="page-info">...</span>`;
   for (let i = start; i <= end; i++) {
     html += `<button class="${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
   }
-  if (end < totalPages) html += `<span class="page-info">…</span><button onclick="goPage(${totalPages})">${totalPages}</button>`;
+  if (end < totalPages) html += `<span class="page-info">...</span><button onclick="goPage(${totalPages})">${totalPages}</button>`;
   html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">Next &raquo;</button>`;
   html += `<span class="page-info" style="margin-left:8px">Page ${currentPage} of ${totalPages}</span>`;
   document.getElementById("pagination").innerHTML = html;
@@ -985,7 +1308,7 @@ function goPage(p) {
   document.querySelector(".table-wrap").scrollIntoView({behavior: "smooth"});
 }
 
-// ── Smart CSV Export ──────────────────────────────────────────────
+// ── CSV Export ─────────────────────────────────────────────────────
 function exportCSV(mode) {
   let rows;
   if (mode === "selected") {
@@ -995,48 +1318,174 @@ function exportCSV(mode) {
     rows = getFiltered();
   }
   const headers = [
-    "Score","Filed","Type","Category","Owner","Flags","Legal Description",
+    "Score","Filed","Sale Date","Date Scraped","Type","Category","Owner / Contact","Co-Borrower","Grantor (Deceased)","Grantee (Heirs)",
+    "Flags","Legal Description","Amount",
     "Property Address","Property City","Property State","Property Zip",
     "Mail Address","Mail City","Mail State","Mail Zip",
-    "Match Confidence","Doc #","Clerk URL","HCAD URL"
+    "Match Confidence","Doc #","Batch","Source","Clerk URL","HCAD URL"
   ];
   let csv = headers.join(",") + "\n";
   rows.forEach(r => {
     csv += [
-      r.score, r.filed, r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
+      r.score, r.filed, r.sale_date||"", r.date_scraped||"",
+      r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
       `"${(r.owner||'').replace(/"/g,'""')}"`,
+      `"${(r.co_borrower||'').replace(/"/g,'""')}"`,
+      `"${(r.grantor_name||'').replace(/"/g,'""')}"`,
+      `"${(r.grantee_names||'').replace(/"/g,'""')}"`,
       `"${(r.flags||[]).join('; ')}"`,
       `"${(r.legal||'').replace(/"/g,'""')}"`,
+      `"${(r.amount||'').replace(/"/g,'""')}"`,
       `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
       `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
-      r.match_confidence||"none", r.doc_num, r.clerk_url||"", r.hcad_url||""
+      r.match_confidence||"none", r.doc_num, r.batch_id||"", r._source||"clerk", r.clerk_url||"", r.hcad_url||""
     ].join(",") + "\n";
   });
-
-  // ── Smart filename based on active filters ──
-  const filterParts = getActiveFilterDesc();
-  const datePart = new Date().toISOString().slice(0,10);
-  let filename = "harris_leads";
-  if (filterParts.length > 0) {
-    filename += "_" + filterParts.join("_");
-  }
-  if (mode === "selected") {
-    filename += "_selected-" + rows.length;
-  }
-  filename += "_" + datePart + ".csv";
-
-  // Sanitize filename
-  filename = filename.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
-
+  const suffix = mode === "selected" ? "_selected" : "";
   const blob = new Blob([csv], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = filename;
+  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}${suffix}.csv`;
   a.click();
 }
 
-// ── Init ──────────────────────────────────────────────────────────
+// ── Detail Modal ──────────────────────────────────────────────────
+function openModal(idx) {
+  const r = filtered[idx];
+  if (!r) return;
+
+  const scoreCls = r.score >= 70 ? "var(--green)" : r.score >= 50 ? "var(--orange)" : "var(--accent)";
+
+  let flagsHtml = "";
+  (r.flags || []).forEach(f => {
+    const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
+    flagsHtml += `<span class="flag-pill ${cls}">${f}</span>`;
+  });
+
+  const confColor = {high: "var(--green)", medium: "var(--orange)", low: "var(--red)", none: "var(--text-muted)"}[r.match_confidence || "none"];
+
+  let html = `
+    <div class="modal-header">
+      <div>
+        <h2>${r.owner || r.grantor_name || "Unknown"} - ${r.cat_label || ""}</h2>
+        <div class="cat-label">${r.doc_type} | ${r.doc_num}</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+
+    <div class="modal-score-row">
+      <div>
+        <div class="modal-field-label">Seller Score</div>
+        <div class="modal-score" style="color:${scoreCls}">${r.score}/100</div>
+      </div>
+      <div style="flex:1">
+        <div class="modal-score-bar">
+          <div class="modal-score-fill" style="width:${r.score}%;background:${scoreCls}"></div>
+        </div>
+      </div>
+      <div class="modal-flags">${flagsHtml}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Document Type</div>
+          <div class="modal-field-value">${r.doc_type}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Date Filed</div>
+          <div class="modal-field-value">${r.filed || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Document Number</div>
+          <div class="modal-field-value">${r.doc_num || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Amount</div>
+          <div class="modal-field-value">${r.amount || "--"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Owner / Grantor</div>
+          <div class="modal-field-value">${r.owner || r.grantor_name || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Grantee</div>
+          <div class="modal-field-value">${r.grantee_names || "--"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Property Address</div>
+          <div class="modal-addr-block">
+            <div class="addr-line">${r.prop_address || "Not found"}</div>
+            <div class="addr-city">${[r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ") || ""}</div>
+          </div>
+        </div>
+        <div>
+          <div class="modal-field-label">Mailing Address</div>
+          <div class="modal-addr-block">
+            <div class="addr-line">${r.mail_address || "--"}</div>
+            <div class="addr-city">${[r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ") || ""}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-field-label">Legal Description</div>
+      <div class="modal-field-value" style="margin-top:4px">${r.legal || "--"}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Match Confidence</div>
+          <div class="modal-field-value"><span class="conf-pill conf-${r.match_confidence || 'none'}" style="font-size:0.75rem">${r.match_confidence || 'none'}</span></div>
+        </div>
+        <div>
+          <div class="modal-field-label">Links</div>
+          <div class="modal-field-value">
+            ${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk Record</a>' : '--'}
+            ${r.hcad_url ? ' &nbsp;|&nbsp; <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD Record</a>' : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  if (r.sale_date || r.date_scraped || r._source === "foreclosure") {
+    html += `<div class="modal-section">
+      <div class="modal-grid">
+        ${r.sale_date ? '<div><div class="modal-field-label">Foreclosure Sale Date</div><div class="modal-field-value" style="color:var(--red);font-weight:700">' + r.sale_date + '</div></div>' : ''}
+        ${r.file_date ? '<div><div class="modal-field-label">File Date</div><div class="modal-field-value">' + r.file_date + '</div></div>' : ''}
+        ${r.date_scraped ? '<div><div class="modal-field-label">Date Scraped</div><div class="modal-field-value">' + r.date_scraped + '</div></div>' : ''}
+        ${r._source === "foreclosure" ? '<div><div class="modal-field-label">Source</div><div class="modal-field-value"><span class="flag-pill distress">Foreclosure Posting</span></div></div>' : ''}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById("modalContent").innerHTML = html;
+  document.getElementById("modalOverlay").classList.add("active");
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").classList.remove("active");
+  document.body.style.overflow = "";
+}
+
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// ── Init ───────────────────────────────────────────────────────────
 loadData();
+updateUndoUI();
 </script>
 </body>
 </html>
