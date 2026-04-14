@@ -1106,7 +1106,7 @@ function getFiltered() {
   const src   = document.getElementById("sourceFilter").value;
   const batch = document.getElementById("batchFilter").value;
 
-  var smSel=document.getElementById("saleMonthFilter");if(smSel&&smSel.value){var smv=smSel.value;records=records.filter(function(r){var sd=r.sale_date||"";if(!sd)return false;var d=new Date(sd);return !isNaN(d.getTime())&&d.toLocaleString("en-US",{month:"long",year:"numeric"})===smv;});}
+  );}
     return DATA.records.filter(r => {
     if (src && (r._source || "clerk") !== src) return false;
     if (batch && (r.batch_id || "") !== batch) return false;
@@ -1130,6 +1130,7 @@ function getFiltered() {
         .join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
+    var smSel=document.getElementById("saleMonthFilter");if(smSel&&smSel.value){var sd=r.sale_date||"";if(!sd)return false;var d=new Date(sd);if(isNaN(d.getTime())||d.toLocaleString("en-US",{month:"long",year:"numeric"})!==smSel.value)return false;}
     return true;
   });
 }
