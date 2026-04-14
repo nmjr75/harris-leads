@@ -52,7 +52,7 @@ def parse_pdf_with_gemini(pdf_bytes, doc_id):
             '  "property_address": "Street address of the SUBJECT PROPERTY being foreclosed",\n'
             '  "property_city": "City of the subject property",\n'
             '  "property_zip": "ZIP code of the subject property",\n'
-            '  "legal_description": "Lot, block, and subdivision ONLY. Keep concise.",\n'
+            '  "legal_description": "Lot, block, subdivision, and section. Example: LOT 15 BLOCK 21 INWOOD TERRACE SEC 2. Keep concise, no recording references.",\n'
             '  "amount": "Loan/debt amount with dollar sign",\n'
             '  "sale_date": "Foreclosure sale date in MM/DD/YYYY format",\n'
             '  "mortgagee": "Current mortgagee or loan servicer name"\n'
@@ -60,7 +60,7 @@ def parse_pdf_with_gemini(pdf_bytes, doc_id):
             "IMPORTANT:\n"
             "- The property address is the SUBJECT PROPERTY, NOT the law firm or servicer office.\n"
             "- Law firm addresses (McCarthy and Holthus, Barrett Daffin, Mackie Wolf) are NOT property addresses.\n"
-            "- For legal description, extract ONLY lot/block/subdivision, not lengthy paragraphs.\n"
+            "- For legal description, extract lot/block/subdivision/section only. No volume/page references or lengthy paragraphs.\n"
             "- Return ONLY the JSON object, no markdown fences, no other text."
         )
 
