@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -40,6 +41,11 @@ try:
 except ImportError:
     HAS_OCR = False
     print("WARNING: pytesseract/Pillow/pdf2image not installed. OCR will be unavailable.")
+
+# Gemini Vision API for PDF extraction
+from gemini_extract import parse_pdf_with_gemini, HAS_GEMINI
+
+CT = ZoneInfo("America/Chicago")
 
 def preprocess_for_ocr(img):
     """Pre-process a PIL Image for better OCR accuracy on scanned legal docs."""
@@ -1478,7 +1484,7 @@ def main():
                 pass
     next_batch_num = max(existing_batch_nums, default=0) + 1
     batch_id = f"B{next_batch_num}"
-    now_ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    now_ts = datetime.now(CT).strftime("%Y-%m-%d %I:%M %p %Z")
     batch_label = f"Batch {next_batch_num} Ã¢ÂÂ {now_ts}"
     log.info(f"This run: {batch_id} ({batch_label})")
 
@@ -1611,8 +1617,13 @@ def main():
                 signal.alarm(0)
                 continue
 
-            # Parse PDF
-            parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
+            # Parse PDF - try Gemini Vision first, fallback to OCR
+            parsed = parse_pdf_with_gemini(pdf_bytes, doc_id)
+            if parsed is None:
+                parsed = parse_foreclosure_pdf(pdf_bytes, doc_id)
+            else:
+                # Rate limit for Gemini free tier (15 RPM)
+                time.sleep(4.5)
             signal.alarm(0)  # Cancel timeout after successful parse
             log.info(f"  PDF parsed in {time.time()-t0:.1f}s Ã¢ÂÂ grantor={parsed.get('grantor','')[:30]}")
 
@@ -1770,7 +1781,7 @@ def _save_output(records: list, seen_ids: set, today: str, target_months: list):
                        and r["prop_address"] != "Not found")
 
     output = {
-        "fetched_at": datetime.utcnow().isoformat() + "Z",
+        "fetched_at": datetime.now(CT).isoformat(),
         "source": "Harris County Clerk - Foreclosure Postings (cclerk.hctx.net)",
         "target_months": [f"{MONTH_NAMES[m]} {y}" for y, m in target_months],
         "total": len(records),
