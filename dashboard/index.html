@@ -546,7 +546,6 @@
 </div>
 
 <div class="filters" id="filtersBar">
-  <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
   <select id="typeFilter"><option value="">All Types</option></select>
   <div class="score-range">
     <input type="number" class="score-input" id="scoreMin" placeholder="Min" min="0" max="100">
@@ -579,6 +578,7 @@
   <input type="date" id="filedFrom" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed from date">
   <span style="font-size:0.72rem;color:var(--text-muted);">to</span>
   <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
+  <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
