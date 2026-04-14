@@ -1037,7 +1037,7 @@ function buildCharts() {
 }
 
 // ── Filters ────────────────────────────────────────────────────────
-function populateSaleMonths(){var sel=document.getElementById("saleMonthFilter");if(!sel||!Array.isArray(DATA))return;var ms=[];DATA.forEach(function(r){var sd=r.sale_date||"";if(sd){var d=new Date(sd);if(!isNaN(d.getTime())){var label=d.toLocaleString("en-US",{month:"long",year:"numeric"});if(ms.indexOf(label)===-1)ms.push(label);}}});ms.sort(function(a,b){return new Date(a)-new Date(b);});sel.innerHTML='<option value="">All Sale Months</option>';ms.forEach(function(mo){var o=document.createElement("option");o.value=mo;o.textContent=mo;sel.appendChild(o);});}
+function populateSaleMonths(){var sel=document.getElementById("saleMonthFilter");if(!sel||!Array.isArray(DATA))return;var ms=[];(Array.isArray(DATA)?DATA:DATA.records||[]).forEach(function(r){var sd=r.sale_date||"";if(sd){var d=new Date(sd);if(!isNaN(d.getTime())){var label=d.toLocaleString("en-US",{month:"long",year:"numeric"});if(ms.indexOf(label)===-1)ms.push(label);}}});ms.sort(function(a,b){return new Date(a)-new Date(b);});sel.innerHTML='<option value="">All Sale Months</option>';ms.forEach(function(mo){var o=document.createElement("option");o.value=mo;o.textContent=mo;sel.appendChild(o);});}
 
   function populateFilters() {
   const types = [...new Set(DATA.records.map(r => r.doc_type))].sort();
