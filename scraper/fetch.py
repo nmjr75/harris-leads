@@ -15,7 +15,12 @@ import re
 import sys
 import time
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# Central Time (UTC-5 standard / UTC-6 DST handled by TZ env var)
+# The workflow sets TZ=America/Chicago so datetime.now() returns Central time.
+# This offset is only used for the fetched_at timestamp if TZ is not set.
+CT_OFFSET = timezone(timedelta(hours=-5))
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +32,30 @@ try:
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
+
+# PDF text extraction (for clerk document reading)
+try:
+    import pdfplumber
+    HAS_PDFPLUMBER = True
+except ImportError:
+    HAS_PDFPLUMBER = False
+
+# OCR for scanned/image PDFs
+try:
+    import pytesseract
+    from PIL import Image, ImageFilter, ImageEnhance
+    from pdf2image import convert_from_bytes
+    HAS_OCR = True
+except ImportError:
+    HAS_OCR = False
+
+# Gemini Vision API extraction
+try:
+    from gemini_extract import parse_clerk_pdf_with_gemini, HAS_GEMINI
+except ImportError:
+    HAS_GEMINI = False
+    def parse_clerk_pdf_with_gemini(pdf_bytes, doc_id, doc_type=""):
+        return None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1383,6 +1412,311 @@ class ClerkScraper:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Clerk PDF Download + Extraction  (Gemini → pdfplumber → OCR fallback)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def preprocess_for_ocr(img):
+    """Pre-process a PIL Image for better OCR accuracy on scanned legal docs."""
+    img = img.convert("L")
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(1.8)
+    img = img.filter(ImageFilter.SHARPEN)
+    img = img.point(lambda x: 255 if x > 140 else 0, mode='1')
+    img = img.convert("L")
+    return img
+
+
+def download_clerk_pdf(session: requests.Session, clerk_url: str,
+                       doc_num: str) -> Optional[bytes]:
+    """Download a clerk filing PDF from the RPImage URL.
+
+    The clerk portal serves PDFs via RPImage.aspx?ID=RP-XXXX-XXXXXX.
+    Returns raw PDF bytes, or None on failure.
+    """
+    if not clerk_url:
+        return None
+
+    log.info(f"  Downloading clerk PDF: {clerk_url[:100]}...")
+    try:
+        resp = session.get(clerk_url, timeout=60, allow_redirects=True)
+        if resp.status_code != 200:
+            log.warning(f"  HTTP {resp.status_code} for {doc_num}")
+            return None
+
+        # Check if we got a PDF
+        content_type = resp.headers.get("Content-Type", "")
+        if "pdf" in content_type.lower() or resp.content[:4] == b"%PDF":
+            log.info(f"  PDF downloaded OK: {len(resp.content):,} bytes")
+            return resp.content
+
+        # Some clerk PDFs are served as TIFF images
+        if "tiff" in content_type.lower() or "image" in content_type.lower():
+            log.info(f"  Got image response ({content_type}) for {doc_num} — "
+                     f"{len(resp.content):,} bytes")
+            return resp.content
+
+        log.warning(f"  Non-PDF response for {doc_num}: {content_type}")
+        return None
+    except Exception as e:
+        log.warning(f"  Failed to download {doc_num}: {e}")
+        return None
+
+
+def extract_text_from_pdf(pdf_bytes: bytes, doc_num: str) -> str:
+    """Extract text from PDF bytes using pdfplumber, with OCR fallback.
+
+    Returns extracted text string (may be empty if extraction fails).
+    """
+    text = ""
+
+    # Try pdfplumber first (fast, works for text-based PDFs)
+    if HAS_PDFPLUMBER:
+        try:
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                for page in pdf.pages[:5]:  # First 5 pages max
+                    page_text = page.extract_text() or ""
+                    text += page_text + "\n"
+            text = text.strip()
+            if len(text) > 50:  # Meaningful text found
+                log.info(f"  pdfplumber: extracted {len(text)} chars from {doc_num}")
+                return text
+            else:
+                log.info(f"  pdfplumber: only {len(text)} chars — likely scanned PDF")
+        except Exception as e:
+            log.warning(f"  pdfplumber error for {doc_num}: {e}")
+
+    # Fallback: OCR for scanned/image PDFs
+    if HAS_OCR:
+        try:
+            images = convert_from_bytes(pdf_bytes, dpi=300)
+            ocr_text = ""
+            for i, img in enumerate(images[:3]):  # First 3 pages
+                processed = preprocess_for_ocr(img)
+                page_text = pytesseract.image_to_string(processed)
+                ocr_text += page_text + "\n"
+            ocr_text = ocr_text.strip()
+            if ocr_text:
+                log.info(f"  OCR: extracted {len(ocr_text)} chars from {doc_num}")
+                return ocr_text
+        except Exception as e:
+            log.warning(f"  OCR error for {doc_num}: {e}")
+
+    return text
+
+
+def parse_address_from_text(text: str) -> dict:
+    """Parse property address and legal description from clerk document text.
+
+    Uses regex patterns to find common patterns in Harris County legal filings.
+    Returns dict with property_address, property_city, property_zip,
+    legal_description, and amount.
+    """
+    result = {
+        "property_address": "",
+        "property_city": "",
+        "property_zip": "",
+        "legal_description": "",
+        "amount": "",
+    }
+
+    if not text:
+        return result
+
+    # Normalize whitespace
+    text_clean = re.sub(r'\s+', ' ', text)
+
+    # ── Property Address patterns ──
+    # Look for common phrases that precede a property address
+    addr_patterns = [
+        # "commonly known as 1234 Main St, Houston, TX 77001"
+        r'commonly\s+known\s+as[:\s]+(\d+\s+[A-Z0-9][\w\s.]+(?:(?:ST|STREET|DR|DRIVE|LN|LANE|AVE|AVENUE|BLVD|BOULEVARD|CT|COURT|CIR|CIRCLE|WAY|PL|PLACE|RD|ROAD|PKWY|PARKWAY|TRL|TRAIL)\.?))',
+        # "property address: 1234 Main St" or "property address is 1234 Main St"
+        r'property\s+address[:\s]+is?\s*(\d+\s+[A-Z0-9][\w\s.]+(?:(?:ST|STREET|DR|DRIVE|LN|LANE|AVE|AVENUE|BLVD|BOULEVARD|CT|COURT|CIR|CIRCLE|WAY|PL|PLACE|RD|ROAD|PKWY|PARKWAY|TRL|TRAIL)\.?))',
+        # "subject property ... 1234 Main St"
+        r'subject\s+property[:\s]+(?:is\s+)?(?:located\s+at\s+)?(\d+\s+[A-Z0-9][\w\s.]+(?:(?:ST|STREET|DR|DRIVE|LN|LANE|AVE|AVENUE|BLVD|BOULEVARD|CT|COURT|CIR|CIRCLE|WAY|PL|PLACE|RD|ROAD|PKWY|PARKWAY|TRL|TRAIL)\.?))',
+        # "real property located at 1234 Main St"
+        r'real\s+property\s+(?:situated|located)\s+at\s+(\d+\s+[A-Z0-9][\w\s.]+(?:(?:ST|STREET|DR|DRIVE|LN|LANE|AVE|AVENUE|BLVD|BOULEVARD|CT|COURT|CIR|CIRCLE|WAY|PL|PLACE|RD|ROAD|PKWY|PARKWAY|TRL|TRAIL)\.?))',
+        # "property described as ... 1234 Main St" (within 100 chars)
+        r'property\s+described\s+as\s+.{0,100}?(\d+\s+[A-Z0-9][\w\s.]+(?:(?:ST|STREET|DR|DRIVE|LN|LANE|AVE|AVENUE|BLVD|BOULEVARD|CT|COURT|CIR|CIRCLE|WAY|PL|PLACE|RD|ROAD|PKWY|PARKWAY|TRL|TRAIL)\.?))',
+    ]
+
+    for pattern in addr_patterns:
+        match = re.search(pattern, text_clean, re.IGNORECASE)
+        if match:
+            addr = match.group(1).strip()
+            # Clean up: remove trailing punctuation
+            addr = re.sub(r'[,.\s]+$', '', addr)
+            if len(addr) > 5:
+                result["property_address"] = addr
+                break
+
+    # ── City / Zip after address ──
+    if result["property_address"]:
+        # Look for "Houston, TX 77XXX" or "City, TX XXXXX" after the address
+        addr_pos = text_clean.upper().find(result["property_address"].upper())
+        if addr_pos >= 0:
+            after = text_clean[addr_pos + len(result["property_address"]):addr_pos + len(result["property_address"]) + 100]
+            city_match = re.search(r',?\s*([A-Za-z\s]+),?\s*(?:TX|Texas)\s*(\d{5})?', after, re.IGNORECASE)
+            if city_match:
+                result["property_city"] = city_match.group(1).strip().title()
+                if city_match.group(2):
+                    result["property_zip"] = city_match.group(2)
+
+    if not result["property_city"]:
+        result["property_city"] = "Houston"
+
+    # ── Legal Description patterns ──
+    legal_patterns = [
+        # "Lot X, Block Y, Subdivision Name"
+        r'(LOT\s+\d+[A-Z]?\s*,?\s*(?:AND\s+\d+\s*,?\s*)?BLOCK\s+\d+[A-Z]?\s*,?\s*[A-Z][\w\s]+(?:SEC(?:TION)?\s*\d+)?)',
+        # "legally described as ... LOT X BLOCK Y SUBDIVISION"
+        r'(?:legally\s+described|described)\s+as[:\s]+(.{10,200}?(?:LOT|BLOCK|TRACT|SEC))',
+        # "being more particularly described as ..."
+        r'(?:more\s+particularly|being)\s+described\s+as[:\s]+(.{10,200}?(?:Harris\s+County|of\s+record))',
+    ]
+
+    for pattern in legal_patterns:
+        match = re.search(pattern, text_clean, re.IGNORECASE)
+        if match:
+            legal = match.group(1).strip()
+            # Clean up
+            legal = re.sub(r'[,.\s]+$', '', legal)
+            if len(legal) > 10:
+                result["legal_description"] = legal
+                break
+
+    # ── Amount patterns ──
+    amount_patterns = [
+        r'(?:judgment|lien|amount|principal|balance|debt|owed|sum\s+of)[:\s]+\$?([\d,]+\.?\d*)',
+        r'\$([\d,]+\.?\d{2})',  # Fallback: any dollar amount
+    ]
+
+    for pattern in amount_patterns:
+        match = re.search(pattern, text_clean, re.IGNORECASE)
+        if match:
+            amt = match.group(1).strip()
+            if amt:
+                result["amount"] = f"${amt}"
+                break
+
+    return result
+
+
+def enrich_from_clerk_pdf(session: requests.Session, records: list,
+                          max_pdfs: int = 150, time_cap_minutes: int = 30) -> int:
+    """Download and parse clerk PDFs for records with no property address.
+
+    For each record where match_confidence is "none" and prop_address is empty:
+      1. Try Gemini Vision API first (best accuracy)
+      2. Fall back to pdfplumber text extraction + regex parsing
+      3. Fall back to OCR + regex parsing
+
+    Args:
+        session: HTTP session for downloads
+        records: List of record dicts to process (modified in place)
+        max_pdfs: Maximum number of PDFs to process per run
+        time_cap_minutes: Stop processing after this many minutes
+
+    Returns:
+        Count of records improved with address data.
+    """
+    # Find records that need PDF extraction
+    to_process = [r for r in records
+                  if r.get("match_confidence") == "none"
+                  and not r.get("prop_address", "").strip()]
+
+    if not to_process:
+        log.info("PDF extraction: no records need processing")
+        return 0
+
+    # Cap the number of PDFs to process
+    if len(to_process) > max_pdfs:
+        log.info(f"PDF extraction: {len(to_process)} records need processing, "
+                 f"capping at {max_pdfs}")
+        to_process = to_process[:max_pdfs]
+
+    log.info(f"PDF extraction: processing {len(to_process)} records "
+             f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
+
+    improved = 0
+    deadline = time.time() + time_cap_minutes * 60
+
+    for i, rec in enumerate(to_process):
+        # Time cap check
+        if time.time() > deadline:
+            log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
+                        f"processed {i} of {len(to_process)}")
+            break
+
+        doc_num = rec.get("doc_num", "unknown")
+        doc_type = rec.get("doc_type", "")
+        clerk_url = rec.get("clerk_url", "")
+
+        if not clerk_url:
+            continue
+
+        log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
+
+        # Download PDF
+        pdf_bytes = download_clerk_pdf(session, clerk_url, doc_num)
+        if not pdf_bytes:
+            time.sleep(0.3)
+            continue
+
+        extracted = None
+
+        # Strategy 1: Gemini Vision API (best accuracy)
+        if HAS_GEMINI:
+            gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
+            if gemini_result and (gemini_result.get("property_address") or
+                                  gemini_result.get("legal_description")):
+                extracted = gemini_result
+                log.info(f"  Source: Gemini Vision")
+
+        # Strategy 2: pdfplumber / OCR text extraction + regex parsing
+        if not extracted:
+            raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
+            if raw_text:
+                parsed = parse_address_from_text(raw_text)
+                if parsed.get("property_address") or parsed.get("legal_description"):
+                    extracted = parsed
+                    log.info(f"  Source: text extraction + regex")
+
+        # Apply extracted data to the record
+        if extracted:
+            addr = extracted.get("property_address", "")
+            if addr:
+                rec["prop_address"] = addr
+                rec["prop_city"] = extracted.get("property_city", "") or "Houston"
+                rec["prop_zip"] = extracted.get("property_zip", "")
+                rec["match_confidence"] = "high"
+                improved += 1
+                log.info(f"  Address found: {addr[:50]}")
+
+            legal = extracted.get("legal_description", "")
+            if legal and not rec.get("legal", "").strip():
+                rec["legal"] = legal
+
+            amount = extracted.get("amount", "")
+            if amount and not rec.get("amount", "").strip():
+                rec["amount"] = amount
+
+            # If Gemini returned better name info, update grantor/grantee
+            if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
+                rec["grantor_name"] = extracted["grantor_name"]
+            if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
+                rec["grantee_names"] = extracted["grantee_name"]
+        else:
+            log.info(f"  No property info extracted from {doc_num}")
+
+        # Rate limit between PDF downloads
+        time.sleep(0.3)
+
+    log.info(f"PDF extraction: improved {improved} of {len(to_process)} records")
+    return improved
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  GHL CSV Export
 # ═══════════════════════════════════════════════════════════════════════════════
 def export_ghl_csv(records: list, path: str):
@@ -1516,9 +1850,35 @@ async def main():
     else:
         log.info("All probate records already have medium/high confidence — skipping live verification")
 
-    # 4c. Set "Not found" for probate records with no property address
-    #     After both bulk enrichment AND live API verification, any
-    #     probate record that still has no property address should
+    # 4c. PDF EXTRACTION — download and read clerk PDFs for records
+    #     with no property address (match_confidence == "none").
+    #     Uses Gemini Vision API first, then pdfplumber + OCR as fallback.
+    no_address_records = [r for r in deduped
+                          if r.get("match_confidence") == "none"
+                          and not r.get("prop_address", "").strip()]
+    if no_address_records:
+        log.info(f"Starting PDF extraction for {len(no_address_records)} records with no address...")
+        try:
+            pdf_session = requests.Session()
+            pdf_session.headers.update({
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
+                "Accept": "application/pdf,*/*",
+            })
+            pdf_improved = enrich_from_clerk_pdf(pdf_session, deduped,
+                                                  max_pdfs=150,
+                                                  time_cap_minutes=30)
+
+            # Recount addresses after PDF extraction
+            with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
+            log.info(f"After PDF extraction: {with_address} records with address")
+        except Exception as e:
+            log.warning(f"PDF extraction failed: {e}")
+    else:
+        log.info("All records already have addresses — skipping PDF extraction")
+
+    # 4d. Set "Not found" for probate records with no property address
+    #     After bulk enrichment, live API verification, AND PDF extraction,
+    #     any probate record that still has no property address should
     #     display "Not found" rather than being blank (or worse,
     #     showing a wrong address from a bad match).
     for rec in deduped:
@@ -1535,7 +1895,7 @@ async def main():
 
     # 6. Save outputs
     payload = {
-        "fetched_at":   datetime.utcnow().isoformat() + "Z",
+        "fetched_at":   datetime.now().strftime("%Y-%m-%dT%H:%M:%S CT"),
         "source":       "Harris County Clerk (cclerk.hctx.net)",
         "date_range":   {
             "from": start_date.strftime("%Y-%m-%d"),
