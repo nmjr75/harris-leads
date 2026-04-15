@@ -1694,8 +1694,7 @@ def parse_address_from_text(text: str) -> dict:
     return result
 
 
-RP_SEARCH_URL_REQ = "https://cclerk.hctx.net/applications/websearch/RP.aspx"
-RP_LOGIN_URL      = "https://cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
+RP_LOGIN_URL = "https://cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
 
 
 def _login_to_rp_portal(session: requests.Session) -> bool:
@@ -1757,255 +1756,218 @@ def _login_to_rp_portal(session: requests.Session) -> bool:
         return False
 
 
-def _search_rp_by_type_and_date(session: requests.Session, doc_type: str,
-                                 start_date: str, end_date: str) -> dict:
-    """Search the RP portal by instrument type and date range (same as Playwright).
 
-    Returns dict mapping file_num → ViewEdocs URL for all results.
-    Uses the SAME session for search AND later download.
-    This is the same search the Playwright scraper does — instrument type + date range.
-    """
-    result_map = {}  # file_num → pdf_url
+async def enrich_from_clerk_pdf(records: list,
+                                max_pdfs: int = 150,
+                                time_cap_minutes: int = 30) -> int:
+    """Download and parse clerk PDFs using Playwright browser.
 
-    try:
-        # Step 1: GET the search page to grab ASP.NET ViewState tokens
-        resp = session.get(RP_SEARCH_URL_REQ, timeout=30)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
+    Opens a new Playwright browser, logs in to the clerk portal, then
+    navigates to each record's ViewEdocs URL (captured during scraping)
+    to download the PDF. Same browser session for login and download.
 
-        viewstate = soup.find("input", {"name": "__VIEWSTATE"})
-        viewstate_val = viewstate["value"] if viewstate else ""
-        event_val_tag = soup.find("input", {"name": "__EVENTVALIDATION"})
-        event_val = event_val_tag["value"] if event_val_tag else ""
-        viewstate_gen = soup.find("input", {"name": "__VIEWSTATEGENERATOR"})
-        viewstate_gen_val = viewstate_gen["value"] if viewstate_gen else ""
-
-        if not viewstate_val:
-            log.warning(f"  No ViewState found on RP search page")
-            return result_map
-
-        # Step 2: POST the search form with instrument type and date range
-        post_data = {
-            "__EVENTTARGET": "",
-            "__EVENTARGUMENT": "",
-            "__VIEWSTATE": viewstate_val,
-            "__VIEWSTATEGENERATOR": viewstate_gen_val,
-            "__VIEWSTATEENCRYPTED": "",
-            "__EVENTVALIDATION": event_val,
-            "ctl00$ContentPlaceHolder1$txtFileNo": "",
-            "ctl00$ContentPlaceHolder1$txtFilmCd": "",
-            "ctl00$ContentPlaceHolder1$txtFrom": start_date,
-            "ctl00$ContentPlaceHolder1$txtTo": end_date,
-            "ctl00$ContentPlaceHolder1$txtOR": "",
-            "ctl00$ContentPlaceHolder1$txtEE": "",
-            "ctl00$ContentPlaceHolder1$txtNameTee": "",
-            "ctl00$ContentPlaceHolder1$txtDesc": "",
-            "ctl00$ContentPlaceHolder1$txtInstrument": doc_type,
-            "ctl00$ContentPlaceHolder1$txtVolNo": "0000",
-            "ctl00$ContentPlaceHolder1$txtPageNo": "000",
-            "ctl00$ContentPlaceHolder1$txtSection": "",
-            "ctl00$ContentPlaceHolder1$txtLot": "",
-            "ctl00$ContentPlaceHolder1$txtBlock": "",
-            "ctl00$ContentPlaceHolder1$txtUnit": "",
-            "ctl00$ContentPlaceHolder1$txtAbstract": "",
-            "ctl00$ContentPlaceHolder1$txtOutLot": "",
-            "ctl00$ContentPlaceHolder1$txtTract": "",
-            "ctl00$ContentPlaceHolder1$txtReserve": "",
-            "ctl00$ContentPlaceHolder1$btnSearch": "SEARCH",
-        }
-
-        resp = session.post(RP_SEARCH_URL_REQ, data=post_data, timeout=60,
-                           allow_redirects=True)
-        resp.raise_for_status()
-
-        log.info(f"  Search response: status={resp.status_code}, "
-                 f"url={resp.url[:80]}..., len={len(resp.text)}")
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Step 3: Find ALL ViewEdocs links and map them to file numbers
-        # Each result row has a file number span and a Film Code link
-        links = soup.find_all("a", href=re.compile(r"ViewEdocs|EComm", re.IGNORECASE))
-        for link in links:
-            href = link.get("href", "")
-            file_num = link.get_text(strip=True)
-            if file_num and file_num.startswith("RP-") and href:
-                if not href.startswith("http"):
-                    href = f"https://cclerk.hctx.net/applications/websearch/{href}"
-                result_map[file_num] = href
-
-        log.info(f"  Found {len(result_map)} ViewEdocs URLs for {doc_type}")
-
-        # Log first few for diagnostic
-        for fn, url in list(result_map.items())[:2]:
-            log.info(f"    {fn} → {url[:80]}...")
-
-    except Exception as e:
-        log.warning(f"  RP search failed for {doc_type}: {e}")
-
-    return result_map
-
-
-def enrich_from_clerk_pdf(session: requests.Session, records: list,
-                          start_date: datetime, end_date: datetime,
-                          max_pdfs: int = 150, time_cap_minutes: int = 30) -> int:
-    """Download and parse clerk PDFs for records with no property address.
-
-    Copies the foreclosure scraper approach exactly:
-      1. Log in to clerk portal with requests session (cclerk.hctx.net)
-      2. Search RP portal by instrument type + date range (same session)
-         — same searches the Playwright scraper does
-      3. Capture ViewEdocs encrypted URLs from search results (same session)
-      4. Match URLs to records that need PDFs
-      5. Download PDFs from those URLs (same session — tokens match)
-      6. Extract data with Gemini → pdfplumber → OCR
-
-    One session does login, search, and download. All on cclerk.hctx.net.
+    The RP portal generates ViewEdocs links via JavaScript, so only a
+    real browser (Playwright) can access them. requests cannot.
 
     Args:
-        session: HTTP session (will be used for login, search, AND download)
-        records: List of record dicts to process (modified in place)
-        start_date: Search date range start (same as scraper)
-        end_date: Search date range end (same as scraper)
+        records: List of record dicts to process (modified in place).
+                 Each record must have clerk_url with the ViewEdocs URL.
         max_pdfs: Maximum number of PDFs to process per run
         time_cap_minutes: Stop processing after this many minutes
 
     Returns:
         Count of records improved with address data.
     """
-    # Find records that need PDF extraction
+    # Find records that need PDF extraction and have a ViewEdocs URL
     to_process = [r for r in records
                   if r.get("match_confidence") == "none"
-                  and not r.get("prop_address", "").strip()]
+                  and not r.get("prop_address", "").strip()
+                  and r.get("clerk_url", "")
+                  and "ViewEdocs" in r.get("clerk_url", "")]
 
     if not to_process:
-        log.info("PDF extraction: no records need processing")
+        log.info("PDF extraction: no records with ViewEdocs URLs need processing")
         return 0
 
-    log.info(f"PDF extraction: {len(to_process)} records need PDFs")
+    if len(to_process) > max_pdfs:
+        log.info(f"PDF extraction: {len(to_process)} records need PDFs, capping at {max_pdfs}")
+        to_process = to_process[:max_pdfs]
 
-    # Step 1: Log in to clerk portal (same domain as search/download)
-    logged_in = _login_to_rp_portal(session)
-    if not logged_in:
-        log.warning("PDF extraction: RP portal login failed — cannot download PDFs")
-        return 0
-
-    # Step 2: Search by instrument type + date range to build URL map
-    #         Same searches the Playwright scraper does, but with requests.
-    #         One session for search AND download — tokens will match.
-    doc_types_needed = set(r.get("doc_type", "") for r in to_process if r.get("doc_type"))
-    log.info(f"PDF extraction: searching for doc types: {sorted(doc_types_needed)}")
-
-    fmt_start = start_date.strftime("%m/%d/%Y")
-    fmt_end = end_date.strftime("%m/%d/%Y")
-
-    # Build map: file_num → ViewEdocs URL
-    pdf_url_map = {}
-    for doc_type in sorted(doc_types_needed):
-        log.info(f"  Searching {doc_type} [{fmt_start} – {fmt_end}]...")
-        urls = _search_rp_by_type_and_date(session, doc_type, fmt_start, fmt_end)
-        pdf_url_map.update(urls)
-        time.sleep(1)  # Rate limit between searches
-
-    log.info(f"PDF extraction: found {len(pdf_url_map)} ViewEdocs URLs total")
-
-    # Step 3: Match URLs to records that need PDFs and download
-    matched = [r for r in to_process if r.get("doc_num") in pdf_url_map]
-    unmatched = [r for r in to_process if r.get("doc_num") not in pdf_url_map]
-    log.info(f"PDF extraction: {len(matched)} matched, {len(unmatched)} no URL found")
-
-    if len(matched) > max_pdfs:
-        matched = matched[:max_pdfs]
-        log.info(f"PDF extraction: capping at {max_pdfs}")
-
-    log.info(f"PDF extraction: downloading {len(matched)} PDFs "
+    log.info(f"PDF extraction: {len(to_process)} records to process "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
+
+    username = os.environ.get("CCLERK_USERNAME", "")
+    password = os.environ.get("CCLERK_PASSWORD", "")
+
+    if not username or not password:
+        log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
+        return 0
 
     improved = 0
     downloaded = 0
-    failed_download = 0
-    deadline = time.time() + time_cap_minutes * 60
+    failed = 0
 
-    for i, rec in enumerate(matched):
-        # Time cap check
-        if time.time() > deadline:
-            log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
-                        f"processed {i} of {len(matched)}")
-            break
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
+        ctx = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900},
+        )
+        page = await ctx.new_page()
 
-        doc_num = rec.get("doc_num", "unknown")
-        doc_type = rec.get("doc_type", "")
-        pdf_url = pdf_url_map.get(doc_num, "")
+        # Step 1: Log in to clerk portal via Playwright
+        log.info("PDF extraction: logging in to clerk portal via browser...")
+        try:
+            await page.goto(RP_LOGIN_URL, timeout=30000)
+            await page.wait_for_load_state("networkidle", timeout=30000)
 
-        log.info(f"PDF [{i+1}/{len(matched)}] {doc_num} ({doc_type})")
+            # Fill in login form
+            await page.fill("input[name*='UserName']", username)
+            await page.fill("input[name*='Password']", password)
+            await page.click("input[value='LOG IN']")
+            await page.wait_for_load_state("networkidle", timeout=30000)
+            await asyncio.sleep(2)
 
-        # Download the PDF from ViewEdocs URL (same session that searched)
-        pdf_bytes = download_clerk_pdf(session, pdf_url, doc_num)
-        if not pdf_bytes:
-            # Flag as "image not found" — some clerk docs don't have PDFs
-            rec["pdf_status"] = "image_not_found"
-            failed_download += 1
-            time.sleep(0.3)
-            continue
+            # Check if login succeeded
+            content = await page.content()
+            if "LOGOUT" in content.upper() or "WELCOME" in content.upper():
+                log.info("PDF extraction: logged in successfully via browser")
+            else:
+                log.warning("PDF extraction: browser login may have failed")
+                log.warning(f"  Current URL: {page.url[:80]}")
+        except Exception as e:
+            log.warning(f"PDF extraction: browser login failed — {e}")
+            await browser.close()
+            return 0
 
-        downloaded += 1
-        rec["pdf_status"] = "downloaded"
+        # Step 2: Download PDFs by navigating to each ViewEdocs URL
+        deadline = time.time() + time_cap_minutes * 60
 
-        # Extract data from PDF (Gemini → pdfplumber → OCR)
-        extracted = None
-        extract_source = "none"
+        for i, rec in enumerate(to_process):
+            if time.time() > deadline:
+                log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
+                            f"processed {i} of {len(to_process)}")
+                break
 
-        # Strategy 1: Gemini Vision API (best accuracy)
-        if HAS_GEMINI:
-            gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
-            if gemini_result and (gemini_result.get("property_address") or
-                                  gemini_result.get("legal_description")):
-                extracted = gemini_result
-                extract_source = "gemini_pdf"
-                log.info(f"  Source: Gemini Vision")
+            doc_num = rec.get("doc_num", "unknown")
+            doc_type = rec.get("doc_type", "")
+            clerk_url = rec.get("clerk_url", "")
 
-        # Strategy 2: pdfplumber / OCR text extraction + regex parsing
-        if not extracted:
-            raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
-            if raw_text:
-                parsed = parse_address_from_text(raw_text)
-                if parsed.get("property_address") or parsed.get("legal_description"):
-                    extracted = parsed
-                    extract_source = "pdf_text"
-                    log.info(f"  Source: text extraction + regex")
+            log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
 
-        # Apply extracted data to the record
-        if extracted:
-            addr = extracted.get("property_address", "")
-            if addr:
-                rec["prop_address"] = addr
-                rec["prop_city"] = extracted.get("property_city", "") or "Houston"
-                rec["prop_zip"] = extracted.get("property_zip", "")
-                rec["match_confidence"] = "high"
-                rec["address_source"] = extract_source
-                improved += 1
-                log.info(f"  Address found: {addr[:50]}")
+            try:
+                # Navigate to the ViewEdocs URL
+                response = await page.goto(clerk_url, timeout=30000,
+                                           wait_until="networkidle")
 
-            legal = extracted.get("legal_description", "")
-            if legal and not rec.get("legal", "").strip():
-                rec["legal"] = legal
+                if response is None:
+                    log.warning(f"  {doc_num}: no response")
+                    rec["pdf_status"] = "no_response"
+                    failed += 1
+                    continue
 
-            amount = extracted.get("amount", "")
-            if amount and not rec.get("amount", "").strip():
-                rec["amount"] = amount
+                content_type = response.headers.get("content-type", "")
+                body = await response.body()
 
-            if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
-                rec["grantor_name"] = extracted["grantor_name"]
-            if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
-                rec["grantee_names"] = extracted["grantee_name"]
-        else:
-            log.info(f"  No property info extracted from {doc_num}")
+                # Check if we got a PDF
+                if "pdf" in content_type.lower() or (body and body[:4] == b"%PDF"):
+                    log.info(f"  PDF downloaded OK: {len(body):,} bytes")
+                    downloaded += 1
+                    rec["pdf_status"] = "downloaded"
+                    pdf_bytes = body
+                else:
+                    # Check for "image not found" or login redirect
+                    page_text = await page.inner_text("body")
+                    if "image not found" in page_text.lower() or "no image" in page_text.lower():
+                        log.info(f"  {doc_num}: image not found")
+                        rec["pdf_status"] = "image_not_found"
+                    elif "login" in page.url.lower():
+                        log.warning(f"  {doc_num}: redirected to login — session expired")
+                        rec["pdf_status"] = "login_required"
+                        # Try to re-login
+                        try:
+                            await page.fill("input[name*='UserName']", username)
+                            await page.fill("input[name*='Password']", password)
+                            await page.click("input[value='LOG IN']")
+                            await page.wait_for_load_state("networkidle", timeout=30000)
+                            log.info("  Re-logged in successfully")
+                        except Exception:
+                            pass
+                    else:
+                        if failed < 3:
+                            log.warning(f"  {doc_num}: got {content_type}, "
+                                        f"url={page.url[:80]}")
+                        rec["pdf_status"] = "not_pdf"
+                    failed += 1
+                    continue
 
-        # Rate limit between PDF downloads
-        time.sleep(0.5)
+            except Exception as e:
+                if failed < 3:
+                    log.warning(f"  {doc_num}: error — {e}")
+                rec["pdf_status"] = "error"
+                failed += 1
+                continue
 
-    log.info(f"PDF extraction: {downloaded} downloaded, {failed_download} download failures, "
-             f"{improved} improved out of {len(matched)} records")
+            # Step 3: Extract data from PDF (Gemini → pdfplumber → OCR)
+            extracted = None
+            extract_source = "none"
+
+            if HAS_GEMINI:
+                gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
+                if gemini_result and (gemini_result.get("property_address") or
+                                      gemini_result.get("legal_description")):
+                    extracted = gemini_result
+                    extract_source = "gemini_pdf"
+                    log.info(f"  Source: Gemini Vision")
+
+            if not extracted:
+                raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
+                if raw_text:
+                    parsed = parse_address_from_text(raw_text)
+                    if parsed.get("property_address") or parsed.get("legal_description"):
+                        extracted = parsed
+                        extract_source = "pdf_text"
+                        log.info(f"  Source: text extraction + regex")
+
+            if extracted:
+                addr = extracted.get("property_address", "")
+                if addr:
+                    rec["prop_address"] = addr
+                    rec["prop_city"] = extracted.get("property_city", "") or "Houston"
+                    rec["prop_zip"] = extracted.get("property_zip", "")
+                    rec["match_confidence"] = "high"
+                    rec["address_source"] = extract_source
+                    improved += 1
+                    log.info(f"  Address found: {addr[:50]}")
+
+                legal = extracted.get("legal_description", "")
+                if legal and not rec.get("legal", "").strip():
+                    rec["legal"] = legal
+
+                amount = extracted.get("amount", "")
+                if amount and not rec.get("amount", "").strip():
+                    rec["amount"] = amount
+
+                if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
+                    rec["grantor_name"] = extracted["grantor_name"]
+                if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
+                    rec["grantee_names"] = extracted["grantee_name"]
+            else:
+                log.info(f"  No property info extracted from {doc_num}")
+
+            await asyncio.sleep(0.5)  # Rate limit
+
+        await browser.close()
+
+    log.info(f"PDF extraction: {downloaded} downloaded, {failed} failed, "
+             f"{improved} improved out of {len(to_process)} records")
     return improved
 
 
@@ -2132,26 +2094,12 @@ async def main():
     if no_address_records:
         log.info(f"Starting PDF extraction for {len(no_address_records)} records with no address...")
         try:
-            # Set up session exactly like the foreclosure scraper:
-            # same headers, same domain, one session for everything
-            pdf_session = requests.Session()
-            pdf_session.headers.update({
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-                "Referer": "https://cclerk.hctx.net/applications/websearch/RP.aspx",
-            })
-            pdf_improved = enrich_from_clerk_pdf(pdf_session, deduped,
-                                                  start_date=start_date,
-                                                  end_date=end_date,
-                                                  max_pdfs=150,
-                                                  time_cap_minutes=30)
+            # Use Playwright browser: login + download PDFs
+            # (RP portal generates ViewEdocs links via JavaScript,
+            #  so only a real browser can access them)
+            pdf_improved = await enrich_from_clerk_pdf(deduped,
+                                                       max_pdfs=150,
+                                                       time_cap_minutes=30)
 
             # Recount addresses after PDF extraction
             with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
