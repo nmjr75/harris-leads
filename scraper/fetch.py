@@ -67,7 +67,7 @@ log = logging.getLogger(__name__)
 LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "7"))
 
 CLERK_SEARCH_URL = "https://cclerk.hctx.net/applications/websearch/RP.aspx"
-CLERK_BASE       = "https://cclerk.hctx.net"
+CLERK_BASE       = "https://www.cclerk.hctx.net"
 
 # ── HCAD bulk-download base (confirmed April 2026) ──────────────────────────
 # The old pdata.hcad.org/download/ prefix no longer resolves;
