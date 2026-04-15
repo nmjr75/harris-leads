@@ -66,6 +66,8 @@ jobs:
         env:
           LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}
+          CCLERK_PASSWORD: ${{ secrets.CCLERK_PASSWORD }}
 
       - name: Verify output
         run: |
