@@ -1344,7 +1344,26 @@ class ClerkScraper:
                 if block.strip():   legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
+                # Capture the actual PDF viewer URL from the link around the file number.
+                # The clerk portal uses encrypted token URLs (RPImage.aspx?ID=<token>)
+                # that are only available from the search results page.
+                # Plain doc-ID URLs return HTML, not a PDF.
+                pdf_link = span.find_parent("a")
+                if pdf_link and pdf_link.get("href"):
+                    href = pdf_link["href"]
+                    if href and not href.startswith("http"):
+                        href = f"{CLERK_BASE}/applications/websearch/{href}"
+                    clerk_url = href
+                else:
+                    # Fallback: try finding any nearby link with RPImage
+                    nearby_link = span.find_next("a", href=re.compile(r"RPImage", re.IGNORECASE))
+                    if nearby_link and nearby_link.get("href"):
+                        href = nearby_link["href"]
+                        if not href.startswith("http"):
+                            href = f"{CLERK_BASE}/applications/websearch/{href}"
+                        clerk_url = href
+                    else:
+                        clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
                 filed_norm = ""
                 for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
