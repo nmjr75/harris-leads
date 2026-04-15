@@ -1694,17 +1694,97 @@ def parse_address_from_text(text: str) -> dict:
     return result
 
 
+RP_SEARCH_URL_WWW = "https://www.cclerk.hctx.net/applications/websearch/RP.aspx"
+
+
+def _search_rp_and_get_pdf_url(session: requests.Session, file_num: str) -> Optional[str]:
+    """Search the RP portal by file number and return the ViewEdocs PDF URL.
+
+    Uses the SAME requests session for search and download — this ensures
+    the encrypted token in the ViewEdocs URL matches the session.
+    Same pattern as the foreclosure scraper.
+
+    Returns the full ViewEdocs URL, or None if not found.
+    """
+    try:
+        # Step 1: GET the search page to grab ASP.NET ViewState tokens
+        resp = session.get(RP_SEARCH_URL_WWW, timeout=30)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        viewstate = soup.find("input", {"name": "__VIEWSTATE"})
+        viewstate_val = viewstate["value"] if viewstate else ""
+        event_val_tag = soup.find("input", {"name": "__EVENTVALIDATION"})
+        event_val = event_val_tag["value"] if event_val_tag else ""
+        viewstate_gen = soup.find("input", {"name": "__VIEWSTATEGENERATOR"})
+        viewstate_gen_val = viewstate_gen["value"] if viewstate_gen else ""
+
+        # Step 2: POST the search form with the file number
+        post_data = {
+            "__EVENTTARGET": "",
+            "__EVENTARGUMENT": "",
+            "__VIEWSTATE": viewstate_val,
+            "__VIEWSTATEGENERATOR": viewstate_gen_val,
+            "__VIEWSTATEENCRYPTED": "",
+            "__EVENTVALIDATION": event_val,
+            "ctl00$ContentPlaceHolder1$txtFileNo": file_num,
+            "ctl00$ContentPlaceHolder1$txtFilmCd": "",
+            "ctl00$ContentPlaceHolder1$txtFrom": "",
+            "ctl00$ContentPlaceHolder1$txtTo": "",
+            "ctl00$ContentPlaceHolder1$txtOR": "",
+            "ctl00$ContentPlaceHolder1$txtEE": "",
+            "ctl00$ContentPlaceHolder1$txtNameTee": "",
+            "ctl00$ContentPlaceHolder1$txtDesc": "",
+            "ctl00$ContentPlaceHolder1$txtInstrument": "",
+            "ctl00$ContentPlaceHolder1$txtVolNo": "0000",
+            "ctl00$ContentPlaceHolder1$txtPageNo": "000",
+            "ctl00$ContentPlaceHolder1$txtSection": "",
+            "ctl00$ContentPlaceHolder1$txtLot": "",
+            "ctl00$ContentPlaceHolder1$txtBlock": "",
+            "ctl00$ContentPlaceHolder1$txtUnit": "",
+            "ctl00$ContentPlaceHolder1$txtAbstract": "",
+            "ctl00$ContentPlaceHolder1$txtOutLot": "",
+            "ctl00$ContentPlaceHolder1$txtTract": "",
+            "ctl00$ContentPlaceHolder1$txtReserve": "",
+            "ctl00$ContentPlaceHolder1$btnSearch": "SEARCH",
+        }
+
+        resp = session.post(RP_SEARCH_URL_WWW, data=post_data, timeout=30,
+                           allow_redirects=True)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Step 3: Find the ViewEdocs link in the results
+        link = soup.find("a", href=re.compile(r"ViewEdocs", re.IGNORECASE))
+        if link and link.get("href"):
+            href = link["href"]
+            if not href.startswith("http"):
+                href = f"https://www.cclerk.hctx.net/applications/websearch/{href}"
+            return href
+
+        return None
+
+    except Exception as e:
+        log.warning(f"  RP search failed for {file_num}: {e}")
+        return None
+
+
 def enrich_from_clerk_pdf(session: requests.Session, records: list,
                           max_pdfs: int = 150, time_cap_minutes: int = 30) -> int:
     """Download and parse clerk PDFs for records with no property address.
 
-    Uses the same approach as the foreclosure scraper:
-      - Log in to clerk portal with requests
-      - Download PDFs from ViewEdocs.aspx encrypted token URLs
-      - Extract data with Gemini → pdfplumber → OCR
+    Copies the foreclosure scraper approach exactly:
+      1. Log in to clerk portal with requests session
+      2. For each record, search RP portal by file number (same session)
+      3. Capture the ViewEdocs encrypted URL from search results (same session)
+      4. Download the PDF from that URL (same session — tokens match)
+      5. Extract data with Gemini → pdfplumber → OCR
+
+    One session does everything — search and download. This ensures the
+    encrypted tokens in ViewEdocs URLs match the session that requests them.
 
     Args:
-        session: HTTP session for downloads (will be logged in)
+        session: HTTP session (will be used for login, search, AND download)
         records: List of record dicts to process (modified in place)
         max_pdfs: Maximum number of PDFs to process per run
         time_cap_minutes: Stop processing after this many minutes
@@ -1715,8 +1795,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
     # Find records that need PDF extraction
     to_process = [r for r in records
                   if r.get("match_confidence") == "none"
-                  and not r.get("prop_address", "").strip()
-                  and r.get("clerk_url", "")]
+                  and not r.get("prop_address", "").strip()]
 
     if not to_process:
         log.info("PDF extraction: no records need processing")
@@ -1738,6 +1817,9 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
 
     improved = 0
+    downloaded = 0
+    failed_search = 0
+    failed_download = 0
     deadline = time.time() + time_cap_minutes * 60
 
     for i, rec in enumerate(to_process):
@@ -1749,19 +1831,31 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
 
         doc_num = rec.get("doc_num", "unknown")
         doc_type = rec.get("doc_type", "")
-        clerk_url = rec.get("clerk_url", "")
 
-        if not clerk_url:
+        if not doc_num or doc_num == "unknown":
             continue
 
         log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
 
-        # Download PDF from ViewEdocs encrypted URL
-        pdf_bytes = download_clerk_pdf(session, clerk_url, doc_num)
-        if not pdf_bytes:
+        # Step 1: Search RP portal by file number to get ViewEdocs URL
+        #         (same session that will download — tokens will match)
+        pdf_url = _search_rp_and_get_pdf_url(session, doc_num)
+        if not pdf_url:
+            log.info(f"  No ViewEdocs URL found for {doc_num}")
+            failed_search += 1
             time.sleep(0.3)
             continue
 
+        # Step 2: Download the PDF from ViewEdocs URL (same session)
+        pdf_bytes = download_clerk_pdf(session, pdf_url, doc_num)
+        if not pdf_bytes:
+            failed_download += 1
+            time.sleep(0.3)
+            continue
+
+        downloaded += 1
+
+        # Step 3: Extract data from PDF (Gemini → pdfplumber → OCR)
         extracted = None
         extract_source = "none"
 
@@ -1812,10 +1906,12 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
         else:
             log.info(f"  No property info extracted from {doc_num}")
 
-        # Rate limit between PDF downloads
-        time.sleep(0.3)
+        # Rate limit between requests
+        time.sleep(0.5)
 
-    log.info(f"PDF extraction: improved {improved} of {len(to_process)} records")
+    log.info(f"PDF extraction: {downloaded} downloaded, {failed_search} search failures, "
+             f"{failed_download} download failures, {improved} improved "
+             f"out of {len(to_process)} records")
     return improved
 
 
