@@ -1344,7 +1344,21 @@ class ClerkScraper:
                 if block.strip():   legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
+                # Capture the encrypted PDF viewer URL from the Film Code column.
+                # The ViewEdocs link is in the same <tr> row as the file number span.
+                # Format: EComm/ViewEdocs.aspx?ID=<encrypted_token>
+                clerk_url = ""
+                row_el = span.find_parent("tr")
+                if row_el:
+                    pdf_link = row_el.find("a", href=re.compile(r"ViewEdocs", re.IGNORECASE))
+                    if pdf_link and pdf_link.get("href"):
+                        href = pdf_link["href"]
+                        if not href.startswith("http"):
+                            href = f"{CLERK_BASE}/applications/websearch/{href}"
+                        clerk_url = href
+                if not clerk_url:
+                    # Fallback: construct display-only URL (won't serve PDF)
+                    clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
                 filed_norm = ""
                 for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
@@ -1391,8 +1405,6 @@ class ClerkScraper:
             log.error("Playwright not installed.")
             return []
 
-        self.browser_cookies = []  # Will hold cookies for PDF downloads
-
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
                 headless=True,
@@ -1414,10 +1426,6 @@ class ClerkScraper:
                 )
                 self.results.extend(recs)
                 await asyncio.sleep(2)
-
-            # Capture browser cookies before closing — needed for PDF downloads
-            self.browser_cookies = await ctx.cookies()
-            log.info(f"Captured {len(self.browser_cookies)} browser cookies for PDF downloads")
 
             await browser.close()
 
@@ -1687,19 +1695,17 @@ def parse_address_from_text(text: str) -> dict:
 
 
 def enrich_from_clerk_pdf(session: requests.Session, records: list,
-                          browser_cookies: list = None,
                           max_pdfs: int = 150, time_cap_minutes: int = 30) -> int:
     """Download and parse clerk PDFs for records with no property address.
 
-    For each record where match_confidence is "none" and prop_address is empty:
-      1. Try Gemini Vision API first (best accuracy)
-      2. Fall back to pdfplumber text extraction + regex parsing
-      3. Fall back to OCR + regex parsing
+    Uses the same approach as the foreclosure scraper:
+      - Log in to clerk portal with requests
+      - Download PDFs from ViewEdocs.aspx encrypted token URLs
+      - Extract data with Gemini → pdfplumber → OCR
 
     Args:
-        session: HTTP session for downloads
+        session: HTTP session for downloads (will be logged in)
         records: List of record dicts to process (modified in place)
-        browser_cookies: Playwright browser cookies to inject into session
         max_pdfs: Maximum number of PDFs to process per run
         time_cap_minutes: Stop processing after this many minutes
 
@@ -1709,7 +1715,8 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
     # Find records that need PDF extraction
     to_process = [r for r in records
                   if r.get("match_confidence") == "none"
-                  and not r.get("prop_address", "").strip()]
+                  and not r.get("prop_address", "").strip()
+                  and r.get("clerk_url", "")]
 
     if not to_process:
         log.info("PDF extraction: no records need processing")
@@ -1721,24 +1728,11 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
                  f"capping at {max_pdfs}")
         to_process = to_process[:max_pdfs]
 
-    # Inject Playwright browser cookies into the requests session.
-    # This gives the requests session the same authentication the
-    # Playwright browser had when scraping the clerk portal.
-    if browser_cookies:
-        for cookie in browser_cookies:
-            session.cookies.set(
-                cookie["name"],
-                cookie["value"],
-                domain=cookie.get("domain", ""),
-                path=cookie.get("path", "/"),
-            )
-        log.info(f"Injected {len(browser_cookies)} browser cookies into PDF download session")
-    else:
-        # Fallback: try logging in with requests directly
-        logged_in = login_to_cclerk(session)
-        if not logged_in:
-            log.warning("PDF extraction: no browser cookies and clerk login failed — cannot download PDFs")
-            return 0
+    # Log in to clerk portal (required to download PDFs)
+    logged_in = login_to_cclerk(session)
+    if not logged_in:
+        log.warning("PDF extraction: clerk login failed — cannot download PDFs")
+        return 0
 
     log.info(f"PDF extraction: processing {len(to_process)} records "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
@@ -1762,7 +1756,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
 
         log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
 
-        # Download PDF
+        # Download PDF from ViewEdocs encrypted URL
         pdf_bytes = download_clerk_pdf(session, clerk_url, doc_num)
         if not pdf_bytes:
             time.sleep(0.3)
@@ -1940,9 +1934,8 @@ async def main():
 
     # 4b. PDF EXTRACTION — download and read clerk PDFs for records
     #     with no property address (match_confidence == "none").
-    #     Runs BEFORE slow HCAD API lookups because Gemini reads the
-    #     actual documents and finds addresses faster and more reliably.
-    #     Uses Gemini Vision API first, then pdfplumber + OCR as fallback.
+    #     Uses same approach as foreclosure scraper:
+    #     Login with requests → download from ViewEdocs encrypted URLs → Gemini/OCR
     no_address_records = [r for r in deduped
                           if r.get("match_confidence") == "none"
                           and not r.get("prop_address", "").strip()]
@@ -1952,17 +1945,15 @@ async def main():
             pdf_session = requests.Session()
             pdf_session.headers.update({
                 "User-Agent": (
-                    "Mozilla/5.0 (X11; Linux x86_64) "
-                    "AppleWebKit/537.36 Chrome/120 Safari/537.36"
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
                 ),
-                "Accept": "application/pdf,application/xhtml+xml,text/html,*/*",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
-                "Referer": "https://cclerk.hctx.net/applications/websearch/RP.aspx",
+                "Referer": "https://cclerk.hctx.net/applications/websearch/RP_R.aspx",
             })
-            # Pass browser cookies from Playwright so the requests session
-            # has the same authentication the browser had
             pdf_improved = enrich_from_clerk_pdf(pdf_session, deduped,
-                                                  browser_cookies=getattr(scraper, 'browser_cookies', []),
                                                   max_pdfs=150,
                                                   time_cap_minutes=30)
 
