@@ -407,6 +407,7 @@ class HCADParcelLoader:
         if result:
             out = dict(result)
             out["match_confidence"] = "high"
+            out["address_source"] = "hcad_legal"
             out["hcad_url"] = self._get_hcad_url(result)
             return out
 
@@ -451,9 +452,11 @@ class HCADParcelLoader:
                 out["prop_state"]   = prop_info.get("prop_state", "TX")
                 out["prop_zip"]     = prop_info.get("prop_zip", "")
                 out["match_confidence"] = prop_result["level"]
+                out["address_source"] = "hcad_name"
                 out["hcad_url"] = self._get_hcad_url(prop_info)
             else:
                 out["match_confidence"] = "none"
+                out["address_source"] = "none"
                 out["hcad_url"] = ""
 
             if mail_result:
@@ -476,12 +479,14 @@ class HCADParcelLoader:
             if result:
                 out = dict(result["info"])
                 out["match_confidence"] = result["level"]
+                out["address_source"] = "hcad_name"
                 out["hcad_url"] = self._get_hcad_url(result["info"])
                 return out
 
         # ── No match ──
         return {
             "match_confidence": "none",
+            "address_source": "none",
             "hcad_url": "",
         }
 
@@ -1132,6 +1137,7 @@ def verify_probate_via_hcad(http_session: requests.Session,
                     rec["prop_state"] = result["state"]
                     rec["prop_zip"] = result["zip"]
                     rec["match_confidence"] = "medium"
+                    rec["address_source"] = "hcad_api"
                     rec["hcad_url"] = f"{HCAD_DETAIL_BASE}{result['acct']}"
                     prop_found = True
                     improved += 1
@@ -1369,6 +1375,7 @@ class ClerkScraper:
                     "mail_state":        "TX",
                     "mail_zip":          "",
                     "match_confidence":  "none",
+                    "address_source":   "none",
                     "hcad_url":          "",
                     "flags":             [],
                     "score":             0,
@@ -1664,6 +1671,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
             continue
 
         extracted = None
+        extract_source = "none"
 
         # Strategy 1: Gemini Vision API (best accuracy)
         if HAS_GEMINI:
@@ -1671,6 +1679,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
             if gemini_result and (gemini_result.get("property_address") or
                                   gemini_result.get("legal_description")):
                 extracted = gemini_result
+                extract_source = "gemini_pdf"
                 log.info(f"  Source: Gemini Vision")
 
         # Strategy 2: pdfplumber / OCR text extraction + regex parsing
@@ -1680,6 +1689,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
                 parsed = parse_address_from_text(raw_text)
                 if parsed.get("property_address") or parsed.get("legal_description"):
                     extracted = parsed
+                    extract_source = "pdf_text"
                     log.info(f"  Source: text extraction + regex")
 
         # Apply extracted data to the record
@@ -1690,6 +1700,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
                 rec["prop_city"] = extracted.get("property_city", "") or "Houston"
                 rec["prop_zip"] = extracted.get("property_zip", "")
                 rec["match_confidence"] = "high"
+                rec["address_source"] = extract_source
                 improved += 1
                 log.info(f"  Address found: {addr[:50]}")
 
@@ -1804,12 +1815,14 @@ async def main():
     for rec in deduped:
         enrichment = parcel.enrich_record(rec)
         confidence = enrichment.pop("match_confidence", "none")
+        addr_source = enrichment.pop("address_source", "none")
         hcad_url   = enrichment.pop("hcad_url", "")
 
         # Remove internal _acct field from address data before merging
         enrichment.pop("_acct", None)
 
         rec["match_confidence"] = confidence
+        rec["address_source"] = addr_source
         rec["hcad_url"] = hcad_url
 
         # Always merge enrichment — for probate cases this includes
