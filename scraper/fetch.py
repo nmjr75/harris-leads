@@ -1344,26 +1344,7 @@ class ClerkScraper:
                 if block.strip():   legal_parts.append(f"Block: {block.strip()}")
                 legal = " | ".join(legal_parts)
 
-                # Capture the actual PDF viewer URL from the link around the file number.
-                # The clerk portal uses encrypted token URLs (RPImage.aspx?ID=<token>)
-                # that are only available from the search results page.
-                # Plain doc-ID URLs return HTML, not a PDF.
-                pdf_link = span.find_parent("a")
-                if pdf_link and pdf_link.get("href"):
-                    href = pdf_link["href"]
-                    if href and not href.startswith("http"):
-                        href = f"{CLERK_BASE}/applications/websearch/{href}"
-                    clerk_url = href
-                else:
-                    # Fallback: try finding any nearby link with RPImage
-                    nearby_link = span.find_next("a", href=re.compile(r"RPImage", re.IGNORECASE))
-                    if nearby_link and nearby_link.get("href"):
-                        href = nearby_link["href"]
-                        if not href.startswith("http"):
-                            href = f"{CLERK_BASE}/applications/websearch/{href}"
-                        clerk_url = href
-                    else:
-                        clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
+                clerk_url = f"{CLERK_BASE}/applications/websearch/RPImage.aspx?ID={file_num}"
 
                 filed_norm = ""
                 for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"]:
@@ -1410,6 +1391,8 @@ class ClerkScraper:
             log.error("Playwright not installed.")
             return []
 
+        self.browser_cookies = []  # Will hold cookies for PDF downloads
+
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
                 headless=True,
@@ -1431,6 +1414,10 @@ class ClerkScraper:
                 )
                 self.results.extend(recs)
                 await asyncio.sleep(2)
+
+            # Capture browser cookies before closing — needed for PDF downloads
+            self.browser_cookies = await ctx.cookies()
+            log.info(f"Captured {len(self.browser_cookies)} browser cookies for PDF downloads")
 
             await browser.close()
 
@@ -1700,6 +1687,7 @@ def parse_address_from_text(text: str) -> dict:
 
 
 def enrich_from_clerk_pdf(session: requests.Session, records: list,
+                          browser_cookies: list = None,
                           max_pdfs: int = 150, time_cap_minutes: int = 30) -> int:
     """Download and parse clerk PDFs for records with no property address.
 
@@ -1711,6 +1699,7 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
     Args:
         session: HTTP session for downloads
         records: List of record dicts to process (modified in place)
+        browser_cookies: Playwright browser cookies to inject into session
         max_pdfs: Maximum number of PDFs to process per run
         time_cap_minutes: Stop processing after this many minutes
 
@@ -1732,11 +1721,24 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
                  f"capping at {max_pdfs}")
         to_process = to_process[:max_pdfs]
 
-    # Log in to clerk portal (required to download PDFs)
-    logged_in = login_to_cclerk(session)
-    if not logged_in:
-        log.warning("PDF extraction: clerk login failed — cannot download PDFs")
-        return 0
+    # Inject Playwright browser cookies into the requests session.
+    # This gives the requests session the same authentication the
+    # Playwright browser had when scraping the clerk portal.
+    if browser_cookies:
+        for cookie in browser_cookies:
+            session.cookies.set(
+                cookie["name"],
+                cookie["value"],
+                domain=cookie.get("domain", ""),
+                path=cookie.get("path", "/"),
+            )
+        log.info(f"Injected {len(browser_cookies)} browser cookies into PDF download session")
+    else:
+        # Fallback: try logging in with requests directly
+        logged_in = login_to_cclerk(session)
+        if not logged_in:
+            log.warning("PDF extraction: no browser cookies and clerk login failed — cannot download PDFs")
+            return 0
 
     log.info(f"PDF extraction: processing {len(to_process)} records "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
@@ -1949,10 +1951,18 @@ async def main():
         try:
             pdf_session = requests.Session()
             pdf_session.headers.update({
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
-                "Accept": "application/pdf,*/*",
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) "
+                    "AppleWebKit/537.36 Chrome/120 Safari/537.36"
+                ),
+                "Accept": "application/pdf,application/xhtml+xml,text/html,*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://cclerk.hctx.net/applications/websearch/RP.aspx",
             })
+            # Pass browser cookies from Playwright so the requests session
+            # has the same authentication the browser had
             pdf_improved = enrich_from_clerk_pdf(pdf_session, deduped,
+                                                  browser_cookies=getattr(scraper, 'browser_cookies', []),
                                                   max_pdfs=150,
                                                   time_cap_minutes=30)
 
