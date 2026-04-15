@@ -1419,6 +1419,77 @@ class ClerkScraper:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Login to County Clerk (required to download PDF documents)
+# ═══════════════════════════════════════════════════════════════════════════════
+CCLERK_LOGIN_URL = "https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
+
+
+def login_to_cclerk(session: requests.Session) -> bool:
+    """Log in to the Harris County Clerk website.
+
+    The clerk site requires authentication to view/download PDF documents.
+    Credentials are read from environment variables CCLERK_USERNAME and
+    CCLERK_PASSWORD (set as GitHub Actions secrets).
+
+    Returns True on success, False on failure.
+    """
+    username = os.environ.get("CCLERK_USERNAME", "")
+    password = os.environ.get("CCLERK_PASSWORD", "")
+
+    if not username or not password:
+        log.warning("CCLERK_USERNAME / CCLERK_PASSWORD not set — PDF downloads will fail")
+        return False
+
+    try:
+        # Step 1: GET the login page to grab ASP.NET ViewState tokens
+        resp = session.get(CCLERK_LOGIN_URL, timeout=30)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Extract hidden form fields
+        viewstate = soup.find("input", {"name": "__VIEWSTATE"})
+        viewstate = viewstate["value"] if viewstate else ""
+        generator = soup.find("input", {"name": "__VIEWSTATEGENERATOR"})
+        generator = generator["value"] if generator else ""
+        encrypted = soup.find("input", {"name": "__VIEWSTATEENCRYPTED"})
+        encrypted = encrypted["value"] if encrypted else ""
+        validation = soup.find("input", {"name": "__EVENTVALIDATION"})
+        validation = validation["value"] if validation else ""
+        prevpage = soup.find("input", {"name": "__PREVIOUSPAGE"})
+        prevpage = prevpage["value"] if prevpage else ""
+
+        # Step 2: POST the login form
+        login_data = {
+            "__EVENTTARGET": "",
+            "__EVENTARGUMENT": "",
+            "__VIEWSTATE": viewstate,
+            "__VIEWSTATEGENERATOR": generator,
+            "__VIEWSTATEENCRYPTED": encrypted,
+            "__PREVIOUSPAGE": prevpage,
+            "__EVENTVALIDATION": validation,
+            "ctl00$ContentPlaceHolder1$Login1$UserName": username,
+            "ctl00$ContentPlaceHolder1$Login1$Password": password,
+            "ctl00$ContentPlaceHolder1$Login1$LoginButton": "LOG IN",
+        }
+
+        resp = session.post(CCLERK_LOGIN_URL, data=login_data, timeout=30,
+                           allow_redirects=True)
+        resp.raise_for_status()
+
+        # Check for successful login: page should contain LOGOUT or WELCOME
+        if "LOGOUT" in resp.text.upper() or "WELCOME" in resp.text.upper():
+            log.info("Successfully logged in to Harris County Clerk")
+            return True
+        else:
+            log.warning("Login POST succeeded but could not confirm authentication")
+            return False
+
+    except Exception as e:
+        log.warning(f"Login failed: {e}")
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Clerk PDF Download + Extraction  (Gemini → pdfplumber → OCR fallback)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1642,6 +1713,12 @@ def enrich_from_clerk_pdf(session: requests.Session, records: list,
                  f"capping at {max_pdfs}")
         to_process = to_process[:max_pdfs]
 
+    # Log in to clerk portal (required to download PDFs)
+    logged_in = login_to_cclerk(session)
+    if not logged_in:
+        log.warning("PDF extraction: clerk login failed — cannot download PDFs")
+        return 0
+
     log.info(f"PDF extraction: processing {len(to_process)} records "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
 
@@ -1840,31 +1917,10 @@ async def main():
              f"low={confidence_counts['low']}, "
              f"none={confidence_counts['none']}")
 
-    # 4b. HCAD LIVE VERIFICATION — probate cases only
-    #     For probate records with no/low confidence, query the HCAD
-    #     ArcGIS REST API to find the grantor's property address.
-    #     This is a simple HTTP GET → JSON call (no Playwright needed).
-    probate_needing_verify = [r for r in deduped
-                              if r.get("cat") == "PROBATE"
-                              and r.get("match_confidence") in ("none", "low")]
-    if probate_needing_verify:
-        log.info(f"Starting HCAD live verification for {len(probate_needing_verify)} probate records...")
-        try:
-            api_session = requests.Session()
-            api_session.headers.update({
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
-            })
-            improved = verify_probate_via_hcad(api_session, deduped)
-
-            # Recount addresses after live verification
-            with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
-        except Exception as e:
-            log.warning(f"HCAD live verification failed: {e}")
-    else:
-        log.info("All probate records already have medium/high confidence — skipping live verification")
-
-    # 4c. PDF EXTRACTION — download and read clerk PDFs for records
+    # 4b. PDF EXTRACTION — download and read clerk PDFs for records
     #     with no property address (match_confidence == "none").
+    #     Runs BEFORE slow HCAD API lookups because Gemini reads the
+    #     actual documents and finds addresses faster and more reliably.
     #     Uses Gemini Vision API first, then pdfplumber + OCR as fallback.
     no_address_records = [r for r in deduped
                           if r.get("match_confidence") == "none"
@@ -1889,8 +1945,31 @@ async def main():
     else:
         log.info("All records already have addresses — skipping PDF extraction")
 
+    # 4c. HCAD LIVE VERIFICATION — probate cases only
+    #     For probate records that STILL have no/low confidence after PDF
+    #     extraction, query the HCAD ArcGIS REST API as a last resort.
+    #     This is a simple HTTP GET → JSON call (no Playwright needed).
+    probate_needing_verify = [r for r in deduped
+                              if r.get("cat") == "PROBATE"
+                              and r.get("match_confidence") in ("none", "low")]
+    if probate_needing_verify:
+        log.info(f"Starting HCAD live verification for {len(probate_needing_verify)} probate records...")
+        try:
+            api_session = requests.Session()
+            api_session.headers.update({
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/120",
+            })
+            improved = verify_probate_via_hcad(api_session, deduped)
+
+            # Recount addresses after live verification
+            with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
+        except Exception as e:
+            log.warning(f"HCAD live verification failed: {e}")
+    else:
+        log.info("All probate records already have medium/high confidence — skipping live verification")
+
     # 4d. Set "Not found" for probate records with no property address
-    #     After bulk enrichment, live API verification, AND PDF extraction,
+    #     After bulk enrichment, PDF extraction, AND live API verification,
     #     any probate record that still has no property address should
     #     display "Not found" rather than being blank (or worse,
     #     showing a wrong address from a bad match).
