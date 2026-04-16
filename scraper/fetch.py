@@ -1831,7 +1831,13 @@ async def enrich_from_clerk_pdf(records: list,
             # Fill in login form
             await page.fill("input[name*='UserName']", username)
             await page.fill("input[name*='Password']", password)
-            await page.click("input[value='LOG IN']")
+            # Click the login button — try multiple selectors
+            login_btn = page.locator("input[name*='LoginButton']")
+            if await login_btn.count() == 0:
+                login_btn = page.locator("text=LOG IN")
+            if await login_btn.count() == 0:
+                login_btn = page.locator("input[type='submit']")
+            await login_btn.first.click()
             await page.wait_for_load_state("networkidle", timeout=30000)
             await asyncio.sleep(2)
 
@@ -1895,7 +1901,10 @@ async def enrich_from_clerk_pdf(records: list,
                         try:
                             await page.fill("input[name*='UserName']", username)
                             await page.fill("input[name*='Password']", password)
-                            await page.click("input[value='LOG IN']")
+                            re_btn = page.locator("input[name*='LoginButton']")
+                            if await re_btn.count() == 0:
+                                re_btn = page.locator("text=LOG IN")
+                            await re_btn.first.click()
                             await page.wait_for_load_state("networkidle", timeout=30000)
                             log.info("  Re-logged in successfully")
                         except Exception:
