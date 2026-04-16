@@ -1,12 +1,12 @@
 {
-  "fetched_at": "2026-04-15T18:13:31 CT",
+  "fetched_at": "2026-04-15T20:41:15 CT",
   "source": "Harris County Clerk (cclerk.hctx.net)",
   "date_range": {
     "from": "2026-04-08",
     "to": "2026-04-15"
   },
   "total": 2177,
-  "with_address": 1619,
+  "with_address": 1627,
   "records": [
     {
       "doc_num": "RP-2026-142676",
@@ -8060,17 +8060,17 @@
       "amount": "",
       "legal": "DUNCAN M",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVcyzxzLULjsi0R4FmPNq4nfzWZunsYlJmDro0uZRM4nMtiEYX7NIWxhYey/zYlkyQFKIipKzVhtgqQYFnWsf7HcR14w6F5UIOONpcZkgetIXtdK8hy8Snnvon312dmuOPg==",
-      "prop_address": "14307 STONEBURY TRAIL LN",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77044",
+      "prop_zip": "",
       "mail_address": "9527 FLORA ROCK LN",
       "mail_city": "77433",
       "mail_state": "TX",
       "mail_zip": "29601-2138",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1255280040029",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "LLC / corp owner",
@@ -8676,7 +8676,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137273",
@@ -8706,7 +8707,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136725",
@@ -8736,7 +8738,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136145",
@@ -8766,7 +8769,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135449",
@@ -8796,7 +8800,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135448",
@@ -8826,7 +8831,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135447",
@@ -8856,7 +8862,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141909",
@@ -8886,7 +8893,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140724",
@@ -8916,7 +8924,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140572",
@@ -8946,7 +8955,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140570",
@@ -8976,7 +8986,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140516",
@@ -9006,7 +9017,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-143085",
@@ -9036,7 +9048,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-143084",
@@ -9066,7 +9079,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142160",
@@ -9096,7 +9110,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141117",
@@ -9126,7 +9141,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133601",
@@ -9156,7 +9172,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-139089",
@@ -9246,7 +9263,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136971",
@@ -9276,7 +9294,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136708",
@@ -9306,7 +9325,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136471",
@@ -9336,7 +9356,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135665",
@@ -9366,7 +9387,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135211",
@@ -9396,7 +9418,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135071",
@@ -9426,7 +9449,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134951",
@@ -9456,7 +9480,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134884",
@@ -9486,7 +9511,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134780",
@@ -9516,7 +9542,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133885",
@@ -9546,7 +9573,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133598",
@@ -9576,7 +9604,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133126",
@@ -9606,7 +9635,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133123",
@@ -9636,7 +9666,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133122",
@@ -9666,7 +9697,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133083",
@@ -9696,7 +9728,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133060",
@@ -9726,7 +9759,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-132593",
@@ -9756,7 +9790,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-132488",
@@ -9786,7 +9821,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142741",
@@ -9816,7 +9852,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142740",
@@ -9846,7 +9883,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142144",
@@ -9876,7 +9914,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 65
+      "score": 65,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141872",
@@ -30144,17 +30183,17 @@
       "amount": "",
       "legal": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVb43RdRU8geJdGxjCMMDQC/RMgPZb4V5nUp6qUzTvf6HaOLz4UgfjXlN7gInRDEJuP0mCyvSZs8CijDPgUsqx5QkCsJcN78m231bIxBjEublyZ+rIXc2mQAScK6krQbUSQ==",
-      "prop_address": "7457 GLEASON RD",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77016",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0825100000016",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -30579,17 +30618,17 @@
       "amount": "",
       "legal": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVW3Y35trluXYfgdr3FRAwWXe/5rPJm5K4L1XoT3Pzpm6t7oYgVVO+M4uRvQZMUJt26cJ94nQKBY6XdCUs+000JOyoxSXsWWPhV1TmJjsWZ8Y+w/iQ8AeG1DZmuThknwE7Q==",
-      "prop_address": "31018 SPRING LAKE BLVD",
-      "prop_city": "TOMBALL",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77375",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1368250020003",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -30695,17 +30734,17 @@
       "amount": "",
       "legal": "LAKES AT NORTHPOINTE | Sec: 2 | Lot: 1 | Block: 1",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVe0jCZe8jxXqqT9bIXZEuVwuoi6gccFwwyha16VFhGO2kFlgnMES4A94OSRLajmRV5Eq/Axs6ouiUGNZCesKbuRBuPpBQB4NYLMx7voAnsqknwJvF+09hbCyzNyU3Lle+g==",
-      "prop_address": "13603 NORTHPOINTE RIDGE LN",
-      "prop_city": "CYPRESS",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77429",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1266370010001",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -30782,17 +30821,17 @@
       "amount": "",
       "legal": "PARKWAY FOREST | Sec: 4 | Lot: 6 | Block: 3",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVa1yoUA/DufnJzcPMRVtpVTWtLNr7lk//gYzdcg7shn26Wek+rRhGWNoMkI99Sh/EAylVGI5QBdJX3T5lL0JhxvWbn21EeaoQ+fDmiAqtd3FB1yb3oary3YVTcNojR8eLQ==",
-      "prop_address": "17007 HILLSWIND CIR",
-      "prop_city": "SPRING",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77379",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1055120000016",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -30840,17 +30879,17 @@
       "amount": "",
       "legal": "LAKEWOOD PINES | Sec: 12 | Lot: 12 | Block: 2",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVVg9dS6IoH+2M13Z9qU1TyWM5oeLcR2+NF1AIhvkMGMrjJocmTS+7zBlNlK1ZB4UavsQVqTNxL0ZJKIb1OEThYR2aCTEGbm5QAwEbSVWz+WMp6cSrKTEU9DoCE6X9EV3UQ==",
-      "prop_address": "15526 FELLSWOOD DR",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77044",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1463070020012",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -31014,17 +31053,17 @@
       "amount": "",
       "legal": "HEARTHSTONE GREEN | Sec: 2 | Lot: 12 | Block: 4",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVVkFKdmLEL3n2pHIljU13lBHH4vquJOE0xgyQgKx6PXlc72MZNV3diSsYg9SNs+DwhnKnWXLrQAIay9DcRUFApTG8UZ+/ruzDiaWmvwMV7F41nv6tGNtjMVFFaEdWdOdgg==",
-      "prop_address": "7307 MAIDSTONE LN",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77095",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1129940000012",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -31217,17 +31256,17 @@
       "amount": "",
       "legal": "OAKLAND ESTATES | Lot: 63-64",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVcYwnZLQiTMCQxLxlVrITrKpsLPEmxmVxTOTeAcGOHA+h35ZdSGnyD12RgHlH7ckRnyr78/8l5XgOJplQcHlgyBWcCvoOHedQrJd+ZNJXq5OFSYFLwVh+XciEDa+nohx9Q==",
-      "prop_address": "930 CHAD LN",
-      "prop_city": "BAYTOWN",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77521",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1247760000021",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -31304,17 +31343,17 @@
       "amount": "",
       "legal": "STRATHMORE | Sec: 2 | Lot: 83 | Block: 1",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVfKozlnbiCmRhPwb71zcCSMUtemkXmqeVyiH+oXLuH3tuJi0RqnsSJLpuiSR6GE37jS78kqDLrYkhSQD0FLsWWdOwZRfRp8NnPQtILqx+VdcK8DrtSb08oT9tZ5M3QluBA==",
-      "prop_address": "10851 SUN RIVER FALLS DR",
-      "prop_city": "HUMBLE",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77396",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1374290020010",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -31362,17 +31401,17 @@
       "amount": "",
       "legal": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVaZZrjWdHOSLkYUsYb86AdVc6FHr5R6uxMG0dGd1yxt/+SDJmsjA1xtb/180xA7TAb/bt0/omX9Fz/S1Mh9ESnTl8pb9GQ4tynRo0UT1/AcX4kY23n+72fvnwu5NVQf9/g==",
-      "prop_address": "9627 GLENWOOD FOREST DR",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77078",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1012730000027",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -31507,17 +31546,17 @@
       "amount": "",
       "legal": "KINGWOOD LAKES VILLAGE | Sec: 4 | Lot: 2 | Block: 4",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVTcby9D6qF80LLKFCzG7k2KEsADNlbBwgGOqPQ24p8qIRwtmKInU3L4WhPiNUD74FqCswvFcmq+QCj9ZsR7ExaaYvspLjM9+VI5+n9raYcJABQ4Px4E3MYHOe3rAgWJhVQ==",
-      "prop_address": "2326 WILLOW PASS DR",
-      "prop_city": "HUMBLE",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77339",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1092750010002",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -32029,17 +32068,17 @@
       "amount": "",
       "legal": "CARVERDALE | Sec: 2 | Lot: 134 | Block: F",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVS1QjeaTSzpsVLzfi2PrlnUaThClYctpjJKC4tscUtRDpmdq1Hewdq5i4bR+TufAOALkfEDFl5qnL/OvpljAzIDshbN4HkAu7GA57NvxM61xqGzbthOUMwC9pVYh2VeYww==",
-      "prop_address": "7002 CANYON WAY DR",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77086",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1106750000019",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -32116,17 +32155,17 @@
       "amount": "",
       "legal": "BROOKE SMITH ADDITION | Lot: 5 | Block: 7",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVeRqKzEBW4NJRjRnWSdD6eBpNT1YD+NDQX5m2Vqp+gZ6RtGU7bI8wp/wpbS6iTanaKDVJWTsK68eLZ8nqS2OeTqkQdlC2R7S/xM/gfKh06ypaXCxiOL6bGfrCaD26Uyy4g==",
-      "prop_address": "1706 DROXFORD DR",
-      "prop_city": "HOUSTON",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77008",
+      "prop_zip": "",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0931110000012",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -32203,17 +32242,17 @@
       "amount": "",
       "legal": "HOLLY CREEK | Sec: 1",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVZtTc9ekHucU5d10E6yaX2BqlxBaeX7P2BHfvralVqZPSy2zXNI1FsaV2e41UOp3np0A/cRGGjC7Kga0Aqj7aso4ZZ7DfS2j1fbe95Cenw0HC3aeBK6wlZULsmEENMwTvA==",
-      "prop_address": "14530 CLAYCROFT CT",
-      "prop_city": "CYPRESS",
+      "prop_address": "Not found",
+      "prop_city": "Houston",
       "prop_state": "TX",
-      "prop_zip": "77429",
+      "prop_zip": "",
       "mail_address": "14503 WINDING SPRINGS DR",
       "mail_city": "77429",
       "mail_state": "TX",
       "mail_zip": "77429-6121",
-      "match_confidence": "medium",
-      "address_source": "hcad_api",
-      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1183690020016",
+      "match_confidence": "none",
+      "address_source": "none",
+      "hcad_url": "",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -33914,17 +33953,17 @@
       "amount": "",
       "legal": "DEVONSHIRE WOODS | Sec: 1 | Lot: 10 | Block: 3",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVdl8LUFTuMHl9j8zGEkAjb2wppAd50fgc0yGrpzmGtzDjEtCvGG3d07uJf8EO2clGLJ9187bJ/LG2wtI6scKVcHI37AKutTfFU6DtvnCL6E1KLq4oydzLQoPTvGMIXsg9w==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "511 RAMS BOTTOM CT",
+      "prop_city": "SPRING",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77388",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1142330030047",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -33943,17 +33982,17 @@
       "amount": "",
       "legal": "DEVONSHIRE WOODS | Sec: 1 | Lot: 10 | Block: 3",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVZL/f04LCNhUCujw+gQZO9vLx4Ca19PdsrPkrLme4v/dZwetOXUOgYcDD1IDFIWBK9NKKgmuUrH39dPv6tFPHgmMV8HOpq/3PrkDz0s0mGEuyyPGxyMaQ2CMK5OmQ+OMkw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "511 RAMS BOTTOM CT",
+      "prop_city": "SPRING",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77388",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1142330030047",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -34001,17 +34040,17 @@
       "amount": "",
       "legal": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRTwW1g1/2kzCLj0guugrwme/nhQZVVJSuzAaFqf/bvxdSQC5GAuQ8Ov2fi4daYvdCRqkhXI9i8MWJ7iu1isxmDLEITu39auF3AKtaUq96y/9xBe3L8M+SDat2ot3F8/Lw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "12310 SILO LN",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77071",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1081340000040",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -34552,17 +34591,17 @@
       "amount": "",
       "legal": "WILLOWBRIDGE | Sec: 1 | Lot: 18 | Block: 2",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVSGFFErs3wiKlokqZiSX/F7GQQ9346v+lEMSobBHd3NW9+bZystxVzIz1JXHnxuTjY/Rj+I3YT/D7uCgeqBps/MBlcxxghxytyY7zIN0HB1d1bkRiQw0vjIuOECF1YisSg==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "9426 PEARSALL DR",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77064",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1174220020018",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -34581,17 +34620,17 @@
       "amount": "",
       "legal": "WILLOWBRIDGE | Sec: 1 | Lot: 18 | Block: 2",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVeRUBFzoDbTisPUx/QZ70IrKKtve1pUDL1yxusQkBfMuodOCqRS0y47t20HYMslJ9k4pLjw0AS0KpszefgmKeAWZuxyJ+r7s8pBVk6Gb4Wmva1eT9mt2y/d43Huz/dJhxw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "9426 PEARSALL DR",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77064",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1174220020018",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -34697,17 +34736,17 @@
       "amount": "",
       "legal": "MORRISTOWN ADDITION | Lot: 6-7 | Block: 7",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVXt+4CPkR9+Z9T38hWUmTr5NJcICBKeKnhxjdVdMjl1kXprN26zn2Kzi2dmFiVhT4dlCg2STC9pNfxrzwvasJ5xfyFvr5gOj1BxRZjUKfcg9p6GGcNuAQnQu9SvkkKGzyA==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1922 TODVILLE RD",
+      "prop_city": "SEABROOK",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77586",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0262190000006",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -34755,17 +34794,17 @@
       "amount": "",
       "legal": "RIATA WEST AMENDING PLAT NO I | Lot: 4 | Block: 1",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVdZ/5A1IAQ6k44RL/zR5QQGHGe7EUC8k3WBmRzOOYOl+51ObSpGh4h9mv0RDuD7ClRUITVE1Vv8/Z1QJR5tSwCm7sZ8E+z8Vd6v00V3kFJBaagM+yIr/hDPctz/b1MXlMQ==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "10714 WOODWIND SHADOWS DR",
+      "prop_city": "CYPRESS",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77433",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1277360010004",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35016,17 +35055,17 @@
       "amount": "",
       "legal": "SHARPSTOWN | Sec: 2 | Lot: 18 | Block: 31",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVY/I4hKYMF/u35aX+heAUA/cTbLOwbxY5uLPvI5maZfpsyzbpjQ3lTa+8eEGYZNrv4ormiHh9OfaEZgPyXHnhqSRShzVishwuGaqSPm7/EldLCQUhj1DGHwWY5363RtviA==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "6500 RAMPART ST",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77081",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1122010000008",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35219,17 +35258,17 @@
       "amount": "",
       "legal": "SHERWOOD TRAILS | Sec: 4 | Lot: 790 | Block: 5",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYevHV8PbcKExd4B/i8qBXvNzvWGDiplSdGMkdUYkfamVAJM/WbuWPX7/DMozMfnwPi5a0BSSeEsDSkoKu2VkqaGlVtstYMxssw2dT+nGDmEjGcZNfqPqzzV8Kswo1HGgw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "4211 HERMITAGE HOLLOW LN",
+      "prop_city": "KINGWOOD",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77339",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1177540050790",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35248,17 +35287,17 @@
       "amount": "",
       "legal": "MEMORIAL NORTHWEST ESTATES | Sec: 1 | Lot: 18 | Block: 2",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVWv/XZ/7kIzn/gBfo7CbkEI0feHZ6kYN1wx0TDmnng7Er58dp4zeupkRO09gFrg3hesMe/dnU1Gxq+c8zjwIESb8EGnBaC0T/o+YC7yVxpzUb45Li1yO68ak2XfJyAsOqg==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "8030 DEMOCRACY CT",
+      "prop_city": "SPRING",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77379",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1137310000018",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35277,17 +35316,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQVSPtBZCTqcdSZefKD0KCNXiLXSrHgg6cTy7XecEvmO+3RxPg/D/J36WG2f5A8RFK6+Oxp/Aj5gMHeJ40ukD02P3wJva5NXpuY9Od08L6kqPxDpQna/P4GqmseWLMzwlA==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35306,17 +35345,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVZiwzN+KSQ+FhoQ6r2I1geNG60jHy0l5O8VXooANLgKgh6V/RcpT7jicmn+vnSblFV5HLExxSbi9gBxu/uYJQ4dsiwjd7lRa5/03KBOITgXkO0+uZOuOxBjm7VvtkzwWjQ==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35335,17 +35374,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVccMX0OsC9q80VnggY9EN61fQLcLUwj+ItMkUK07a9O63WYq2Ms0MY0y50N46E7byG3WkKTFPSS4E+TWg/0wDNk72Nl9glAlEA3VA4quxiqJmUPMiO5/DKaZhqBkUT6T4Q==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35364,17 +35403,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVcUCB6D7dfDyf0/0yW4UigjiJrwrCQ69qjXxzOoKVNlNhqz4M127JZD7EobUXcqVYyzDZZFmNuFNObXXAjTSPCQemMYj6M3/QPkFFpRU5TMwqpsoHGOmoPluMzbFu2GkNw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35393,17 +35432,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRsc8IF6RmWrHZ+mmMlNBYWqc1q/8u+Ukvatr7aRjFt8tujLybKxfhlvpl+Myc2T7UTADXGssKUuGkI4ao4ZhVP5WKTgQixscUL3eTeBCMOEd4V85rc2UkZYOAUnsuf6Tw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35422,17 +35461,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVc1TSvlOtyUsk/b9pK1p2Wb+aRvV9ZykS+SbrdDu/9GmLMPatgkXfdaIu8J36Ha82GVCw62Otp3LS6DjvVIImnz3kK7AQahwpFizSjfw/EOL/Z6+S9tPPYj3CCNW00g5IA==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35451,17 +35490,17 @@
       "amount": "",
       "legal": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVfmQglETdSNd1psO6XD8Bz5E8ekS9TOOO5d+n88kJBppllp6ychJrr7oqy1G5NrPuxHpBYHxM5/fII02cYYoKCaAxnqc3ET20+8UE70J0WsWwirqz8HlpbEO4yg4N1ZS8A==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35480,17 +35519,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYRIxCV4VNAdc1EEcorBaj/95lSjnNc8bZiW7T9jgBSVuGDEGcZ4Pt1XE7InuMaQkBcygmFRUSpsjEwbpD0D5rvFSPC5Svbbvfe9dT0MEYxELePA2NFqkYi65DfvnbD/mw==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35509,17 +35548,17 @@
       "amount": "",
       "legal": "RHEA J R",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVTTdAlNdVAcOhxqLkBuLqLuLP3L+yM5tEclJH/n8dU5Dc87RogIHM/nBMUWEo9MxwPXQPrlfBAMmH+bgomyurUU7SgNGNrxl2rAT50qgKiF8x7mlKWMvW05gQSVixPOJyQ==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35538,17 +35577,17 @@
       "amount": "",
       "legal": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQnsT0J5sl5V4b3DGGjvlBtiY/4vb0Kz0xZqQgkIKfZMOMxwFwtP1KKDQZ9Fg8z4AghzhUPzCRp9Mnow3UVzMq8ca010sU/1pGEsOvugI4y+doBvKuAxz4doDr/b1BfH4Q==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "1623 RIVER OAKS BLVD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77019",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0601300000001",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -35741,17 +35780,17 @@
       "amount": "",
       "legal": "CYPRESS FIELDS | Sec: 1",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVdbQi6DzMHmuBX3XBDrs1gVGD5GjDCSsrw7oG1UM8D0ud1sVi0mFNrqo6E5ltzIWwfsz2UK5phD3rWWrWpYWxh6hP9HQbfF+rKmOb7XcqoSObYyc4j3qBlvZcfMgW8SBQg==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "4315 BROOK SHADOW DR",
+      "prop_city": "KINGWOOD",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77345",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=1170240030010",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -36176,17 +36215,17 @@
       "amount": "",
       "legal": "TANGLEWOOD | Sec: 15 | Lot: 47 | Block: 74",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYs0Zbl++iCGvJ80OxDXV4kPL94gV8OveZtFxAjLHtW1RTjYe73lpfOGa0VTjTNcX4sSyz1gWdtci9lA752BE0TF3KNB9DQmyAJgvH3pYkXlTauG9/vWpEqH0zS7CPSvIA==",
-      "prop_address": "Not found",
-      "prop_city": "Houston",
+      "prop_address": "818 OLD LAKE RD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "",
+      "prop_zip": "77057",
       "mail_address": "Grantee not found",
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "match_confidence": "none",
-      "address_source": "none",
-      "hcad_url": "",
+      "match_confidence": "medium",
+      "address_source": "hcad_api",
+      "hcad_url": "https://public.hcad.org/records/details.asp?cession=A&acct=0920990000047",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -42803,7 +42842,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "login_required"
     },
     {
       "doc_num": "RP-2026-142621",
@@ -42832,7 +42872,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142608",
@@ -42861,7 +42902,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142153",
@@ -42890,7 +42932,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140087",
@@ -42919,7 +42962,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137725",
@@ -42948,7 +42992,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137238",
@@ -42977,7 +43022,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136670",
@@ -43006,7 +43052,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134885",
@@ -43035,7 +43082,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134830",
@@ -43064,7 +43112,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134695",
@@ -43093,7 +43142,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134684",
@@ -43122,7 +43172,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134194",
@@ -43151,7 +43202,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133891",
@@ -43180,7 +43232,8 @@
         "Lis pendens",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137697",
@@ -43209,7 +43262,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137657",
@@ -43238,7 +43292,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137620",
@@ -43267,7 +43322,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137463",
@@ -43296,7 +43352,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137029",
@@ -43325,7 +43382,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136970",
@@ -43354,7 +43412,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136093",
@@ -43383,7 +43442,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136003",
@@ -43412,7 +43472,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135933",
@@ -43441,7 +43502,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135640",
@@ -43470,7 +43532,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135391",
@@ -43499,7 +43562,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135372",
@@ -43528,7 +43592,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135368",
@@ -43557,7 +43622,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135335",
@@ -43586,7 +43652,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134949",
@@ -43615,7 +43682,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134855",
@@ -43644,7 +43712,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134854",
@@ -43673,7 +43742,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134853",
@@ -43702,7 +43772,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141667",
@@ -43731,7 +43802,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141609",
@@ -43760,7 +43832,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141566",
@@ -43789,7 +43862,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141372",
@@ -43818,7 +43892,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141202",
@@ -43847,7 +43922,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140518",
@@ -43876,7 +43952,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-140240",
@@ -43905,7 +43982,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-139640",
@@ -43934,7 +44012,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-139639",
@@ -43963,7 +44042,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-139439",
@@ -43992,7 +44072,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-139328",
@@ -44021,7 +44102,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-139266",
@@ -44050,7 +44132,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142663",
@@ -44079,7 +44162,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142471",
@@ -44108,7 +44192,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142444",
@@ -44137,7 +44222,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142337",
@@ -44166,7 +44252,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142329",
@@ -44195,7 +44282,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142328",
@@ -44224,7 +44312,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142327",
@@ -44253,7 +44342,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142325",
@@ -44282,7 +44372,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142324",
@@ -44311,7 +44402,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142322",
@@ -44340,7 +44432,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142321",
@@ -44369,7 +44462,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142320",
@@ -44398,7 +44492,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142319",
@@ -44427,7 +44522,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142317",
@@ -44456,7 +44552,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142315",
@@ -44485,7 +44582,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142314",
@@ -44514,7 +44612,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142313",
@@ -44543,7 +44642,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-142311",
@@ -44572,7 +44672,8 @@
         "Pre-foreclosure / trustee sale",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137543",
@@ -45906,7 +46007,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137245",
@@ -45935,7 +46037,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137244",
@@ -45964,7 +46067,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137241",
@@ -45993,7 +46097,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137177",
@@ -46022,7 +46127,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137176",
@@ -46051,7 +46157,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137123",
@@ -46080,7 +46187,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-137068",
@@ -46109,7 +46217,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136953",
@@ -46138,7 +46247,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136920",
@@ -46167,7 +46277,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136687",
@@ -46196,7 +46307,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136671",
@@ -46225,7 +46337,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136561",
@@ -46254,7 +46367,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136560",
@@ -46283,7 +46397,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136549",
@@ -46312,7 +46427,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136546",
@@ -46341,7 +46457,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136514",
@@ -46370,7 +46487,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136509",
@@ -46399,7 +46517,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136482",
@@ -46428,7 +46547,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136473",
@@ -46457,7 +46577,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-136301",
@@ -46486,7 +46607,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135720",
@@ -46515,7 +46637,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135475",
@@ -46544,7 +46667,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135393",
@@ -46573,7 +46697,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135383",
@@ -46602,7 +46727,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135293",
@@ -46631,7 +46757,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135090",
@@ -46660,7 +46787,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135089",
@@ -46689,7 +46817,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135088",
@@ -46718,7 +46847,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135086",
@@ -46747,7 +46877,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135083",
@@ -46776,7 +46907,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135080",
@@ -46805,7 +46937,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135079",
@@ -46834,7 +46967,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135078",
@@ -46863,7 +46997,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135027",
@@ -46892,7 +47027,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135013",
@@ -46921,7 +47057,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-135008",
@@ -46950,7 +47087,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134953",
@@ -46979,7 +47117,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134883",
@@ -47008,7 +47147,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134882",
@@ -47037,7 +47177,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134629",
@@ -47066,7 +47207,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-134235",
@@ -47095,7 +47237,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133773",
@@ -47124,7 +47267,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133734",
@@ -47153,7 +47297,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133650",
@@ -47182,7 +47327,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133630",
@@ -47211,7 +47357,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133357",
@@ -47240,7 +47387,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133188",
@@ -47269,7 +47417,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-133127",
@@ -47298,7 +47447,8 @@
         "Judgment lien",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-141570",
