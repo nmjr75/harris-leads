@@ -1938,16 +1938,54 @@ async def enrich_from_clerk_pdf(records: list,
                 rec["pdf_status"] = "downloaded"
                 pdf_bytes = body
             else:
-                # Check for "image not found"
+                # The ViewEdocs page may serve an HTML wrapper with an embedded PDF.
+                # Check for iframe/embed/object tags pointing to the actual PDF.
                 page_text = await page.inner_text("body")
-                if "image not found" in page_text.lower() or "no image" in page_text.lower():
+                page_html = await page.content()
+
+                # Try to find embedded PDF in iframe/embed/object
+                embedded_pdf = None
+                for tag in ["iframe", "embed", "object"]:
+                    el = await page.query_selector(tag)
+                    if el:
+                        src = await el.get_attribute("src") or await el.get_attribute("data") or ""
+                        if src:
+                            if not src.startswith("http"):
+                                src = f"https://www.cclerk.hctx.net{src}"
+                            log.info(f"  {doc_num}: found embedded {tag} src={src[:100]}")
+                            # Navigate to the embedded URL to get the PDF
+                            try:
+                                pdf_resp = await page.goto(src, timeout=30000,
+                                                           wait_until="networkidle")
+                                if pdf_resp:
+                                    pdf_ct = pdf_resp.headers.get("content-type", "")
+                                    pdf_body = await pdf_resp.body()
+                                    if "pdf" in pdf_ct.lower() or (pdf_body and pdf_body[:4] == b"%PDF"):
+                                        log.info(f"  PDF from embedded {tag}: {len(pdf_body):,} bytes")
+                                        downloaded += 1
+                                        rec["pdf_status"] = "downloaded"
+                                        pdf_bytes = pdf_body
+                                        embedded_pdf = pdf_body
+                            except Exception as emb_e:
+                                log.warning(f"  {doc_num}: embedded {tag} fetch failed: {emb_e}")
+                            break
+
+                if embedded_pdf:
+                    # Got PDF from embedded element — fall through to extraction
+                    body = embedded_pdf
+                elif "image not found" in page_text.lower() or "no image" in page_text.lower():
                     log.info(f"  {doc_num}: image not found on server")
                     rec["pdf_status"] = "image_not_found"
+                    failed += 1
+                    continue
                 else:
+                    # Log first 200 chars of HTML for diagnosis
+                    preview = page_html[:300].replace('\n', ' ').replace('\r', '')
                     log.warning(f"  {doc_num}: got {content_type}, url={page.url[:80]}")
+                    log.warning(f"  HTML preview: {preview}")
                     rec["pdf_status"] = "not_pdf"
-                failed += 1
-                continue
+                    failed += 1
+                    continue
 
             # Extract data from PDF (Gemini → pdfplumber → OCR)
             extracted = None
