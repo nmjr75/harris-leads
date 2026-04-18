@@ -1934,12 +1934,9 @@ async def enrich_from_clerk_pdf(records: list,
 
             log.info(f"  Found {link_count} Film Code link(s)")
 
-            # Step 4: Get the Film Code URL and fetch PDF via JavaScript.
-            # The ViewEdocs URL serves raw PDF bytes (application/pdf) when
-            # properly authenticated. But Playwright's headless navigation
-            # gets Chrome's PDF viewer HTML wrapper instead of raw bytes.
-            # Solution: use fetch() from within the authenticated page to
-            # download the PDF as an ArrayBuffer — bypasses the PDF viewer.
+            # Step 4: Get the Film Code URL and download PDF via Playwright
+            # API request (page.context.request.get). This uses the browser's
+            # session cookies but returns raw bytes — no PDF viewer wrapper.
             pdf_bytes = None
 
             # Get the href from the Film Code link
@@ -1954,10 +1951,9 @@ async def enrich_from_clerk_pdf(records: list,
                 href = f"https://www.cclerk.hctx.net{href}" if href.startswith("/") else \
                        f"https://www.cclerk.hctx.net/applications/websearch/{href}"
 
-            log.info(f"  Fetching PDF via JS: {href[:80]}...")
-
-            # First click the link to trigger login if needed (opens in new tab)
+            # First time: click the link to trigger login
             if not logged_in:
+                log.info(f"  First PDF — clicking link to trigger login...")
                 try:
                     async with page.expect_popup(timeout=15000) as popup_info:
                         await film_link.first.click()
@@ -1972,13 +1968,15 @@ async def enrich_from_clerk_pdf(records: list,
                             btn = popup.locator("text=LOG IN")
                         await btn.first.click()
                         await popup.wait_for_load_state("networkidle", timeout=30000)
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(3)
                         logged_in = True
                         log.info("  Login successful")
+                    else:
+                        logged_in = True  # No login needed
 
                     await popup.close()
                 except Exception:
-                    # No popup — may have navigated in same page
+                    # No popup — navigated in same page
                     if "login" in page.url.lower():
                         log.info("  Login required — logging in...")
                         await page.fill("input[name*='UserName']", username)
@@ -1988,102 +1986,72 @@ async def enrich_from_clerk_pdf(records: list,
                             btn = page.locator("text=LOG IN")
                         await btn.first.click()
                         await page.wait_for_load_state("networkidle", timeout=30000)
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(3)
                         logged_in = True
                         log.info("  Login successful")
 
-                    # Navigate back to search results for this doc
-                    await page.goto(SEARCH_URL, timeout=30000, wait_until="networkidle")
-                    await asyncio.sleep(1)
-                    await page.evaluate(f"""
-                        var fileInput = document.querySelector('[id*="txtFileNumber"]')
-                                      || document.querySelector('[id*="txtFile"]')
-                                      || document.querySelector('input[name*="FileNumber"]')
-                                      || document.querySelectorAll('input[type="text"]')[0];
-                        if (fileInput) {{ fileInput.value = '{doc_num}'; }}
-                        var fields = ['txtInstrument', 'txtFrom', 'txtTo', 'txtGrantor', 'txtGrantee'];
-                        fields.forEach(function(f) {{
-                            var el = document.querySelector('[id*="' + f + '"]');
-                            if (el) el.value = '';
-                        }});
-                    """)
-                    await page.evaluate("document.querySelector('[id*=\"btnSearch\"]').click();")
-                    await page.wait_for_load_state("networkidle", timeout=30000)
-                    await asyncio.sleep(2)
+                # Re-search to get back to results page
+                await page.goto(SEARCH_URL, timeout=30000, wait_until="networkidle")
+                await asyncio.sleep(1)
+                await page.evaluate(f"""
+                    var fileInput = document.querySelector('[id*="txtFileNumber"]')
+                                  || document.querySelector('[id*="txtFile"]')
+                                  || document.querySelector('input[name*="FileNumber"]')
+                                  || document.querySelectorAll('input[type="text"]')[0];
+                    if (fileInput) {{ fileInput.value = '{doc_num}'; }}
+                    var fields = ['txtInstrument', 'txtFrom', 'txtTo', 'txtGrantor', 'txtGrantee'];
+                    fields.forEach(function(f) {{
+                        var el = document.querySelector('[id*="' + f + '"]');
+                        if (el) el.value = '';
+                    }});
+                """)
+                await page.evaluate("document.querySelector('[id*=\"btnSearch\"]').click();")
+                await page.wait_for_load_state("networkidle", timeout=30000)
+                await asyncio.sleep(2)
 
-                    # Re-find the link
-                    film_link = page.locator(f"a:has-text('{doc_num}')")
-                    if await film_link.count() == 0:
-                        film_link = page.locator("a[href*='ViewEdocs']")
+                # Re-find the link with fresh URL
+                film_link = page.locator(f"a:has-text('{doc_num}')")
+                if await film_link.count() == 0:
+                    film_link = page.locator("a[href*='ViewEdocs']")
+                if await film_link.count() > 0:
                     href = await film_link.first.get_attribute("href") or href
-
                     if not href.startswith("http"):
                         href = f"https://www.cclerk.hctx.net{href}" if href.startswith("/") else \
                                f"https://www.cclerk.hctx.net/applications/websearch/{href}"
 
-            # Now fetch the PDF via JavaScript fetch() — uses the browser's
-            # authenticated session cookies, bypasses the PDF viewer
+            # Download PDF using Playwright's API request context.
+            # This makes an HTTP request using the browser's cookies but
+            # returns raw bytes — no Chrome PDF viewer wrapper.
+            log.info(f"  Downloading PDF: {href[:80]}...")
             try:
-                result = await page.evaluate(f"""
-                    async () => {{
-                        try {{
-                            const resp = await fetch("{href}", {{
-                                credentials: 'include',
-                                redirect: 'follow'
-                            }});
-                            const contentType = resp.headers.get('content-type') || '';
-                            const buffer = await resp.arrayBuffer();
-                            const bytes = new Uint8Array(buffer);
-                            // Check if it starts with %PDF
-                            const isPdf = bytes.length > 4 &&
-                                          bytes[0] === 0x25 && bytes[1] === 0x50 &&
-                                          bytes[2] === 0x44 && bytes[3] === 0x46;
-                            return {{
-                                ok: resp.ok,
-                                status: resp.status,
-                                contentType: contentType,
-                                isPdf: isPdf,
-                                size: bytes.length,
-                                url: resp.url,
-                                // Convert to base64 for transfer
-                                data: isPdf ? btoa(String.fromCharCode.apply(null, bytes)) : null
-                            }};
-                        }} catch (e) {{
-                            return {{ ok: false, error: e.message }};
-                        }}
-                    }}
-                """)
+                api_resp = await page.context.request.get(href, timeout=60000)
+                body = await api_resp.body()
+                ct = api_resp.headers.get("content-type", "")
+                status = api_resp.status
 
-                if result and result.get("isPdf") and result.get("data"):
-                    import base64
-                    pdf_bytes = base64.b64decode(result["data"])
-                    log.info(f"  PDF fetched OK: {len(pdf_bytes):,} bytes "
-                             f"(content-type: {result.get('contentType', '?')})")
+                log.info(f"  Response: status={status}, type={ct}, size={len(body)} bytes")
+
+                if status == 200 and body and body[:4] == b"%PDF":
+                    pdf_bytes = body
+                    log.info(f"  PDF downloaded OK: {len(pdf_bytes):,} bytes")
                     downloaded += 1
                     rec["pdf_status"] = "downloaded"
-                elif result and result.get("ok"):
-                    log.warning(f"  {doc_num}: got {result.get('contentType', '?')}, "
-                                f"size={result.get('size', 0)}, isPdf={result.get('isPdf')}, "
-                                f"url={result.get('url', '?')[:80]}")
-                    rec["pdf_status"] = "not_pdf"
-                    failed += 1
-                    continue
-                elif result and result.get("error"):
-                    log.warning(f"  {doc_num}: fetch error — {result['error']}")
-                    rec["pdf_status"] = "error"
+                elif "login" in api_resp.url.lower() or status in (301, 302, 403):
+                    log.warning(f"  {doc_num}: redirected to login (status {status})")
+                    logged_in = False
+                    rec["pdf_status"] = "login_required"
                     failed += 1
                     continue
                 else:
-                    log.warning(f"  {doc_num}: fetch failed — status {result.get('status', '?')}")
-                    if result and result.get("url") and "login" in result.get("url", "").lower():
-                        log.warning(f"  Session expired — re-login needed")
-                        logged_in = False
-                    rec["pdf_status"] = "fetch_failed"
+                    preview = body[:200].decode("utf-8", errors="replace") if body else "(empty)"
+                    log.warning(f"  {doc_num}: not PDF — status={status}, type={ct}")
+                    log.warning(f"  Preview: {preview[:150]}")
+                    rec["pdf_status"] = "not_pdf"
                     failed += 1
                     continue
 
             except Exception as e:
-                log.warning(f"  {doc_num}: JS fetch failed — {e}")
+                log.warning(f"  {doc_num}: download failed — {e}")
                 rec["pdf_status"] = "error"
                 failed += 1
                 continue
