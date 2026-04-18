@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-04-18T11:27:48 CT",
+  "fetched_at": "2026-04-18T16:53:06 CT",
   "source": "Harris County Clerk (cclerk.hctx.net)",
   "date_range": {
     "from": "2026-04-17",
@@ -1417,7 +1417,7 @@
         "New this week"
       ],
       "score": 70,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146705",
@@ -1448,7 +1448,7 @@
         "New this week"
       ],
       "score": 70,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146504",
@@ -1479,7 +1479,7 @@
         "New this week"
       ],
       "score": 70,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146239",
@@ -1510,7 +1510,7 @@
         "New this week"
       ],
       "score": 70,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-143436",
@@ -11591,7 +11591,7 @@
         "New this week"
       ],
       "score": 65,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-143826",
@@ -14969,7 +14969,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147727",
@@ -15028,7 +15028,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147699",
@@ -15145,7 +15145,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147643",
@@ -15175,7 +15175,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147612",
@@ -15292,7 +15292,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147457",
@@ -15496,7 +15496,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147359",
@@ -15555,7 +15555,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147263",
@@ -15759,7 +15759,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147120",
@@ -15789,7 +15789,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147112",
@@ -15877,7 +15877,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147058",
@@ -15994,7 +15994,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146982",
@@ -16024,7 +16024,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146981",
@@ -16054,7 +16054,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146904",
@@ -16113,7 +16113,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146886",
@@ -16143,7 +16143,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146860",
@@ -16231,7 +16231,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146836",
@@ -16261,7 +16261,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146826",
@@ -16494,7 +16494,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146626",
@@ -16524,7 +16524,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146599",
@@ -16583,7 +16583,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146552",
@@ -16642,7 +16642,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146543",
@@ -16730,7 +16730,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146525",
@@ -16818,7 +16818,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146486",
@@ -16848,7 +16848,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146474",
@@ -16878,7 +16878,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146473",
@@ -16908,7 +16908,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146470",
@@ -16938,7 +16938,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146469",
@@ -16968,7 +16968,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146461",
@@ -17375,7 +17375,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146260",
@@ -17434,7 +17434,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146256",
@@ -17464,7 +17464,7 @@
         "New this week"
       ],
       "score": 60,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146250",
@@ -46320,7 +46320,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "html_viewer"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146801",
@@ -46350,7 +46350,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "html_viewer"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147424",
@@ -46380,7 +46380,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147282",
@@ -46410,7 +46410,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147222",
@@ -46440,7 +46440,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-147178",
@@ -46470,7 +46470,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146398",
@@ -46500,7 +46500,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146621",
@@ -46530,7 +46530,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "html_viewer"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146468",
@@ -46560,7 +46560,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "error"
     },
     {
       "doc_num": "RP-2026-146798",
@@ -46589,7 +46589,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146731",
@@ -46618,7 +46619,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-144017",
@@ -69806,7 +69808,7 @@
         "New this week"
       ],
       "score": 45,
-      "pdf_status": "not_pdf"
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147654",
@@ -69835,7 +69837,7 @@
         "New this week"
       ],
       "score": 45,
-      "pdf_status": "not_pdf"
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147653",
@@ -69864,7 +69866,7 @@
         "New this week"
       ],
       "score": 45,
-      "pdf_status": "not_pdf"
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147652",
@@ -69893,7 +69895,7 @@
         "New this week"
       ],
       "score": 45,
-      "pdf_status": "not_pdf"
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147651",
@@ -69921,7 +69923,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147628",
@@ -69949,7 +69952,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147600",
@@ -69977,7 +69981,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147592",
@@ -70005,7 +70010,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147435",
@@ -70033,7 +70039,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147397",
@@ -70061,7 +70068,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147119",
@@ -70089,7 +70097,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147100",
@@ -70117,7 +70126,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147099",
@@ -70145,7 +70155,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-147097",
@@ -70173,7 +70184,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146977",
@@ -70201,7 +70213,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146973",
@@ -70229,7 +70242,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146928",
@@ -70257,7 +70271,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146875",
@@ -70285,7 +70300,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146868",
@@ -70313,7 +70329,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146854",
@@ -70341,7 +70358,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146853",
@@ -70369,7 +70387,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146813",
@@ -70397,7 +70416,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146812",
@@ -70425,7 +70445,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146748",
@@ -70453,7 +70474,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-146730",
@@ -70481,7 +70503,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "no_href"
     },
     {
       "doc_num": "RP-2026-142101",
