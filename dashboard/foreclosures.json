@@ -1,12 +1,12 @@
 {
-  "fetched_at": "2026-04-17T09:31:10.524645Z",
+  "fetched_at": "2026-04-18T08:37:21.895697Z",
   "source": "Harris County Clerk - Foreclosure Postings (cclerk.hctx.net)",
   "target_months": [
     "May 2026",
     "June 2026",
     "July 2026"
   ],
-  "total": 1047,
+  "total": 1048,
   "with_address": 770,
   "records": [
     {
@@ -18136,9 +18136,9 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "06/02/2026",
       "file_date": "03/12/2026",
-      "date_scraped": "2026-04-17",
-      "batch_id": "B18",
-      "batch_label": "Run #33 / Batch 18 \u00e2\u0080\u0094 2026-04-17 09:30 AM",
+      "date_scraped": "2026-04-18",
+      "batch_id": "B20",
+      "batch_label": "Run #34 / Batch 20 \u00e2\u0080\u0094 2026-04-18 08:36 AM",
       "grantor": "",
       "co_borrower": "",
       "amount": "",
@@ -24079,6 +24079,30 @@
       "match_confidence": "high",
       "hcad_url": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NUNXeLVZTKlhHSbKofnpRC7kZeH9RLkk3BmiJYdtb7vCKYTeyePxrX8Lf2kTACPH4448m4iDAqHrFd/MQ5DKpvDQHiPsGEv5U2DsKm2b5BIS",
+      "needs_ocr": false
+    },
+    {
+      "doc_id": "FRCL-2026-2830",
+      "doc_type": "FRCL",
+      "cat": "FORECLOSURE",
+      "cat_label": "Foreclosure Posting",
+      "sale_date": "06/02/2026",
+      "file_date": "04/17/2026",
+      "date_scraped": "2026-04-18",
+      "batch_id": "B19",
+      "batch_label": "Run #34 / Batch 19 \u00c3\u00a2\u00c2\u0080\u00c2\u0094 2026-04-18 03:35 AM CDT",
+      "grantor": "Apolonio Ramirez",
+      "co_borrower": "Maria Ramirez",
+      "amount": "$97,000.00",
+      "mortgagee": "Newrez LLC d/b/a Shellpoint Mortgage Servicing",
+      "legal_description": "LOT 6 BLOCK 27 SOUTH MAIN PLAZA AMENDING PLAT NO. 1",
+      "prop_address": "Not found",
+      "prop_city": "",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "match_confidence": "none",
+      "hcad_url": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECdocs.aspx?ID=bWXqGXasMeuE7YZXR3B2NUNXeLVZTKlhHSbKofnpRC5kGpRbtmHrKCNP5DLiY1mgv9Vkcdinn7yCrotI981GnDId5tz2F6sPhBADLw82ZFf8VuoVpCdLc2YzZr4cjyok",
       "needs_ocr": false
     },
     {
