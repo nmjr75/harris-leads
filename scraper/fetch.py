@@ -1405,6 +1405,8 @@ class ClerkScraper:
             log.error("Playwright not installed.")
             return []
 
+        self.browser_cookies = []  # Export cookies for PDF downloads
+
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
                 headless=True,
@@ -1426,6 +1428,10 @@ class ClerkScraper:
                 )
                 self.results.extend(recs)
                 await asyncio.sleep(2)
+
+            # Export browser cookies so PDF download can reuse this session
+            self.browser_cookies = await ctx.cookies()
+            log.info(f"Exported {len(self.browser_cookies)} browser cookies for PDF downloads")
 
             await browser.close()
 
@@ -1764,19 +1770,21 @@ def _login_to_rp_portal(session: requests.Session) -> bool:
 
 async def enrich_from_clerk_pdf(records: list,
                                 max_pdfs: int = 150,
-                                time_cap_minutes: int = 30) -> int:
+                                time_cap_minutes: int = 30,
+                                browser_cookies: list = None) -> int:
     """Download and parse clerk PDFs using requests session.
 
-    Uses requests.Session with ASP.NET form-based login (same approach
-    as the foreclosure scraper). Playwright was unreliable — the
-    ViewEdocs URLs require session cookies that Playwright navigation
-    doesn't maintain properly.
+    Uses browser cookies from the Playwright scraping session to
+    authenticate PDF downloads. The EComm/ViewEdocs encrypted tokens
+    are tied to the browser session that generated them — a fresh
+    requests login won't work.
 
     Args:
         records: List of record dicts to process (modified in place).
                  Each record must have clerk_url with the ViewEdocs URL.
         max_pdfs: Maximum number of PDFs to process per run
         time_cap_minutes: Stop processing after this many minutes
+        browser_cookies: Playwright browser cookies from scraping session
 
     Returns:
         Count of records improved with address data.
@@ -1799,25 +1807,34 @@ async def enrich_from_clerk_pdf(records: list,
     log.info(f"PDF extraction: {len(to_process)} records to process "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
 
-    if not os.environ.get("CCLERK_USERNAME") or not os.environ.get("CCLERK_PASSWORD"):
-        log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
-        return 0
-
-    # Use requests.Session with ASP.NET form login (proven pattern from foreclosure scraper)
+    # Use requests.Session with browser cookies from the Playwright scraping session.
+    # The EComm/ViewEdocs encrypted tokens are session-bound — a fresh login won't work.
     session = requests.Session()
     session.headers.update({
         "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 Chrome/120 Safari/537.36"
         ),
     })
 
-    log.info("PDF extraction: logging in to clerk portal via requests...")
-    if not login_to_cclerk(session):
-        log.warning("PDF extraction: login failed — cannot download PDFs")
-        return 0
-    log.info("PDF extraction: login successful")
+    if browser_cookies:
+        for cookie in browser_cookies:
+            session.cookies.set(
+                cookie["name"],
+                cookie["value"],
+                domain=cookie.get("domain", ""),
+                path=cookie.get("path", "/"),
+            )
+        log.info(f"PDF extraction: injected {len(browser_cookies)} browser cookies into requests session")
+    else:
+        # Fallback: try fresh login (works for ViewECdocs but not EComm/ViewEdocs)
+        log.info("PDF extraction: no browser cookies — falling back to fresh login...")
+        if not os.environ.get("CCLERK_USERNAME") or not os.environ.get("CCLERK_PASSWORD"):
+            log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
+            return 0
+        if not login_to_cclerk(session):
+            log.warning("PDF extraction: login failed — cannot download PDFs")
+            return 0
 
     improved = 0
     downloaded = 0
@@ -2083,7 +2100,8 @@ async def main():
             #  so only a real browser can access them)
             pdf_improved = await enrich_from_clerk_pdf(deduped,
                                                        max_pdfs=150,
-                                                       time_cap_minutes=30)
+                                                       time_cap_minutes=30,
+                                                       browser_cookies=getattr(scraper, 'browser_cookies', None))
 
             # Recount addresses after PDF extraction
             with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
