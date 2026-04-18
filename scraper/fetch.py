@@ -1778,19 +1778,24 @@ def _login_to_rp_portal(session: requests.Session) -> bool:
 
 
 async def enrich_from_clerk_pdf(records: list,
-                                page,
+                                page=None,
                                 max_pdfs: int = 150,
                                 time_cap_minutes: int = 30) -> int:
-    """Download and parse clerk PDFs by re-searching each file number.
+    """Download and parse clerk PDFs via requests.Session (no Playwright).
 
-    The EComm/ViewEdocs encrypted URLs expire after the scraping session.
-    Instead of using stale URLs, this function searches each document by
-    file number on the clerk's search page, clicks the fresh Film Code
-    link, and captures the PDF — exactly matching the manual workflow.
+    Proven two-step download process (tested locally 2026-04-18):
+      1. Login via ASP.NET form POST to clerk portal
+      2. Search by file number via form POST (with __EVENTTARGET)
+      3. GET the ViewEdocs URL → returns 1.5KB HTML auto-submit form
+      4. POST that form (ViewState + encId) → returns raw PDF bytes
+
+    The ViewEdocs page serves an HTML wrapper with jQuery auto-submit.
+    The actual PDF comes from the second POST. This approach uses pure
+    requests — no Playwright, no browser, no PDF viewer issues.
 
     Args:
         records: List of record dicts to process (modified in place).
-        page: Playwright page from the scraping session (still open).
+        page: Unused (kept for API compatibility).
         max_pdfs: Maximum number of PDFs to process per run.
         time_cap_minutes: Stop processing after this many minutes.
 
@@ -1820,13 +1825,27 @@ async def enrich_from_clerk_pdf(records: list,
         log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
         return 0
 
+    BASE = "https://www.cclerk.hctx.net"
+    LOGIN_URL = f"{BASE}/Applications/WebSearch/Registration/Login.aspx"
+    SEARCH_URL = f"{BASE}/applications/websearch/RP_R.aspx"
+
+    # Create requests session and login
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    })
+
+    log.info("PDF extraction: logging in to clerk portal via requests...")
+    if not login_to_cclerk(session):
+        log.warning("PDF extraction: login failed — cannot download PDFs")
+        return 0
+    log.info("PDF extraction: login successful")
+
     improved = 0
     downloaded = 0
     failed = 0
-    logged_in = False
     deadline = time.time() + time_cap_minutes * 60
-
-    SEARCH_URL = "https://cclerk.hctx.net/applications/websearch/RP_R.aspx"
 
     for i, rec in enumerate(to_process):
         if time.time() > deadline:
@@ -1840,226 +1859,96 @@ async def enrich_from_clerk_pdf(records: list,
         log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
 
         try:
-            # Step 1: Go to the search page and search by file number
-            await page.goto(SEARCH_URL, timeout=30000, wait_until="networkidle")
-            await asyncio.sleep(1)
+            # Step 1: Search by file number
+            resp = session.get(SEARCH_URL, timeout=30)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            form_data = {}
+            for inp in soup.find_all("input"):
+                name = inp.get("name", "")
+                if name:
+                    form_data[name] = inp.get("value", "")
 
-            # Clear any previous search and fill file number
-            await page.evaluate(f"""
-                var fileInput = document.querySelector('[id*="txtFileNumber"]')
-                              || document.querySelector('[id*="txtFile"]')
-                              || document.querySelector('input[name*="FileNumber"]')
-                              || document.querySelectorAll('input[type="text"]')[0];
-                if (fileInput) {{
-                    fileInput.value = '';
-                    fileInput.value = '{doc_num}';
-                }}
-                // Clear other fields to avoid conflicts
-                var fields = ['txtInstrument', 'txtFrom', 'txtTo', 'txtGrantor', 'txtGrantee'];
-                fields.forEach(function(f) {{
-                    var el = document.querySelector('[id*="' + f + '"]');
-                    if (el) el.value = '';
-                }});
-            """)
+            form_data["ctl00$ContentPlaceHolder1$txtFN"] = doc_num
+            form_data["__EVENTTARGET"] = "ctl00$ContentPlaceHolder1$btnSearch"
+            # Remove button value — ASP.NET uses EVENTTARGET instead
+            form_data.pop("ctl00$ContentPlaceHolder1$btnSearch", None)
+            form_data.pop("ctl00$ContentPlaceHolder1$btnClear", None)
 
-            # Click search
-            await page.evaluate("""
-                var btn = document.querySelector('[id*="btnSearch"]');
-                if (btn) btn.click();
-            """)
-            await page.wait_for_load_state("networkidle", timeout=30000)
-            await asyncio.sleep(2)
+            resp = session.post(SEARCH_URL, data=form_data, timeout=30)
 
-            # Step 2: Check if redirected to login
-            if "login" in page.url.lower():
-                log.info("  Redirected to login — logging in...")
-                try:
-                    await page.fill("input[name*='UserName']", username)
-                    await page.fill("input[name*='Password']", password)
-                    btn = page.locator("input[name*='LoginButton']")
-                    if await btn.count() == 0:
-                        btn = page.locator("text=LOG IN")
-                    if await btn.count() == 0:
-                        btn = page.locator("input[type='submit']")
-                    await btn.first.click()
-                    await page.wait_for_load_state("networkidle", timeout=30000)
-                    await asyncio.sleep(2)
-                    logged_in = True
-                    log.info("  Login successful")
-
-                    # After login, re-do the search
-                    await page.goto(SEARCH_URL, timeout=30000, wait_until="networkidle")
-                    await asyncio.sleep(1)
-                    await page.evaluate(f"""
-                        var fileInput = document.querySelector('[id*="txtFileNumber"]')
-                                      || document.querySelector('[id*="txtFile"]')
-                                      || document.querySelector('input[name*="FileNumber"]')
-                                      || document.querySelectorAll('input[type="text"]')[0];
-                        if (fileInput) {{
-                            fileInput.value = '';
-                            fileInput.value = '{doc_num}';
-                        }}
-                        var fields = ['txtInstrument', 'txtFrom', 'txtTo', 'txtGrantor', 'txtGrantee'];
-                        fields.forEach(function(f) {{
-                            var el = document.querySelector('[id*="' + f + '"]');
-                            if (el) el.value = '';
-                        }});
-                    """)
-                    await page.evaluate("""
-                        var btn = document.querySelector('[id*="btnSearch"]');
-                        if (btn) btn.click();
-                    """)
-                    await page.wait_for_load_state("networkidle", timeout=30000)
-                    await asyncio.sleep(2)
-                except Exception as login_err:
-                    log.warning(f"  Login failed: {login_err}")
-                    rec["pdf_status"] = "login_required"
-                    failed += 1
-                    continue
-
-            # Step 3: Find the Film Code link in the search results
-            film_link = page.locator(f"a:has-text('{doc_num}')")
-            link_count = await film_link.count()
-
-            if link_count == 0:
-                # Try broader search — any link in the results table
-                film_link = page.locator("a[href*='ViewEdocs'], a[href*='ViewECdocs']")
-                link_count = await film_link.count()
-
-            if link_count == 0:
-                log.warning(f"  {doc_num}: no Film Code link found in search results")
+            # Step 2: Find the ViewEdocs URL in search results
+            edoc_matches = re.findall(
+                r'EComm/ViewEdocs\.aspx\?ID=[^"&]+', resp.text
+            )
+            if not edoc_matches:
+                log.warning(f"  {doc_num}: no ViewEdocs link in search results")
                 rec["pdf_status"] = "no_link"
                 failed += 1
                 continue
 
-            log.info(f"  Found {link_count} Film Code link(s)")
+            viewedocs_url = f"{BASE}/applications/websearch/{edoc_matches[0]}"
 
-            # Step 4: Get the Film Code URL and download PDF via Playwright
-            # API request (page.context.request.get). This uses the browser's
-            # session cookies but returns raw bytes — no PDF viewer wrapper.
-            pdf_bytes = None
+            # Step 3: GET the ViewEdocs page (returns HTML auto-submit form)
+            resp = session.get(viewedocs_url, timeout=60)
 
-            # Get the href from the Film Code link
-            href = await film_link.first.get_attribute("href")
-            if not href:
-                log.warning(f"  {doc_num}: Film Code link has no href")
-                rec["pdf_status"] = "no_href"
-                failed += 1
-                continue
+            if "Login.aspx" in resp.url:
+                log.warning(f"  {doc_num}: session expired — re-logging in...")
+                if login_to_cclerk(session):
+                    resp = session.get(viewedocs_url, timeout=60)
+                else:
+                    rec["pdf_status"] = "login_required"
+                    failed += 1
+                    continue
 
-            if not href.startswith("http"):
-                href = f"https://www.cclerk.hctx.net{href}" if href.startswith("/") else \
-                       f"https://www.cclerk.hctx.net/applications/websearch/{href}"
+            # Check if we already got a PDF (some docs serve PDF directly)
+            if resp.content[:4] == b"%PDF":
+                pdf_bytes = resp.content
+                log.info(f"  PDF downloaded directly: {len(pdf_bytes):,} bytes")
+                downloaded += 1
+                rec["pdf_status"] = "downloaded"
+            else:
+                # Step 4: Parse the auto-submit form and POST it
+                soup = BeautifulSoup(resp.text, "html.parser")
+                form = soup.find("form", {"id": "form1"})
+                if not form:
+                    log.warning(f"  {doc_num}: no form found on ViewEdocs page")
+                    rec["pdf_status"] = "no_form"
+                    failed += 1
+                    continue
 
-            # First time: click the link to trigger login
-            if not logged_in:
-                log.info(f"  First PDF — clicking link to trigger login...")
-                try:
-                    async with page.expect_popup(timeout=15000) as popup_info:
-                        await film_link.first.click()
-                    popup = await popup_info.value
+                action = form.get("action", "")
+                if not action.startswith("http"):
+                    action = f"{BASE}/applications/websearch/EComm/{action}"
 
-                    if "login" in popup.url.lower():
-                        log.info("  Login required — logging in...")
-                        await popup.fill("input[name*='UserName']", username)
-                        await popup.fill("input[name*='Password']", password)
-                        btn = popup.locator("input[name*='LoginButton']")
-                        if await btn.count() == 0:
-                            btn = popup.locator("text=LOG IN")
-                        await btn.first.click()
-                        await popup.wait_for_load_state("networkidle", timeout=30000)
-                        await asyncio.sleep(3)
-                        logged_in = True
-                        log.info("  Login successful")
-                    else:
-                        logged_in = True  # No login needed
+                post_data = {}
+                for inp in soup.find_all("input"):
+                    name = inp.get("name", "")
+                    if name:
+                        post_data[name] = inp.get("value", "")
 
-                    await popup.close()
-                except Exception:
-                    # No popup — navigated in same page
-                    if "login" in page.url.lower():
-                        log.info("  Login required — logging in...")
-                        await page.fill("input[name*='UserName']", username)
-                        await page.fill("input[name*='Password']", password)
-                        btn = page.locator("input[name*='LoginButton']")
-                        if await btn.count() == 0:
-                            btn = page.locator("text=LOG IN")
-                        await btn.first.click()
-                        await page.wait_for_load_state("networkidle", timeout=30000)
-                        await asyncio.sleep(3)
-                        logged_in = True
-                        log.info("  Login successful")
+                resp = session.post(action, data=post_data, timeout=60)
+                ct = resp.headers.get("Content-Type", "")
 
-                # Re-search to get back to results page
-                await page.goto(SEARCH_URL, timeout=30000, wait_until="networkidle")
-                await asyncio.sleep(1)
-                await page.evaluate(f"""
-                    var fileInput = document.querySelector('[id*="txtFileNumber"]')
-                                  || document.querySelector('[id*="txtFile"]')
-                                  || document.querySelector('input[name*="FileNumber"]')
-                                  || document.querySelectorAll('input[type="text"]')[0];
-                    if (fileInput) {{ fileInput.value = '{doc_num}'; }}
-                    var fields = ['txtInstrument', 'txtFrom', 'txtTo', 'txtGrantor', 'txtGrantee'];
-                    fields.forEach(function(f) {{
-                        var el = document.querySelector('[id*="' + f + '"]');
-                        if (el) el.value = '';
-                    }});
-                """)
-                await page.evaluate("document.querySelector('[id*=\"btnSearch\"]').click();")
-                await page.wait_for_load_state("networkidle", timeout=30000)
-                await asyncio.sleep(2)
-
-                # Re-find the link with fresh URL
-                film_link = page.locator(f"a:has-text('{doc_num}')")
-                if await film_link.count() == 0:
-                    film_link = page.locator("a[href*='ViewEdocs']")
-                if await film_link.count() > 0:
-                    href = await film_link.first.get_attribute("href") or href
-                    if not href.startswith("http"):
-                        href = f"https://www.cclerk.hctx.net{href}" if href.startswith("/") else \
-                               f"https://www.cclerk.hctx.net/applications/websearch/{href}"
-
-            # Download PDF using Playwright's API request context.
-            # This makes an HTTP request using the browser's cookies but
-            # returns raw bytes — no Chrome PDF viewer wrapper.
-            log.info(f"  Downloading PDF: {href[:80]}...")
-            try:
-                api_resp = await page.context.request.get(href, timeout=60000)
-                body = await api_resp.body()
-                ct = api_resp.headers.get("content-type", "")
-                status = api_resp.status
-
-                log.info(f"  Response: status={status}, type={ct}, size={len(body)} bytes")
-
-                if status == 200 and body and body[:4] == b"%PDF":
-                    pdf_bytes = body
+                if resp.content[:4] == b"%PDF":
+                    pdf_bytes = resp.content
                     log.info(f"  PDF downloaded OK: {len(pdf_bytes):,} bytes")
                     downloaded += 1
                     rec["pdf_status"] = "downloaded"
-                elif "login" in api_resp.url.lower() or status in (301, 302, 403):
-                    log.warning(f"  {doc_num}: redirected to login (status {status})")
-                    logged_in = False
+                elif "Login.aspx" in resp.url:
+                    log.warning(f"  {doc_num}: redirected to login on PDF POST")
+                    login_to_cclerk(session)
                     rec["pdf_status"] = "login_required"
                     failed += 1
                     continue
                 else:
-                    preview = body[:200].decode("utf-8", errors="replace") if body else "(empty)"
-                    log.warning(f"  {doc_num}: not PDF — status={status}, type={ct}")
-                    log.warning(f"  Preview: {preview[:150]}")
+                    preview = resp.text[:150] if resp.text else "(empty)"
+                    log.warning(f"  {doc_num}: not PDF — type={ct}, size={len(resp.content)}")
+                    log.warning(f"  Preview: {preview}")
                     rec["pdf_status"] = "not_pdf"
                     failed += 1
                     continue
 
-            except Exception as e:
-                log.warning(f"  {doc_num}: download failed — {e}")
-                rec["pdf_status"] = "error"
-                failed += 1
-                continue
-
             # Step 5: Extract data from PDF (Gemini → pdfplumber → OCR)
-            if rec.get("pdf_status") != "downloaded":
-                continue
-
             extracted = None
             extract_source = "none"
 
@@ -2106,7 +1995,7 @@ async def enrich_from_clerk_pdf(records: list,
             else:
                 log.info(f"  No property info extracted from {doc_num}")
 
-            await asyncio.sleep(0.5)
+            time.sleep(0.5)  # Rate limit
 
         except Exception as e:
             log.warning(f"  {doc_num}: error — {e}")
@@ -2185,9 +2074,9 @@ async def main():
     parcel = HCADParcelLoader()
     parcel_count = parcel.load()
 
-    # 2. Scrape clerk records (keep browser open for PDF downloads)
+    # 2. Scrape clerk records
     scraper = ClerkScraper(start_date, end_date)
-    raw     = await scraper.run(keep_browser=True)
+    raw     = await scraper.run()
     log.info(f"Raw records: {len(raw)}")
 
     # 3. Deduplicate
@@ -2245,7 +2134,6 @@ async def main():
             # (RP portal generates ViewEdocs links via JavaScript,
             #  so only a real browser can access them)
             pdf_improved = await enrich_from_clerk_pdf(deduped,
-                                                       page=scraper._page,
                                                        max_pdfs=150,
                                                        time_cap_minutes=30)
 
@@ -2256,9 +2144,6 @@ async def main():
             log.warning(f"PDF extraction failed: {e}")
     else:
         log.info("All records already have addresses — skipping PDF extraction")
-
-    # Close Playwright browser — no longer needed after PDF extraction
-    await scraper.close_browser()
 
     # 4c. HCAD LIVE VERIFICATION — probate cases only
     #     For probate records that STILL have no/low confidence after PDF
