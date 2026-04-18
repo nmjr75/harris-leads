@@ -1400,42 +1400,51 @@ class ClerkScraper:
 
         return records
 
-    async def run(self) -> list:
+    async def run(self, keep_browser=False):
+        """Scrape clerk records. If keep_browser=True, leaves browser open
+        for PDF downloads (call close_browser() when done)."""
         if not PLAYWRIGHT_AVAILABLE:
             log.error("Playwright not installed.")
             return []
 
-        self.browser_cookies = []  # Export cookies for PDF downloads
+        self._pw = await async_playwright().start()
+        self._browser = await self._pw.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
+        self._ctx = await self._browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux x86_64) "
+                "AppleWebKit/537.36 Chrome/120 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900},
+        )
+        self._page = await self._ctx.new_page()
 
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
+        for doc_type in TARGET_TYPES:
+            log.info(f"Searching: {doc_type}")
+            recs = await self._search_with_splitting(
+                self._page, doc_type, self.start_date, self.end_date,
             )
-            ctx = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) "
-                    "AppleWebKit/537.36 Chrome/120 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 900},
-            )
-            page = await ctx.new_page()
+            self.results.extend(recs)
+            await asyncio.sleep(2)
 
-            for doc_type in TARGET_TYPES:
-                log.info(f"Searching: {doc_type}")
-                recs = await self._search_with_splitting(
-                    page, doc_type, self.start_date, self.end_date,
-                )
-                self.results.extend(recs)
-                await asyncio.sleep(2)
-
-            # Export browser cookies so PDF download can reuse this session
-            self.browser_cookies = await ctx.cookies()
-            log.info(f"Exported {len(self.browser_cookies)} browser cookies for PDF downloads")
-
-            await browser.close()
+        if not keep_browser:
+            await self.close_browser()
 
         return self.results
+
+    async def close_browser(self):
+        """Close the Playwright browser if still open."""
+        try:
+            if hasattr(self, '_browser') and self._browser:
+                await self._browser.close()
+            if hasattr(self, '_pw') and self._pw:
+                await self._pw.stop()
+        except Exception:
+            pass
+        self._browser = None
+        self._pw = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1769,27 +1778,28 @@ def _login_to_rp_portal(session: requests.Session) -> bool:
 
 
 async def enrich_from_clerk_pdf(records: list,
+                                page,
                                 max_pdfs: int = 150,
-                                time_cap_minutes: int = 30,
-                                browser_cookies: list = None) -> int:
-    """Download and parse clerk PDFs using requests session.
+                                time_cap_minutes: int = 30) -> int:
+    """Download and parse clerk PDFs using the same Playwright browser session.
 
-    Uses browser cookies from the Playwright scraping session to
-    authenticate PDF downloads. The EComm/ViewEdocs encrypted tokens
-    are tied to the browser session that generated them — a fresh
-    requests login won't work.
+    Uses the SAME Playwright page that scraped the search results. The
+    EComm/ViewEdocs encrypted tokens are tied to this browser session —
+    they won't work from a separate requests session or a new browser.
+
+    The browser logs in on the first PDF click (clerk portal redirects to
+    login), then stays authenticated for all subsequent downloads (1-hour
+    session timeout).
 
     Args:
         records: List of record dicts to process (modified in place).
-                 Each record must have clerk_url with the ViewEdocs URL.
-        max_pdfs: Maximum number of PDFs to process per run
-        time_cap_minutes: Stop processing after this many minutes
-        browser_cookies: Playwright browser cookies from scraping session
+        page: Playwright page from the scraping session (still open).
+        max_pdfs: Maximum number of PDFs to process per run.
+        time_cap_minutes: Stop processing after this many minutes.
 
     Returns:
         Count of records improved with address data.
     """
-    # Find records that need PDF extraction and have a ViewEdocs URL
     to_process = [r for r in records
                   if r.get("match_confidence") == "none"
                   and not r.get("prop_address", "").strip()
@@ -1807,167 +1817,193 @@ async def enrich_from_clerk_pdf(records: list,
     log.info(f"PDF extraction: {len(to_process)} records to process "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
 
-    # Use requests.Session with browser cookies from the Playwright scraping session.
-    # The EComm/ViewEdocs encrypted tokens are session-bound — a fresh login won't work.
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (X11; Linux x86_64) "
-            "AppleWebKit/537.36 Chrome/120 Safari/537.36"
-        ),
-    })
+    username = os.environ.get("CCLERK_USERNAME", "")
+    password = os.environ.get("CCLERK_PASSWORD", "")
 
-    if browser_cookies:
-        for cookie in browser_cookies:
-            session.cookies.set(
-                cookie["name"],
-                cookie["value"],
-                domain=cookie.get("domain", ""),
-                path=cookie.get("path", "/"),
-            )
-        log.info(f"PDF extraction: injected {len(browser_cookies)} browser cookies into requests session")
-    else:
-        # Fallback: try fresh login (works for ViewECdocs but not EComm/ViewEdocs)
-        log.info("PDF extraction: no browser cookies — falling back to fresh login...")
-        if not os.environ.get("CCLERK_USERNAME") or not os.environ.get("CCLERK_PASSWORD"):
-            log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
-            return 0
-        if not login_to_cclerk(session):
-            log.warning("PDF extraction: login failed — cannot download PDFs")
-            return 0
+    if not username or not password:
+        log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
+        return 0
 
     improved = 0
     downloaded = 0
     failed = 0
+    logged_in = False
     deadline = time.time() + time_cap_minutes * 60
-    failed_records = []
 
-    def _download_and_extract(rec, idx, total):
-        """Download a single PDF via requests and extract data."""
-        nonlocal downloaded, improved, failed
-        doc_num = rec.get("doc_num", "unknown")
-        doc_type = rec.get("doc_type", "")
-        clerk_url = rec.get("clerk_url", "")
+    async def _do_login():
+        """Log in via the clerk login page in the browser."""
+        nonlocal logged_in
+        try:
+            log.info("  Logging in to clerk portal...")
+            await page.fill("input[name*='UserName']", username)
+            await page.fill("input[name*='Password']", password)
+            btn = page.locator("input[name*='LoginButton']")
+            if await btn.count() == 0:
+                btn = page.locator("text=LOG IN")
+            if await btn.count() == 0:
+                btn = page.locator("input[type='submit']")
+            await btn.first.click()
+            await page.wait_for_load_state("networkidle", timeout=30000)
+            await asyncio.sleep(2)
 
-        log.info(f"PDF [{idx}/{total}] {doc_num} ({doc_type})")
+            content = await page.content()
+            if "LOGOUT" in content.upper() or "WELCOME" in content.upper():
+                log.info("  Login successful")
+                logged_in = True
+                return True
+            # Check if we landed on a PDF (login redirected to the doc)
+            url = page.url
+            if "ViewEdocs" in url or "RPImage" in url:
+                logged_in = True
+                return True
+            log.warning("  Login may have failed")
+            return False
+        except Exception as e:
+            log.warning(f"  Login failed: {e}")
+            return False
 
-        # Download PDF via requests session
-        pdf_bytes = download_clerk_pdf(session, clerk_url, doc_num)
-
-        if not pdf_bytes:
-            # Check if we got redirected to login (session expired)
-            try:
-                resp = session.get(clerk_url, timeout=30, allow_redirects=True)
-                if "Login.aspx" in resp.url:
-                    log.warning(f"  {doc_num}: session expired — will retry after re-login")
-                    rec["pdf_status"] = "login_required"
-                else:
-                    rec["pdf_status"] = "not_pdf"
-            except Exception:
-                rec["pdf_status"] = "error"
-            return False, False
-
-        downloaded += 1
-        rec["pdf_status"] = "downloaded"
-
-        # Extract data from PDF (Gemini → pdfplumber → OCR)
-        extracted = None
-        extract_source = "none"
-
-        if HAS_GEMINI:
-            gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
-            if gemini_result and (gemini_result.get("property_address") or
-                                  gemini_result.get("legal_description")):
-                extracted = gemini_result
-                extract_source = "gemini_pdf"
-                log.info(f"  Source: Gemini Vision")
-
-        if not extracted:
-            raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
-            if raw_text:
-                parsed = parse_address_from_text(raw_text)
-                if parsed.get("property_address") or parsed.get("legal_description"):
-                    extracted = parsed
-                    extract_source = "pdf_text"
-                    log.info(f"  Source: text extraction + regex")
-
-        if extracted:
-            addr = extracted.get("property_address", "")
-            if addr:
-                rec["prop_address"] = addr
-                rec["prop_city"] = extracted.get("property_city", "") or "Houston"
-                rec["prop_zip"] = extracted.get("property_zip", "")
-                rec["match_confidence"] = "high"
-                rec["address_source"] = extract_source
-                improved += 1
-                log.info(f"  Address found: {addr[:50]}")
-
-            legal = extracted.get("legal_description", "")
-            if legal and not rec.get("legal", "").strip():
-                rec["legal"] = legal
-
-            amount = extracted.get("amount", "")
-            if amount and not rec.get("amount", "").strip():
-                rec["amount"] = amount
-
-            if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
-                rec["grantor_name"] = extracted["grantor_name"]
-            if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
-                rec["grantee_names"] = extracted["grantee_name"]
-        else:
-            log.info(f"  No property info extracted from {doc_num}")
-
-        time.sleep(0.5)  # Rate limit
-        return True, bool(extracted and extracted.get("property_address"))
-
-    # ── Pass 1: Download all PDFs ────────────────────────────────
     for i, rec in enumerate(to_process):
         if time.time() > deadline:
             log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
                         f"processed {i} of {len(to_process)}")
             break
 
-        ok, _ = _download_and_extract(rec, i + 1, len(to_process))
-        if not ok:
+        doc_num = rec.get("doc_num", "unknown")
+        doc_type = rec.get("doc_type", "")
+        clerk_url = rec.get("clerk_url", "")
+
+        log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
+
+        try:
+            # Navigate to the ViewEdocs URL
+            response = await page.goto(clerk_url, timeout=30000,
+                                       wait_until="networkidle")
+
+            if response is None:
+                log.warning(f"  {doc_num}: no response")
+                rec["pdf_status"] = "no_response"
+                failed += 1
+                continue
+
+            # Check if redirected to login page
+            if "login" in page.url.lower():
+                if not logged_in:
+                    login_ok = await _do_login()
+                    if login_ok:
+                        # After login, re-navigate to the PDF URL
+                        response = await page.goto(clerk_url, timeout=30000,
+                                                   wait_until="networkidle")
+                        if response is None or "login" in page.url.lower():
+                            log.warning(f"  {doc_num}: still redirected to login after login")
+                            rec["pdf_status"] = "login_required"
+                            failed += 1
+                            continue
+                    else:
+                        log.warning(f"  {doc_num}: login failed — skipping remaining PDFs")
+                        rec["pdf_status"] = "login_required"
+                        failed += 1
+                        break
+                else:
+                    # Already logged in but got redirected — session expired
+                    log.warning(f"  {doc_num}: session expired — re-logging in...")
+                    logged_in = False
+                    login_ok = await _do_login()
+                    if login_ok:
+                        response = await page.goto(clerk_url, timeout=30000,
+                                                   wait_until="networkidle")
+                        if response is None or "login" in page.url.lower():
+                            log.warning(f"  {doc_num}: still redirected after re-login")
+                            rec["pdf_status"] = "login_required"
+                            failed += 1
+                            continue
+                    else:
+                        rec["pdf_status"] = "login_required"
+                        failed += 1
+                        continue
+
+            # Get the response body
+            content_type = response.headers.get("content-type", "")
+            body = await response.body()
+
+            if not body:
+                log.warning(f"  {doc_num}: empty response body")
+                rec["pdf_status"] = "empty"
+                failed += 1
+                continue
+
+            # Check if we got a PDF
+            if "pdf" in content_type.lower() or body[:4] == b"%PDF":
+                log.info(f"  PDF downloaded OK: {len(body):,} bytes")
+                downloaded += 1
+                rec["pdf_status"] = "downloaded"
+                pdf_bytes = body
+            else:
+                # Check for "image not found"
+                page_text = await page.inner_text("body")
+                if "image not found" in page_text.lower() or "no image" in page_text.lower():
+                    log.info(f"  {doc_num}: image not found on server")
+                    rec["pdf_status"] = "image_not_found"
+                else:
+                    log.warning(f"  {doc_num}: got {content_type}, url={page.url[:80]}")
+                    rec["pdf_status"] = "not_pdf"
+                failed += 1
+                continue
+
+            # Extract data from PDF (Gemini → pdfplumber → OCR)
+            extracted = None
+            extract_source = "none"
+
+            if HAS_GEMINI:
+                gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
+                if gemini_result and (gemini_result.get("property_address") or
+                                      gemini_result.get("legal_description")):
+                    extracted = gemini_result
+                    extract_source = "gemini_pdf"
+                    log.info(f"  Source: Gemini Vision")
+
+            if not extracted:
+                raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
+                if raw_text:
+                    parsed = parse_address_from_text(raw_text)
+                    if parsed.get("property_address") or parsed.get("legal_description"):
+                        extracted = parsed
+                        extract_source = "pdf_text"
+                        log.info(f"  Source: text extraction + regex")
+
+            if extracted:
+                addr = extracted.get("property_address", "")
+                if addr:
+                    rec["prop_address"] = addr
+                    rec["prop_city"] = extracted.get("property_city", "") or "Houston"
+                    rec["prop_zip"] = extracted.get("property_zip", "")
+                    rec["match_confidence"] = "high"
+                    rec["address_source"] = extract_source
+                    improved += 1
+                    log.info(f"  Address found: {addr[:50]}")
+
+                legal = extracted.get("legal_description", "")
+                if legal and not rec.get("legal", "").strip():
+                    rec["legal"] = legal
+
+                amount = extracted.get("amount", "")
+                if amount and not rec.get("amount", "").strip():
+                    rec["amount"] = amount
+
+                if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
+                    rec["grantor_name"] = extracted["grantor_name"]
+                if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
+                    rec["grantee_names"] = extracted["grantee_name"]
+            else:
+                log.info(f"  No property info extracted from {doc_num}")
+
+            await asyncio.sleep(0.5)  # Rate limit
+
+        except Exception as e:
+            log.warning(f"  {doc_num}: error — {e}")
+            rec["pdf_status"] = "error"
             failed += 1
-            status = rec.get("pdf_status", "")
-            if status in ("login_required", "not_pdf", "error"):
-                failed_records.append(rec)
-            # Re-login after session expiry
-            if status == "login_required":
-                log.info("  Re-logging in...")
-                login_to_cclerk(session)
 
-    log.info(f"PDF extraction pass 1: {downloaded} downloaded, {failed} failed, "
-             f"{improved} improved")
-
-    # ── Pass 2: Retry failed PDFs after fresh login ──────────────
-    if failed_records and time.time() < deadline:
-        log.info(f"PDF extraction pass 2: retrying {len(failed_records)} failed PDFs...")
-        if login_to_cclerk(session):
-            retry_downloaded = 0
-            retry_improved = 0
-            for i, rec in enumerate(failed_records):
-                if time.time() > deadline:
-                    log.warning(f"  Retry time cap reached at {i}/{len(failed_records)}")
-                    break
-
-                rec["pdf_status"] = ""
-                ok, got_addr = _download_and_extract(rec, i + 1, len(failed_records))
-                if ok:
-                    retry_downloaded += 1
-                    failed -= 1
-                    if got_addr:
-                        retry_improved += 1
-                elif rec.get("pdf_status") == "login_required":
-                    login_to_cclerk(session)
-
-            log.info(f"PDF extraction pass 2: {retry_downloaded} recovered, "
-                     f"{retry_improved} improved")
-        else:
-            log.warning("PDF extraction pass 2: re-login failed — skipping retry")
-
-    log.info(f"PDF extraction total: {downloaded} downloaded, {failed} failed, "
+    log.info(f"PDF extraction: {downloaded} downloaded, {failed} failed, "
              f"{improved} improved out of {len(to_process)} records")
     return improved
 
@@ -2039,9 +2075,9 @@ async def main():
     parcel = HCADParcelLoader()
     parcel_count = parcel.load()
 
-    # 2. Scrape clerk records
+    # 2. Scrape clerk records (keep browser open for PDF downloads)
     scraper = ClerkScraper(start_date, end_date)
-    raw     = await scraper.run()
+    raw     = await scraper.run(keep_browser=True)
     log.info(f"Raw records: {len(raw)}")
 
     # 3. Deduplicate
@@ -2099,9 +2135,9 @@ async def main():
             # (RP portal generates ViewEdocs links via JavaScript,
             #  so only a real browser can access them)
             pdf_improved = await enrich_from_clerk_pdf(deduped,
+                                                       page=scraper._page,
                                                        max_pdfs=150,
-                                                       time_cap_minutes=30,
-                                                       browser_cookies=getattr(scraper, 'browser_cookies', None))
+                                                       time_cap_minutes=30)
 
             # Recount addresses after PDF extraction
             with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
@@ -2110,6 +2146,9 @@ async def main():
             log.warning(f"PDF extraction failed: {e}")
     else:
         log.info("All records already have addresses — skipping PDF extraction")
+
+    # Close Playwright browser — no longer needed after PDF extraction
+    await scraper.close_browser()
 
     # 4c. HCAD LIVE VERIFICATION — probate cases only
     #     For probate records that STILL have no/low confidence after PDF
