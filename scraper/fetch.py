@@ -1932,110 +1932,160 @@ async def enrich_from_clerk_pdf(records: list,
                 failed += 1
                 continue
 
-            log.info(f"  Found {link_count} Film Code link(s) — clicking first")
+            log.info(f"  Found {link_count} Film Code link(s)")
 
-            # Step 4: Click the Film Code link and intercept the PDF via network.
-            # The "View Instrument" page is an HTML viewer that loads the PDF
-            # via JavaScript. We intercept the actual PDF response from the
-            # network traffic rather than trying to extract it from the HTML.
+            # Step 4: Get the Film Code URL and fetch PDF via JavaScript.
+            # The ViewEdocs URL serves raw PDF bytes (application/pdf) when
+            # properly authenticated. But Playwright's headless navigation
+            # gets Chrome's PDF viewer HTML wrapper instead of raw bytes.
+            # Solution: use fetch() from within the authenticated page to
+            # download the PDF as an ArrayBuffer — bypasses the PDF viewer.
             pdf_bytes = None
-            captured_pdf = []  # mutable container for closure
 
-            async def _capture_pdf(response):
-                """Network response handler — captures PDF responses."""
-                ct = response.headers.get("content-type", "")
-                if "pdf" in ct.lower() or "octet-stream" in ct.lower():
-                    try:
-                        body = await response.body()
-                        if body and body[:4] == b"%PDF":
-                            captured_pdf.append(body)
-                    except Exception:
-                        pass
-
-            # Listen for PDF responses on the page AND any popup
-            target_page = page
-            popup_page = None
-
-            try:
-                # Set up PDF capture on the main page first
-                page.on("response", _capture_pdf)
-
-                async with page.expect_popup(timeout=15000) as popup_info:
-                    await film_link.first.click()
-                popup_page = await popup_info.value
-
-                # Also capture on popup
-                popup_page.on("response", _capture_pdf)
-
-                # Handle login redirect in popup
-                if "login" in popup_page.url.lower():
-                    log.info("  Popup redirected to login — logging in...")
-                    await popup_page.fill("input[name*='UserName']", username)
-                    await popup_page.fill("input[name*='Password']", password)
-                    btn = popup_page.locator("input[name*='LoginButton']")
-                    if await btn.count() == 0:
-                        btn = popup_page.locator("text=LOG IN")
-                    await btn.first.click()
-                    logged_in = True
-
-                # Wait for the page to fully load (JS PDF viewer needs time)
-                await popup_page.wait_for_load_state("networkidle", timeout=30000)
-                await asyncio.sleep(5)  # Extra wait for JS to fetch the PDF
-
-                target_page = popup_page
-
-            except Exception:
-                # No popup — link navigated in the same page
-                target_page = page
-
-                if "login" in page.url.lower():
-                    log.info("  Redirected to login — logging in...")
-                    await page.fill("input[name*='UserName']", username)
-                    await page.fill("input[name*='Password']", password)
-                    btn = page.locator("input[name*='LoginButton']")
-                    if await btn.count() == 0:
-                        btn = page.locator("text=LOG IN")
-                    await btn.first.click()
-                    logged_in = True
-
-                await page.wait_for_load_state("networkidle", timeout=30000)
-                await asyncio.sleep(5)
-
-            # Remove the listener to avoid capturing unrelated PDFs later
-            try:
-                page.remove_listener("response", _capture_pdf)
-            except Exception:
-                pass
-
-            # Check if we captured a PDF from network traffic
-            if captured_pdf:
-                pdf_bytes = captured_pdf[0]
-                log.info(f"  PDF captured via network: {len(pdf_bytes):,} bytes")
-                downloaded += 1
-                rec["pdf_status"] = "downloaded"
-            else:
-                # Fallback: check page text for unavailability
-                try:
-                    body_text = await target_page.inner_text("body")
-                    if "unavailable" in body_text.lower() or "not found" in body_text.lower():
-                        log.info(f"  {doc_num}: document unavailable on clerk server")
-                        rec["pdf_status"] = "unavailable"
-                    else:
-                        log.warning(f"  {doc_num}: no PDF captured from network traffic")
-                        rec["pdf_status"] = "no_pdf_in_network"
-                except Exception:
-                    log.warning(f"  {doc_num}: could not inspect page")
-                    rec["pdf_status"] = "error"
+            # Get the href from the Film Code link
+            href = await film_link.first.get_attribute("href")
+            if not href:
+                log.warning(f"  {doc_num}: Film Code link has no href")
+                rec["pdf_status"] = "no_href"
                 failed += 1
+                continue
 
-            # Close popup if one was opened
-            if popup_page:
+            if not href.startswith("http"):
+                href = f"https://www.cclerk.hctx.net{href}" if href.startswith("/") else \
+                       f"https://www.cclerk.hctx.net/applications/websearch/{href}"
+
+            log.info(f"  Fetching PDF via JS: {href[:80]}...")
+
+            # First click the link to trigger login if needed (opens in new tab)
+            if not logged_in:
                 try:
-                    await popup_page.close()
-                except Exception:
-                    pass
+                    async with page.expect_popup(timeout=15000) as popup_info:
+                        await film_link.first.click()
+                    popup = await popup_info.value
 
-            if rec.get("pdf_status") != "downloaded":
+                    if "login" in popup.url.lower():
+                        log.info("  Login required — logging in...")
+                        await popup.fill("input[name*='UserName']", username)
+                        await popup.fill("input[name*='Password']", password)
+                        btn = popup.locator("input[name*='LoginButton']")
+                        if await btn.count() == 0:
+                            btn = popup.locator("text=LOG IN")
+                        await btn.first.click()
+                        await popup.wait_for_load_state("networkidle", timeout=30000)
+                        await asyncio.sleep(2)
+                        logged_in = True
+                        log.info("  Login successful")
+
+                    await popup.close()
+                except Exception:
+                    # No popup — may have navigated in same page
+                    if "login" in page.url.lower():
+                        log.info("  Login required — logging in...")
+                        await page.fill("input[name*='UserName']", username)
+                        await page.fill("input[name*='Password']", password)
+                        btn = page.locator("input[name*='LoginButton']")
+                        if await btn.count() == 0:
+                            btn = page.locator("text=LOG IN")
+                        await btn.first.click()
+                        await page.wait_for_load_state("networkidle", timeout=30000)
+                        await asyncio.sleep(2)
+                        logged_in = True
+                        log.info("  Login successful")
+
+                    # Navigate back to search results for this doc
+                    await page.goto(SEARCH_URL, timeout=30000, wait_until="networkidle")
+                    await asyncio.sleep(1)
+                    await page.evaluate(f"""
+                        var fileInput = document.querySelector('[id*="txtFileNumber"]')
+                                      || document.querySelector('[id*="txtFile"]')
+                                      || document.querySelector('input[name*="FileNumber"]')
+                                      || document.querySelectorAll('input[type="text"]')[0];
+                        if (fileInput) {{ fileInput.value = '{doc_num}'; }}
+                        var fields = ['txtInstrument', 'txtFrom', 'txtTo', 'txtGrantor', 'txtGrantee'];
+                        fields.forEach(function(f) {{
+                            var el = document.querySelector('[id*="' + f + '"]');
+                            if (el) el.value = '';
+                        }});
+                    """)
+                    await page.evaluate("document.querySelector('[id*=\"btnSearch\"]').click();")
+                    await page.wait_for_load_state("networkidle", timeout=30000)
+                    await asyncio.sleep(2)
+
+                    # Re-find the link
+                    film_link = page.locator(f"a:has-text('{doc_num}')")
+                    if await film_link.count() == 0:
+                        film_link = page.locator("a[href*='ViewEdocs']")
+                    href = await film_link.first.get_attribute("href") or href
+
+                    if not href.startswith("http"):
+                        href = f"https://www.cclerk.hctx.net{href}" if href.startswith("/") else \
+                               f"https://www.cclerk.hctx.net/applications/websearch/{href}"
+
+            # Now fetch the PDF via JavaScript fetch() — uses the browser's
+            # authenticated session cookies, bypasses the PDF viewer
+            try:
+                result = await page.evaluate(f"""
+                    async () => {{
+                        try {{
+                            const resp = await fetch("{href}", {{
+                                credentials: 'include',
+                                redirect: 'follow'
+                            }});
+                            const contentType = resp.headers.get('content-type') || '';
+                            const buffer = await resp.arrayBuffer();
+                            const bytes = new Uint8Array(buffer);
+                            // Check if it starts with %PDF
+                            const isPdf = bytes.length > 4 &&
+                                          bytes[0] === 0x25 && bytes[1] === 0x50 &&
+                                          bytes[2] === 0x44 && bytes[3] === 0x46;
+                            return {{
+                                ok: resp.ok,
+                                status: resp.status,
+                                contentType: contentType,
+                                isPdf: isPdf,
+                                size: bytes.length,
+                                url: resp.url,
+                                // Convert to base64 for transfer
+                                data: isPdf ? btoa(String.fromCharCode.apply(null, bytes)) : null
+                            }};
+                        }} catch (e) {{
+                            return {{ ok: false, error: e.message }};
+                        }}
+                    }}
+                """)
+
+                if result and result.get("isPdf") and result.get("data"):
+                    import base64
+                    pdf_bytes = base64.b64decode(result["data"])
+                    log.info(f"  PDF fetched OK: {len(pdf_bytes):,} bytes "
+                             f"(content-type: {result.get('contentType', '?')})")
+                    downloaded += 1
+                    rec["pdf_status"] = "downloaded"
+                elif result and result.get("ok"):
+                    log.warning(f"  {doc_num}: got {result.get('contentType', '?')}, "
+                                f"size={result.get('size', 0)}, isPdf={result.get('isPdf')}, "
+                                f"url={result.get('url', '?')[:80]}")
+                    rec["pdf_status"] = "not_pdf"
+                    failed += 1
+                    continue
+                elif result and result.get("error"):
+                    log.warning(f"  {doc_num}: fetch error — {result['error']}")
+                    rec["pdf_status"] = "error"
+                    failed += 1
+                    continue
+                else:
+                    log.warning(f"  {doc_num}: fetch failed — status {result.get('status', '?')}")
+                    if result and result.get("url") and "login" in result.get("url", "").lower():
+                        log.warning(f"  Session expired — re-login needed")
+                        logged_in = False
+                    rec["pdf_status"] = "fetch_failed"
+                    failed += 1
+                    continue
+
+            except Exception as e:
+                log.warning(f"  {doc_num}: JS fetch failed — {e}")
+                rec["pdf_status"] = "error"
+                failed += 1
                 continue
 
             # Step 5: Extract data from PDF (Gemini → pdfplumber → OCR)
