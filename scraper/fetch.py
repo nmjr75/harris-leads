@@ -1934,154 +1934,109 @@ async def enrich_from_clerk_pdf(records: list,
 
             log.info(f"  Found {link_count} Film Code link(s) — clicking first")
 
-            # Step 4: Click the Film Code link to get the PDF
-            # Use expect_popup or expect_page in case it opens in new tab,
-            # otherwise handle inline navigation
+            # Step 4: Click the Film Code link and intercept the PDF via network.
+            # The "View Instrument" page is an HTML viewer that loads the PDF
+            # via JavaScript. We intercept the actual PDF response from the
+            # network traffic rather than trying to extract it from the HTML.
+            pdf_bytes = None
+            captured_pdf = []  # mutable container for closure
+
+            async def _capture_pdf(response):
+                """Network response handler — captures PDF responses."""
+                ct = response.headers.get("content-type", "")
+                if "pdf" in ct.lower() or "octet-stream" in ct.lower():
+                    try:
+                        body = await response.body()
+                        if body and body[:4] == b"%PDF":
+                            captured_pdf.append(body)
+                    except Exception:
+                        pass
+
+            # Listen for PDF responses on the page AND any popup
+            target_page = page
+            popup_page = None
+
             try:
+                # Set up PDF capture on the main page first
+                page.on("response", _capture_pdf)
+
                 async with page.expect_popup(timeout=15000) as popup_info:
                     await film_link.first.click()
-                popup = await popup_info.value
-                await popup.wait_for_load_state("networkidle", timeout=30000)
+                popup_page = await popup_info.value
 
-                # Check if popup redirected to login
-                if "login" in popup.url.lower():
-                    log.info("  PDF popup redirected to login — logging in...")
-                    await popup.fill("input[name*='UserName']", username)
-                    await popup.fill("input[name*='Password']", password)
-                    btn = popup.locator("input[name*='LoginButton']")
+                # Also capture on popup
+                popup_page.on("response", _capture_pdf)
+
+                # Handle login redirect in popup
+                if "login" in popup_page.url.lower():
+                    log.info("  Popup redirected to login — logging in...")
+                    await popup_page.fill("input[name*='UserName']", username)
+                    await popup_page.fill("input[name*='Password']", password)
+                    btn = popup_page.locator("input[name*='LoginButton']")
                     if await btn.count() == 0:
-                        btn = popup.locator("text=LOG IN")
+                        btn = popup_page.locator("text=LOG IN")
                     await btn.first.click()
-                    await popup.wait_for_load_state("networkidle", timeout=30000)
-                    await asyncio.sleep(3)
                     logged_in = True
 
-                # Try to get PDF content from the popup page
-                popup_url = popup.url
-                content_type = ""
-                body = b""
+                # Wait for the page to fully load (JS PDF viewer needs time)
+                await popup_page.wait_for_load_state("networkidle", timeout=30000)
+                await asyncio.sleep(5)  # Extra wait for JS to fetch the PDF
 
-                # Check if the popup is showing a PDF
-                try:
-                    resp = await popup.goto(popup_url, timeout=30000,
-                                            wait_until="networkidle")
-                    if resp:
-                        content_type = resp.headers.get("content-type", "")
-                        body = await resp.body()
-                except Exception:
-                    # Page may already be loaded — try getting content
-                    pass
-
-                if body and (b"%PDF" in body[:10] or "pdf" in content_type.lower()):
-                    log.info(f"  PDF downloaded OK: {len(body):,} bytes")
-                    downloaded += 1
-                    rec["pdf_status"] = "downloaded"
-                    pdf_bytes = body
-                else:
-                    # The popup might be an HTML PDF viewer — check for embedded PDF
-                    popup_html = await popup.content()
-                    # Look for iframe/embed with PDF
-                    for tag in ["iframe", "embed", "object"]:
-                        el = await popup.query_selector(tag)
-                        if el:
-                            src = await el.get_attribute("src") or await el.get_attribute("data") or ""
-                            if src:
-                                if not src.startswith("http"):
-                                    src = f"https://www.cclerk.hctx.net{src}"
-                                log.info(f"  Found embedded {tag}: {src[:80]}")
-                                try:
-                                    pdf_resp = await popup.goto(src, timeout=30000)
-                                    if pdf_resp:
-                                        body = await pdf_resp.body()
-                                        if body and body[:4] == b"%PDF":
-                                            log.info(f"  PDF from {tag}: {len(body):,} bytes")
-                                            downloaded += 1
-                                            rec["pdf_status"] = "downloaded"
-                                            pdf_bytes = body
-                                            break
-                                except Exception:
-                                    pass
-
-                    if rec.get("pdf_status") != "downloaded":
-                        page_text = await popup.inner_text("body")
-                        if "unavailable" in page_text.lower() or "not found" in page_text.lower():
-                            log.info(f"  {doc_num}: document unavailable on clerk server")
-                            rec["pdf_status"] = "unavailable"
-                        else:
-                            preview = popup_html[:200].replace('\n', ' ')
-                            log.warning(f"  {doc_num}: got HTML viewer, url={popup_url[:80]}")
-                            log.warning(f"  Preview: {preview}")
-                            rec["pdf_status"] = "html_viewer"
-                        failed += 1
-                        await popup.close()
-                        continue
-
-                await popup.close()
+                target_page = popup_page
 
             except Exception:
                 # No popup — link navigated in the same page
-                await asyncio.sleep(3)
-                current_url = page.url
+                target_page = page
 
-                if "login" in current_url.lower():
+                if "login" in page.url.lower():
                     log.info("  Redirected to login — logging in...")
-                    try:
-                        await page.fill("input[name*='UserName']", username)
-                        await page.fill("input[name*='Password']", password)
-                        btn = page.locator("input[name*='LoginButton']")
-                        if await btn.count() == 0:
-                            btn = page.locator("text=LOG IN")
-                        await btn.first.click()
-                        await page.wait_for_load_state("networkidle", timeout=30000)
-                        await asyncio.sleep(3)
-                        logged_in = True
-                        log.info("  Login successful — PDF should load now")
-                    except Exception as e:
-                        log.warning(f"  Login failed: {e}")
-                        rec["pdf_status"] = "login_required"
-                        failed += 1
-                        continue
+                    await page.fill("input[name*='UserName']", username)
+                    await page.fill("input[name*='Password']", password)
+                    btn = page.locator("input[name*='LoginButton']")
+                    if await btn.count() == 0:
+                        btn = page.locator("text=LOG IN")
+                    await btn.first.click()
+                    logged_in = True
 
-                # Check current page for PDF content
+                await page.wait_for_load_state("networkidle", timeout=30000)
+                await asyncio.sleep(5)
+
+            # Remove the listener to avoid capturing unrelated PDFs later
+            try:
+                page.remove_listener("response", _capture_pdf)
+            except Exception:
+                pass
+
+            # Check if we captured a PDF from network traffic
+            if captured_pdf:
+                pdf_bytes = captured_pdf[0]
+                log.info(f"  PDF captured via network: {len(pdf_bytes):,} bytes")
+                downloaded += 1
+                rec["pdf_status"] = "downloaded"
+            else:
+                # Fallback: check page text for unavailability
                 try:
-                    page_html = await page.content()
-                    page_text = await page.inner_text("body")
-
-                    if "unavailable" in page_text.lower():
-                        log.info(f"  {doc_num}: document unavailable")
+                    body_text = await target_page.inner_text("body")
+                    if "unavailable" in body_text.lower() or "not found" in body_text.lower():
+                        log.info(f"  {doc_num}: document unavailable on clerk server")
                         rec["pdf_status"] = "unavailable"
-                        failed += 1
-                        continue
-
-                    # Look for embedded PDF
-                    for tag in ["iframe", "embed", "object"]:
-                        el = await page.query_selector(tag)
-                        if el:
-                            src = await el.get_attribute("src") or await el.get_attribute("data") or ""
-                            if src:
-                                if not src.startswith("http"):
-                                    src = f"https://www.cclerk.hctx.net{src}"
-                                log.info(f"  Found embedded {tag}: {src[:80]}")
-                                resp = await page.goto(src, timeout=30000)
-                                if resp:
-                                    body = await resp.body()
-                                    if body and body[:4] == b"%PDF":
-                                        log.info(f"  PDF from {tag}: {len(body):,} bytes")
-                                        downloaded += 1
-                                        rec["pdf_status"] = "downloaded"
-                                        pdf_bytes = body
-                                        break
-
-                    if rec.get("pdf_status") != "downloaded":
-                        log.warning(f"  {doc_num}: could not extract PDF from page")
-                        rec["pdf_status"] = "not_pdf"
-                        failed += 1
-                        continue
-                except Exception as e:
-                    log.warning(f"  {doc_num}: page inspection failed: {e}")
+                    else:
+                        log.warning(f"  {doc_num}: no PDF captured from network traffic")
+                        rec["pdf_status"] = "no_pdf_in_network"
+                except Exception:
+                    log.warning(f"  {doc_num}: could not inspect page")
                     rec["pdf_status"] = "error"
-                    failed += 1
-                    continue
+                failed += 1
+
+            # Close popup if one was opened
+            if popup_page:
+                try:
+                    await popup_page.close()
+                except Exception:
+                    pass
+
+            if rec.get("pdf_status") != "downloaded":
+                continue
 
             # Step 5: Extract data from PDF (Gemini → pdfplumber → OCR)
             if rec.get("pdf_status") != "downloaded":
