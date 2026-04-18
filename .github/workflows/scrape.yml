@@ -43,16 +43,15 @@ jobs:
           cache: "pip"
           cache-dependency-path: "scraper/requirements.txt"
 
-      - name: Install system dependencies (OCR + PDF rendering)
+      - name: Install system dependencies (OCR)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq tesseract-ocr poppler-utils
+          sudo apt-get install -y -qq tesseract-ocr
 
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml dbfread playwright
-          pip install pdfplumber pytesseract Pillow pdf2image google-generativeai
+          pip install -r scraper/requirements.txt
 
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium

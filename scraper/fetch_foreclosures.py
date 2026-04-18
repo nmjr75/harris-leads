@@ -36,11 +36,11 @@ except ImportError:
 try:
     import pytesseract
     from PIL import Image, ImageFilter, ImageEnhance
-    from pdf2image import convert_from_bytes
+    import pypdfium2 as pdfium
     HAS_OCR = True
 except ImportError:
     HAS_OCR = False
-    print("WARNING: pytesseract/Pillow/pdf2image not installed. OCR will be unavailable.")
+    print("WARNING: pytesseract/Pillow/pypdfium2 not installed. OCR will be unavailable.")
 
 # Gemini Vision API for PDF extraction
 from gemini_extract import parse_pdf_with_gemini, HAS_GEMINI
@@ -582,7 +582,9 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 if HAS_OCR:
                     log.info(f"  {doc_id} is a scanned PDF Ã¢ÂÂ running OCR at {OCR_DPI} DPI...")
                     try:
-                        images = convert_from_bytes(pdf_bytes, dpi=OCR_DPI)
+                        _pdf_doc = pdfium.PdfDocument(pdf_bytes)
+                        images = [_pdf_doc[i].render(scale=OCR_DPI / 72).to_pil() for i in range(len(_pdf_doc))]
+                        _pdf_doc.close()
                         # Tesseract config: PSM 6 = assume uniform block of text (best for legal docs)
                         tess_config = "--psm 6"
                         for page_num, img in enumerate(images, 1):
@@ -1842,11 +1844,11 @@ except ImportError:
 try:
     import pytesseract
     from PIL import Image, ImageFilter, ImageEnhance
-    from pdf2image import convert_from_bytes
+    import pypdfium2 as pdfium
     HAS_OCR = True
 except ImportError:
     HAS_OCR = False
-    print("WARNING: pytesseract/Pillow/pdf2image not installed. OCR will be unavailable.")
+    print("WARNING: pytesseract/Pillow/pypdfium2 not installed. OCR will be unavailable.")
 
 def preprocess_for_ocr(img):
     """Pre-process a PIL Image for better OCR accuracy on scanned legal docs."""
@@ -2383,7 +2385,9 @@ def parse_foreclosure_pdf(pdf_bytes: bytes, doc_id: str) -> dict:
                 if HAS_OCR:
                     log.info(f"  {doc_id} is a scanned PDF â running OCR at {OCR_DPI} DPI...")
                     try:
-                        images = convert_from_bytes(pdf_bytes, dpi=OCR_DPI)
+                        _pdf_doc = pdfium.PdfDocument(pdf_bytes)
+                        images = [_pdf_doc[i].render(scale=OCR_DPI / 72).to_pil() for i in range(len(_pdf_doc))]
+                        _pdf_doc.close()
                         # Tesseract config: PSM 6 = assume uniform block of text (best for legal docs)
                         tess_config = "--psm 6"
                         for page_num, img in enumerate(images, 1):

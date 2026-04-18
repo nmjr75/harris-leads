@@ -2,48 +2,141 @@
 Gemini Vision API extraction for Harris County clerk PDFs.
 
 Uses Google Gemini 2.5 Flash to extract structured data from PDF images.
-Falls back to None (triggering OCR/pdfplumber pipeline) if Gemini is unavailable or fails.
+Falls back to None (triggering pdfplumber/OCR pipeline) if Gemini is unavailable.
 
 Contains two functions:
-  - parse_pdf_with_gemini(): For foreclosure posting PDFs (original)
+  - parse_pdf_with_gemini(): For foreclosure posting PDFs
   - parse_clerk_pdf_with_gemini(): For clerk filing PDFs (LP, liens, judgments, probate, etc.)
+
+PDF→image conversion uses pypdfium2 (pure Python, no poppler dependency).
 """
 
 import json
 import logging
 import os
 import re
-from io import BytesIO
+import time
 
 log = logging.getLogger(__name__)
 
-# --- Gemini setup (soft dependency) ---
-HAS_GEMINI = False
+# --- PDF to image conversion (pypdfium2 — no system dependency) ---
+HAS_PDFIUM = False
 try:
-    import google.generativeai as genai
-    from pdf2image import convert_from_bytes
+    import pypdfium2 as pdfium
+    HAS_PDFIUM = True
+except ImportError:
+    log.info("pypdfium2 not installed — PDF-to-image conversion disabled.")
 
+# --- Gemini setup (prefer google.genai, fall back to deprecated google.generativeai) ---
+HAS_GEMINI = False
+_USE_NEW_SDK = False
+_client = None
+
+try:
+    from google import genai
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if api_key:
-        genai.configure(api_key=api_key)
+        _client = genai.Client(api_key=api_key)
         HAS_GEMINI = True
-        log.info("Gemini Vision API configured successfully.")
+        _USE_NEW_SDK = True
+        log.info("Gemini Vision API configured (google.genai SDK).")
     else:
         log.info("GEMINI_API_KEY not set – Gemini extraction disabled.")
 except ImportError:
-    log.info("google-generativeai not installed – Gemini extraction disabled.")
+    try:
+        import google.generativeai as genai
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        if api_key:
+            genai.configure(api_key=api_key)
+            HAS_GEMINI = True
+            log.info("Gemini Vision API configured (legacy SDK).")
+        else:
+            log.info("GEMINI_API_KEY not set – Gemini extraction disabled.")
+    except ImportError:
+        log.info("google-genai not installed – Gemini extraction disabled.")
 
+# Rate limiting for free tier
+GEMINI_DELAY = 4.5  # seconds between API calls
+
+
+def _pdf_to_images(pdf_bytes: bytes, max_pages: int = 3, scale: float = 2.0) -> list:
+    """Convert PDF bytes to PIL Image objects using pypdfium2.
+
+    No poppler or system dependency required.
+    """
+    if not HAS_PDFIUM:
+        return []
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+        page_count = min(len(pdf), max_pages)
+        images = []
+        for i in range(page_count):
+            page = pdf[i]
+            bitmap = page.render(scale=scale)
+            pil_image = bitmap.to_pil()
+            images.append(pil_image)
+        pdf.close()
+        return images
+    except Exception as e:
+        log.warning(f"PDF to image conversion failed: {e}")
+        return []
+
+
+def _call_gemini(prompt: str, image) -> str:
+    """Call Gemini Vision API with prompt + image, abstracting SDK version.
+
+    Returns the raw response text.
+    """
+    from io import BytesIO
+
+    if _USE_NEW_SDK:
+        # google.genai SDK accepts PIL images directly
+        response = _client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt, image],
+        )
+        return response.text
+    else:
+        # Legacy SDK needs image as bytes dict
+        img_buf = BytesIO()
+        image.save(img_buf, format="PNG")
+        img_buf.seek(0)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content([
+            prompt,
+            {"mime_type": "image/png", "data": img_buf.read()}
+        ])
+        return response.text
+
+
+def _parse_json_response(text: str) -> dict | None:
+    """Parse Gemini response text into a dict, stripping code fences."""
+    try:
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r'^```(?:json)?\s*', '', text)
+            text = re.sub(r'\s*```$', '', text)
+        text = text.strip()
+        return json.loads(text)
+    except (json.JSONDecodeError, AttributeError) as e:
+        log.warning(f"Failed to parse Gemini JSON response: {e}")
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Foreclosure Posting PDFs
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def parse_pdf_with_gemini(pdf_bytes, doc_id):
     """Extract fields from foreclosure PDF using Gemini Vision API.
 
     Returns parsed dict on success, None on failure (triggers OCR fallback).
     """
-    if not HAS_GEMINI:
+    if not HAS_GEMINI or not HAS_PDFIUM:
         return None
 
     try:
-        images = convert_from_bytes(pdf_bytes, dpi=200)
+        images = _pdf_to_images(pdf_bytes, max_pages=2)
         if not images:
             return None
 
@@ -67,25 +160,11 @@ def parse_pdf_with_gemini(pdf_bytes, doc_id):
             "- Return ONLY the JSON object, no other text"
         )
 
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
-        # Convert first page to PNG bytes for Gemini
-        img_buf = BytesIO()
-        images[0].save(img_buf, format="PNG")
-        img_buf.seek(0)
-
-        response = model.generate_content([
-            prompt,
-            {"mime_type": "image/png", "data": img_buf.read()}
-        ])
-
-        text = response.text.strip()
-        # Remove markdown code fences if present
-        if text.startswith("```"):
-            text = re.sub(r'^```(?:json)?\s*', '', text)
-            text = re.sub(r'\s*```$', '', text)
-
-        data = json.loads(text)
+        # Try page 1
+        text = _call_gemini(prompt, images[0])
+        data = _parse_json_response(text)
+        if not data:
+            return None
 
         result = {
             "grantor": data.get("grantor", ""),
@@ -103,30 +182,25 @@ def parse_pdf_with_gemini(pdf_bytes, doc_id):
 
         # If page 1 had no address, try page 2
         if not result["property_address"] and len(images) > 1:
-            img2 = BytesIO()
-            images[1].save(img2, format="PNG")
-            img2.seek(0)
+            time.sleep(GEMINI_DELAY)
             try:
-                resp2 = model.generate_content([
-                    prompt, {"mime_type": "image/png", "data": img2.read()}
-                ])
-                t2 = resp2.text.strip()
-                if t2.startswith("```"):
-                    t2 = re.sub(r'^```(?:json)?\s*', '', t2)
-                    t2 = re.sub(r'\s*```$', '', t2)
-                d2 = json.loads(t2)
-                for key in ["property_address", "property_city", "property_zip",
-                            "legal_description", "grantor", "amount", "sale_date", "mortgagee"]:
-                    if not result.get(key) and d2.get(key):
-                        result[key] = d2[key]
+                text2 = _call_gemini(prompt, images[1])
+                d2 = _parse_json_response(text2)
+                if d2:
+                    for key in ["property_address", "property_city", "property_zip",
+                                "legal_description", "grantor", "amount", "sale_date", "mortgagee"]:
+                        if not result.get(key) and d2.get(key):
+                            result[key] = d2[key]
             except Exception:
                 pass
 
         log.info(f"  Gemini: addr={result['property_address'][:40]}, legal={result['legal_description'][:40]}")
+        time.sleep(GEMINI_DELAY)
         return result
 
     except Exception as e:
         log.warning(f"  Gemini failed for {doc_id}: {e}")
+        time.sleep(GEMINI_DELAY)
         return None
 
 
@@ -143,11 +217,11 @@ def parse_clerk_pdf_with_gemini(pdf_bytes, doc_id, doc_type=""):
 
     Returns dict with extracted fields on success, None on failure.
     """
-    if not HAS_GEMINI:
+    if not HAS_GEMINI or not HAS_PDFIUM:
         return None
 
     try:
-        images = convert_from_bytes(pdf_bytes, dpi=200)
+        images = _pdf_to_images(pdf_bytes, max_pages=3)
         if not images:
             return None
 
@@ -176,10 +250,7 @@ def parse_clerk_pdf_with_gemini(pdf_bytes, doc_id, doc_type=""):
             "- Return ONLY the JSON object, no other text"
         )
 
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
         # Process up to first 3 pages (legal docs often have property info on page 2-3)
-        max_pages = min(len(images), 3)
         combined_result = {
             "property_address": "",
             "property_city": "",
@@ -190,37 +261,26 @@ def parse_clerk_pdf_with_gemini(pdf_bytes, doc_id, doc_type=""):
             "grantee_name": "",
         }
 
-        for page_num in range(max_pages):
-            img_buf = BytesIO()
-            images[page_num].save(img_buf, format="PNG")
-            img_buf.seek(0)
-
+        for page_num, img in enumerate(images):
             try:
-                response = model.generate_content([
-                    prompt,
-                    {"mime_type": "image/png", "data": img_buf.read()}
-                ])
+                text = _call_gemini(prompt, img)
+                data = _parse_json_response(text)
 
-                text = response.text.strip()
-                # Remove markdown code fences if present
-                if text.startswith("```"):
-                    text = re.sub(r'^```(?:json)?\s*', '', text)
-                    text = re.sub(r'\s*```$', '', text)
+                if data:
+                    # Merge: fill in any fields that are still empty
+                    for key in combined_result:
+                        if not combined_result[key] and data.get(key):
+                            combined_result[key] = data[key]
 
-                data = json.loads(text)
-
-                # Merge: fill in any fields that are still empty
-                for key in combined_result:
-                    if not combined_result[key] and data.get(key):
-                        combined_result[key] = data[key]
-
-                # If we have the property address, we can stop early
-                if combined_result["property_address"] and combined_result["legal_description"]:
-                    break
+                    # If we have the property address + legal, stop early
+                    if combined_result["property_address"] and combined_result["legal_description"]:
+                        break
 
             except Exception as page_err:
                 log.debug(f"  Gemini page {page_num+1} parse error for {doc_id}: {page_err}")
                 continue
+
+            time.sleep(GEMINI_DELAY)
 
         if combined_result["property_address"] or combined_result["legal_description"]:
             log.info(f"  Gemini clerk: addr={combined_result['property_address'][:40]}, "
@@ -232,4 +292,5 @@ def parse_clerk_pdf_with_gemini(pdf_bytes, doc_id, doc_type=""):
 
     except Exception as e:
         log.warning(f"  Gemini clerk failed for {doc_id}: {e}")
+        time.sleep(GEMINI_DELAY)
         return None

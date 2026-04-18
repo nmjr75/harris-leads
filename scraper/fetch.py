@@ -40,11 +40,11 @@ try:
 except ImportError:
     HAS_PDFPLUMBER = False
 
-# OCR for scanned/image PDFs
+# OCR for scanned/image PDFs (pypdfium2 replaces pdf2image — no poppler needed)
 try:
     import pytesseract
     from PIL import Image, ImageFilter, ImageEnhance
-    from pdf2image import convert_from_bytes
+    import pypdfium2 as pdfium
     HAS_OCR = True
 except ImportError:
     HAS_OCR = False
@@ -1577,15 +1577,20 @@ def extract_text_from_pdf(pdf_bytes: bytes, doc_num: str) -> str:
         except Exception as e:
             log.warning(f"  pdfplumber error for {doc_num}: {e}")
 
-    # Fallback: OCR for scanned/image PDFs
+    # Fallback: OCR for scanned/image PDFs (pypdfium2 → PIL → Tesseract)
     if HAS_OCR:
         try:
-            images = convert_from_bytes(pdf_bytes, dpi=300)
+            pdf_doc = pdfium.PdfDocument(pdf_bytes)
+            page_count = min(len(pdf_doc), 3)  # First 3 pages
             ocr_text = ""
-            for i, img in enumerate(images[:3]):  # First 3 pages
+            for i in range(page_count):
+                page = pdf_doc[i]
+                bitmap = page.render(scale=3.0)  # ~300 DPI equivalent
+                img = bitmap.to_pil()
                 processed = preprocess_for_ocr(img)
                 page_text = pytesseract.image_to_string(processed)
                 ocr_text += page_text + "\n"
+            pdf_doc.close()
             ocr_text = ocr_text.strip()
             if ocr_text:
                 log.info(f"  OCR: extracted {len(ocr_text)} chars from {doc_num}")
