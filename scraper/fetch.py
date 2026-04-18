@@ -2155,7 +2155,53 @@ async def main():
         if rec.get("cat") == "PROBATE" and not rec.get("prop_address", "").strip():
             rec["prop_address"] = "Not found"
 
-    # 5. Compute flags & scores
+    # 5. Merge with existing records, then compute flags & scores (accumulate over time)
+    #    New records are added; existing records are updated if the new
+    #    scrape has better data (e.g., address found where there was none).
+    existing_path = Path("dashboard/records.json")
+    if existing_path.exists():
+        try:
+            with open(existing_path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+            existing_records = existing_data.get("records", [])
+            log.info(f"Merging with {len(existing_records)} existing records...")
+
+            # Index existing records by doc_num
+            existing_by_id = {}
+            for rec in existing_records:
+                key = rec.get("doc_num", "")
+                if key:
+                    existing_by_id[key] = rec
+
+            # Merge: new records win if they have better enrichment
+            merged_count = 0
+            added_count = 0
+            for rec in deduped:
+                key = rec.get("doc_num", "")
+                if not key:
+                    continue
+                if key in existing_by_id:
+                    old = existing_by_id[key]
+                    new_has_addr = bool(rec.get("prop_address", "").strip()
+                                       and rec["prop_address"] != "Not found")
+                    old_has_addr = bool(old.get("prop_address", "").strip()
+                                       and old["prop_address"] != "Not found")
+                    if new_has_addr or not old_has_addr:
+                        # New data is better or equal — replace
+                        existing_by_id[key] = rec
+                        merged_count += 1
+                    # else: keep old record (it had an address, new one doesn't)
+                else:
+                    existing_by_id[key] = rec
+                    added_count += 1
+
+            deduped = list(existing_by_id.values())
+            log.info(f"Merge result: {added_count} new, {merged_count} updated, "
+                     f"{len(deduped)} total")
+        except (json.JSONDecodeError, KeyError) as e:
+            log.warning(f"Could not load existing records for merge: {e} — overwriting")
+
+    # Recompute flags/scores after merge (existing records may need "New this week" removed)
     for rec in deduped:
         flags, score = compute_flags_and_score(rec, deduped)
         rec["flags"] = flags
@@ -2163,7 +2209,11 @@ async def main():
 
     deduped.sort(key=lambda r: r.get("score", 0), reverse=True)
 
-    # 6. Save outputs
+    # Recount addresses after merge
+    with_address = sum(1 for r in deduped if r.get("prop_address", "").strip()
+                       and r.get("prop_address") != "Not found")
+
+    # 7. Save outputs
     payload = {
         "fetched_at":   datetime.now().strftime("%Y-%m-%dT%H:%M:%S CT"),
         "source":       "Harris County Clerk (cclerk.hctx.net)",
