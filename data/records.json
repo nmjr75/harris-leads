@@ -1,8 +1,8 @@
 {
-  "fetched_at": "2026-04-18T09:53:25 CT",
+  "fetched_at": "2026-04-18T11:27:48 CT",
   "source": "Harris County Clerk (cclerk.hctx.net)",
   "date_range": {
-    "from": "2026-04-13",
+    "from": "2026-04-17",
     "to": "2026-04-18"
   },
   "total": 2511,
@@ -1416,7 +1416,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 70
+      "score": 70,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146705",
@@ -1446,7 +1447,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 70
+      "score": 70,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146504",
@@ -1507,7 +1509,8 @@
         "LLC / corp owner",
         "New this week"
       ],
-      "score": 70
+      "score": 70,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-143436",
@@ -14965,7 +14968,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147727",
@@ -15023,7 +15027,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147699",
@@ -15286,7 +15291,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147457",
@@ -15548,7 +15554,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147263",
@@ -15781,7 +15788,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147112",
@@ -15868,7 +15876,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147058",
@@ -16103,7 +16112,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146886",
@@ -16132,7 +16142,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146860",
@@ -16219,7 +16230,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146836",
@@ -16629,7 +16641,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146543",
@@ -16716,7 +16729,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146525",
@@ -16863,7 +16877,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146473",
@@ -16892,7 +16907,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146470",
@@ -17358,7 +17374,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146260",
@@ -17416,7 +17433,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146256",
@@ -17445,7 +17463,8 @@
         "Probate / estate",
         "New this week"
       ],
-      "score": 60
+      "score": 60,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146250",
@@ -46301,7 +46320,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "html_viewer"
     },
     {
       "doc_num": "RP-2026-146801",
@@ -46331,7 +46350,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "html_viewer"
     },
     {
       "doc_num": "RP-2026-147424",
@@ -46480,7 +46499,8 @@
         "Lien (HOA / state tax / other)",
         "New this week"
       ],
-      "score": 55
+      "score": 55,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-146621",
@@ -46510,7 +46530,7 @@
         "New this week"
       ],
       "score": 55,
-      "pdf_status": "not_pdf"
+      "pdf_status": "html_viewer"
     },
     {
       "doc_num": "RP-2026-146468",
@@ -69785,7 +69805,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147654",
@@ -69813,7 +69834,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147653",
@@ -69841,7 +69863,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147652",
@@ -69869,7 +69892,8 @@
       "flags": [
         "New this week"
       ],
-      "score": 45
+      "score": 45,
+      "pdf_status": "not_pdf"
     },
     {
       "doc_num": "RP-2026-147651",
