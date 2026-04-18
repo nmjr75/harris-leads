@@ -1840,7 +1840,41 @@ async def enrich_from_clerk_pdf(records: list,
     if not login_to_cclerk(session):
         log.warning("PDF extraction: login failed — cannot download PDFs")
         return 0
-    log.info("PDF extraction: login successful")
+    log.info(f"PDF extraction: login successful — cookies: "
+             f"{[(c.name, c.domain) for c in session.cookies]}")
+
+    # Verify the session works by hitting the search page
+    test_resp = session.get(SEARCH_URL, timeout=30)
+    if "Login.aspx" in test_resp.url:
+        log.warning(f"PDF extraction: session not valid — search page redirected to login")
+        log.warning(f"  URL: {test_resp.url[:100]}")
+        # Cookie domain mismatch? Try without www
+        log.info("  Retrying login without www...")
+        session2 = requests.Session()
+        session2.headers.update(session.headers)
+        alt_login = "https://cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
+        try:
+            resp = session2.get(alt_login, timeout=30)
+            soup2 = BeautifulSoup(resp.text, "html.parser")
+            fd = {}
+            for inp in soup2.find_all("input"):
+                name = inp.get("name", "")
+                if name: fd[name] = inp.get("value", "")
+            fd["ctl00$ContentPlaceHolder1$Login1$UserName"] = username
+            fd["ctl00$ContentPlaceHolder1$Login1$Password"] = password
+            fd["ctl00$ContentPlaceHolder1$Login1$LoginButton"] = "LOG IN"
+            resp = session2.post(alt_login, data=fd, timeout=30, allow_redirects=True)
+            if "LOGOUT" in resp.text.upper():
+                log.info("  Alt login successful — using non-www session")
+                session = session2
+            else:
+                log.warning("  Alt login also failed")
+                return 0
+        except Exception as e:
+            log.warning(f"  Alt login error: {e}")
+            return 0
+    else:
+        log.info("PDF extraction: session verified — search page accessible")
 
     improved = 0
     downloaded = 0
