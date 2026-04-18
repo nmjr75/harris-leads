@@ -1765,14 +1765,12 @@ def _login_to_rp_portal(session: requests.Session) -> bool:
 async def enrich_from_clerk_pdf(records: list,
                                 max_pdfs: int = 150,
                                 time_cap_minutes: int = 30) -> int:
-    """Download and parse clerk PDFs using Playwright browser.
+    """Download and parse clerk PDFs using requests session.
 
-    Opens a new Playwright browser, logs in to the clerk portal, then
-    navigates to each record's ViewEdocs URL (captured during scraping)
-    to download the PDF. Same browser session for login and download.
-
-    The RP portal generates ViewEdocs links via JavaScript, so only a
-    real browser (Playwright) can access them. requests cannot.
+    Uses requests.Session with ASP.NET form-based login (same approach
+    as the foreclosure scraper). Playwright was unreliable — the
+    ViewEdocs URLs require session cookies that Playwright navigation
+    doesn't maintain properly.
 
     Args:
         records: List of record dicts to process (modified in place).
@@ -1801,247 +1799,156 @@ async def enrich_from_clerk_pdf(records: list,
     log.info(f"PDF extraction: {len(to_process)} records to process "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
 
-    username = os.environ.get("CCLERK_USERNAME", "")
-    password = os.environ.get("CCLERK_PASSWORD", "")
-
-    if not username or not password:
+    if not os.environ.get("CCLERK_USERNAME") or not os.environ.get("CCLERK_PASSWORD"):
         log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
         return 0
+
+    # Use requests.Session with ASP.NET form login (proven pattern from foreclosure scraper)
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+    })
+
+    log.info("PDF extraction: logging in to clerk portal via requests...")
+    if not login_to_cclerk(session):
+        log.warning("PDF extraction: login failed — cannot download PDFs")
+        return 0
+    log.info("PDF extraction: login successful")
 
     improved = 0
     downloaded = 0
     failed = 0
+    deadline = time.time() + time_cap_minutes * 60
+    failed_records = []
 
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
-        ctx = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 900},
-        )
-        page = await ctx.new_page()
+    def _download_and_extract(rec, idx, total):
+        """Download a single PDF via requests and extract data."""
+        nonlocal downloaded, improved, failed
+        doc_num = rec.get("doc_num", "unknown")
+        doc_type = rec.get("doc_type", "")
+        clerk_url = rec.get("clerk_url", "")
 
-        # Step 1: Log in to clerk portal via Playwright
-        log.info("PDF extraction: logging in to clerk portal via browser...")
-        try:
-            await page.goto(RP_LOGIN_URL, timeout=30000)
-            await page.wait_for_load_state("networkidle", timeout=30000)
+        log.info(f"PDF [{idx}/{total}] {doc_num} ({doc_type})")
 
-            # Fill in login form
-            await page.fill("input[name*='UserName']", username)
-            await page.fill("input[name*='Password']", password)
-            # Click the login button — try multiple selectors
-            login_btn = page.locator("input[name*='LoginButton']")
-            if await login_btn.count() == 0:
-                login_btn = page.locator("text=LOG IN")
-            if await login_btn.count() == 0:
-                login_btn = page.locator("input[type='submit']")
-            await login_btn.first.click()
-            await page.wait_for_load_state("networkidle", timeout=30000)
-            await asyncio.sleep(2)
+        # Download PDF via requests session
+        pdf_bytes = download_clerk_pdf(session, clerk_url, doc_num)
 
-            # Check if login succeeded
-            content = await page.content()
-            if "LOGOUT" in content.upper() or "WELCOME" in content.upper():
-                log.info("PDF extraction: logged in successfully via browser")
-            else:
-                log.warning("PDF extraction: browser login may have failed")
-                log.warning(f"  Current URL: {page.url[:80]}")
-        except Exception as e:
-            log.warning(f"PDF extraction: browser login failed — {e}")
-            await browser.close()
-            return 0
-
-        # Step 2: Download PDFs by navigating to each ViewEdocs URL
-        deadline = time.time() + time_cap_minutes * 60
-        failed_records = []  # Track failures for retry pass
-
-        async def _try_login(p):
-            """Re-login to clerk portal. Returns True on success."""
+        if not pdf_bytes:
+            # Check if we got redirected to login (session expired)
             try:
-                await p.goto(RP_LOGIN_URL, timeout=30000)
-                await p.wait_for_load_state("networkidle", timeout=30000)
-                await p.fill("input[name*='UserName']", username)
-                await p.fill("input[name*='Password']", password)
-                btn = p.locator("input[name*='LoginButton']")
-                if await btn.count() == 0:
-                    btn = p.locator("text=LOG IN")
-                if await btn.count() == 0:
-                    btn = p.locator("input[type='submit']")
-                await btn.first.click()
-                await p.wait_for_load_state("networkidle", timeout=30000)
-                await asyncio.sleep(2)
-                content = await p.content()
-                if "LOGOUT" in content.upper() or "WELCOME" in content.upper():
-                    log.info("  Re-logged in successfully")
-                    return True
-                log.warning("  Re-login may have failed")
-                return False
-            except Exception as e:
-                log.warning(f"  Re-login failed: {e}")
-                return False
-
-        async def _download_and_extract(p, rec, idx, total):
-            """Download a single PDF and extract data. Returns (downloaded, improved)."""
-            nonlocal downloaded, improved, failed
-            doc_num = rec.get("doc_num", "unknown")
-            doc_type = rec.get("doc_type", "")
-            clerk_url = rec.get("clerk_url", "")
-
-            log.info(f"PDF [{idx}/{total}] {doc_num} ({doc_type})")
-
-            try:
-                response = await p.goto(clerk_url, timeout=30000,
-                                        wait_until="networkidle")
-
-                if response is None:
-                    log.warning(f"  {doc_num}: no response")
-                    rec["pdf_status"] = "no_response"
-                    return False, False
-
-                content_type = response.headers.get("content-type", "")
-                body = await response.body()
-
-                # Check if we got a PDF
-                if "pdf" in content_type.lower() or (body and body[:4] == b"%PDF"):
-                    log.info(f"  PDF downloaded OK: {len(body):,} bytes")
-                    downloaded += 1
-                    rec["pdf_status"] = "downloaded"
+                resp = session.get(clerk_url, timeout=30, allow_redirects=True)
+                if "Login.aspx" in resp.url:
+                    log.warning(f"  {doc_num}: session expired — will retry after re-login")
+                    rec["pdf_status"] = "login_required"
                 else:
-                    # Diagnose failure
-                    page_text = await p.inner_text("body")
-                    if "image not found" in page_text.lower() or "no image" in page_text.lower():
-                        log.info(f"  {doc_num}: image not found on server")
-                        rec["pdf_status"] = "image_not_found"
-                    elif "login" in p.url.lower():
-                        log.warning(f"  {doc_num}: redirected to login — session expired")
-                        rec["pdf_status"] = "login_required"
-                    else:
-                        log.warning(f"  {doc_num}: got {content_type}, url={p.url[:80]}")
-                        rec["pdf_status"] = "not_pdf"
-                    return False, False
-
-            except Exception as e:
-                log.warning(f"  {doc_num}: error — {e}")
+                    rec["pdf_status"] = "not_pdf"
+            except Exception:
                 rec["pdf_status"] = "error"
-                return False, False
+            return False, False
 
-            # Extract data from PDF (Gemini → pdfplumber → OCR)
-            extracted = None
-            extract_source = "none"
+        downloaded += 1
+        rec["pdf_status"] = "downloaded"
 
-            if HAS_GEMINI:
-                gemini_result = parse_clerk_pdf_with_gemini(body, doc_num, doc_type)
-                if gemini_result and (gemini_result.get("property_address") or
-                                      gemini_result.get("legal_description")):
-                    extracted = gemini_result
-                    extract_source = "gemini_pdf"
-                    log.info(f"  Source: Gemini Vision")
+        # Extract data from PDF (Gemini → pdfplumber → OCR)
+        extracted = None
+        extract_source = "none"
 
-            if not extracted:
-                raw_text = extract_text_from_pdf(body, doc_num)
-                if raw_text:
-                    parsed = parse_address_from_text(raw_text)
-                    if parsed.get("property_address") or parsed.get("legal_description"):
-                        extracted = parsed
-                        extract_source = "pdf_text"
-                        log.info(f"  Source: text extraction + regex")
+        if HAS_GEMINI:
+            gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
+            if gemini_result and (gemini_result.get("property_address") or
+                                  gemini_result.get("legal_description")):
+                extracted = gemini_result
+                extract_source = "gemini_pdf"
+                log.info(f"  Source: Gemini Vision")
 
-            if extracted:
-                addr = extracted.get("property_address", "")
-                if addr:
-                    rec["prop_address"] = addr
-                    rec["prop_city"] = extracted.get("property_city", "") or "Houston"
-                    rec["prop_zip"] = extracted.get("property_zip", "")
-                    rec["match_confidence"] = "high"
-                    rec["address_source"] = extract_source
-                    improved += 1
-                    log.info(f"  Address found: {addr[:50]}")
+        if not extracted:
+            raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
+            if raw_text:
+                parsed = parse_address_from_text(raw_text)
+                if parsed.get("property_address") or parsed.get("legal_description"):
+                    extracted = parsed
+                    extract_source = "pdf_text"
+                    log.info(f"  Source: text extraction + regex")
 
-                legal = extracted.get("legal_description", "")
-                if legal and not rec.get("legal", "").strip():
-                    rec["legal"] = legal
+        if extracted:
+            addr = extracted.get("property_address", "")
+            if addr:
+                rec["prop_address"] = addr
+                rec["prop_city"] = extracted.get("property_city", "") or "Houston"
+                rec["prop_zip"] = extracted.get("property_zip", "")
+                rec["match_confidence"] = "high"
+                rec["address_source"] = extract_source
+                improved += 1
+                log.info(f"  Address found: {addr[:50]}")
 
-                amount = extracted.get("amount", "")
-                if amount and not rec.get("amount", "").strip():
-                    rec["amount"] = amount
+            legal = extracted.get("legal_description", "")
+            if legal and not rec.get("legal", "").strip():
+                rec["legal"] = legal
 
-                if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
-                    rec["grantor_name"] = extracted["grantor_name"]
-                if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
-                    rec["grantee_names"] = extracted["grantee_name"]
-            else:
-                log.info(f"  No property info extracted from {doc_num}")
+            amount = extracted.get("amount", "")
+            if amount and not rec.get("amount", "").strip():
+                rec["amount"] = amount
 
-            await asyncio.sleep(0.5)
-            return True, bool(extracted and extracted.get("property_address"))
+            if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
+                rec["grantor_name"] = extracted["grantor_name"]
+            if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
+                rec["grantee_names"] = extracted["grantee_name"]
+        else:
+            log.info(f"  No property info extracted from {doc_num}")
 
-        # ── Pass 1: Download all PDFs ────────────────────────────────
-        login_failures_in_row = 0
-        for i, rec in enumerate(to_process):
-            if time.time() > deadline:
-                log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
-                            f"processed {i} of {len(to_process)}")
-                break
+        time.sleep(0.5)  # Rate limit
+        return True, bool(extracted and extracted.get("property_address"))
 
-            ok, _ = await _download_and_extract(page, rec, i + 1, len(to_process))
-            if not ok:
-                failed += 1
-                # Track for retry if it was a session/login issue
-                status = rec.get("pdf_status", "")
-                if status in ("login_required", "not_pdf", "error"):
-                    failed_records.append(rec)
-                # Re-login after session expiry
-                if status == "login_required":
-                    login_failures_in_row += 1
-                    if login_failures_in_row <= 3:
-                        await _try_login(page)
-                else:
-                    login_failures_in_row = 0
+    # ── Pass 1: Download all PDFs ────────────────────────────────
+    for i, rec in enumerate(to_process):
+        if time.time() > deadline:
+            log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
+                        f"processed {i} of {len(to_process)}")
+            break
 
-        log.info(f"PDF extraction pass 1: {downloaded} downloaded, {failed} failed, "
-                 f"{improved} improved")
+        ok, _ = _download_and_extract(rec, i + 1, len(to_process))
+        if not ok:
+            failed += 1
+            status = rec.get("pdf_status", "")
+            if status in ("login_required", "not_pdf", "error"):
+                failed_records.append(rec)
+            # Re-login after session expiry
+            if status == "login_required":
+                log.info("  Re-logging in...")
+                login_to_cclerk(session)
 
-        # ── Pass 2: Retry failed PDFs after fresh login ──────────────
-        if failed_records and time.time() < deadline:
-            log.info(f"PDF extraction pass 2: retrying {len(failed_records)} failed PDFs...")
-            login_ok = await _try_login(page)
+    log.info(f"PDF extraction pass 1: {downloaded} downloaded, {failed} failed, "
+             f"{improved} improved")
 
-            if login_ok:
-                retry_downloaded = 0
-                retry_improved = 0
-                for i, rec in enumerate(failed_records):
-                    if time.time() > deadline:
-                        log.warning(f"  Retry time cap reached at {i}/{len(failed_records)}")
-                        break
+    # ── Pass 2: Retry failed PDFs after fresh login ──────────────
+    if failed_records and time.time() < deadline:
+        log.info(f"PDF extraction pass 2: retrying {len(failed_records)} failed PDFs...")
+        if login_to_cclerk(session):
+            retry_downloaded = 0
+            retry_improved = 0
+            for i, rec in enumerate(failed_records):
+                if time.time() > deadline:
+                    log.warning(f"  Retry time cap reached at {i}/{len(failed_records)}")
+                    break
 
-                    # Reset status for retry
-                    rec["pdf_status"] = ""
-                    old_failed = failed
-                    ok, got_addr = await _download_and_extract(
-                        page, rec, i + 1, len(failed_records))
-                    if ok:
-                        retry_downloaded += 1
-                        failed -= 1  # Undo the failure count from pass 1
-                        if got_addr:
-                            retry_improved += 1
+                rec["pdf_status"] = ""
+                ok, got_addr = _download_and_extract(rec, i + 1, len(failed_records))
+                if ok:
+                    retry_downloaded += 1
+                    failed -= 1
+                    if got_addr:
+                        retry_improved += 1
+                elif rec.get("pdf_status") == "login_required":
+                    login_to_cclerk(session)
 
-                    # If we hit login again, re-login once more
-                    if rec.get("pdf_status") == "login_required":
-                        await _try_login(page)
-
-                log.info(f"PDF extraction pass 2: {retry_downloaded} recovered, "
-                         f"{retry_improved} improved")
-            else:
-                log.warning("PDF extraction pass 2: re-login failed — skipping retry")
-
-        await browser.close()
+            log.info(f"PDF extraction pass 2: {retry_downloaded} recovered, "
+                     f"{retry_improved} improved")
+        else:
+            log.warning("PDF extraction pass 2: re-login failed — skipping retry")
 
     log.info(f"PDF extraction total: {downloaded} downloaded, {failed} failed, "
              f"{improved} improved out of {len(to_process)} records")
