@@ -24,7 +24,7 @@ jobs:
   scrape:
     name: Scrape Harris County Records
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
