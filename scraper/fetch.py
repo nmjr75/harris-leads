@@ -1505,13 +1505,22 @@ def login_to_cclerk(session: requests.Session) -> bool:
                            allow_redirects=True)
         resp.raise_for_status()
 
-        # Check for successful login: page should contain LOGOUT or WELCOME
-        if "LOGOUT" in resp.text.upper() or "WELCOME" in resp.text.upper():
-            log.info("Successfully logged in to Harris County Clerk")
+        # Check for successful login: .ASPXAUTH cookie must be set
+        has_auth_cookie = any(c.name == ".ASPXAUTH" for c in session.cookies)
+        if has_auth_cookie:
+            log.info("Successfully logged in to Harris County Clerk (.ASPXAUTH cookie set)")
             return True
-        else:
-            log.warning("Login POST succeeded but could not confirm authentication")
-            return False
+
+        # Fallback check: page contains LOGOUT (not WELCOME — login page also has "Welcome")
+        if "LOGOUT" in resp.text.upper():
+            log.info("Successfully logged in to Harris County Clerk (LOGOUT found)")
+            return True
+
+        log.warning("Login POST completed but .ASPXAUTH cookie not set — authentication failed")
+        log.warning(f"  Response URL: {resp.url[:100]}")
+        log.warning(f"  Cookies: {[(c.name, c.domain) for c in session.cookies]}")
+        log.warning(f"  Response contains 'Login': {'Login' in resp.text}")
+        return False
 
     except Exception as e:
         log.warning(f"Login failed: {e}")
