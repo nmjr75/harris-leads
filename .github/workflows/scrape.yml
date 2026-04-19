@@ -2,14 +2,14 @@ name: Harris County Lead Scraper
 
 on:
   schedule:
-    # Runs at 7:00 AM UTC every day (2 AM CDT / 1 AM CST)
-    - cron: "0 7 * * *"
+    # Runs at 9:00 AM UTC every day (4 AM CDT / 3 AM CST)
+    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       lookback_days:
-        description: "Days to look back (default 7)"
+        description: "Days to look back (default 4)"
         required: false
-        default: "7"
+        default: "4"
 
 permissions:
   contents: write

@@ -64,7 +64,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "7"))
+LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "4"))
 
 CLERK_SEARCH_URL = "https://cclerk.hctx.net/applications/websearch/RP.aspx"
 CLERK_BASE       = "https://www.cclerk.hctx.net"
