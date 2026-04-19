@@ -1715,6 +1715,11 @@ function openModal(idx) {
     </div>
 
     <div class="modal-section">
+      <div class="modal-field-label" style="margin-bottom:8px;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.05em">HCAD Property Data</div>
+      <div id="hcadContent" style="color:var(--text-muted);font-size:0.85rem">Loading...</div>
+    </div>
+
+    <div class="modal-section">
       <div class="modal-grid">
         <div>
           <div class="modal-field-label">Match Confidence</div>
@@ -1744,6 +1749,43 @@ function openModal(idx) {
   document.getElementById("modalContent").innerHTML = html;
   document.getElementById("modalOverlay").classList.add("active");
   document.body.style.overflow = "hidden";
+
+  loadHcadData(r.parcel_acct);
+}
+
+async function loadHcadData(parcelAcct) {
+  const el = document.getElementById("hcadContent");
+  if (!el) return;
+  if (!parcelAcct) {
+    el.innerHTML = '<span style="font-style:italic">No parcel account linked to this record</span>';
+    return;
+  }
+  const { data, error } = await sb.from("property_data").select("*").eq("parcel_acct", parcelAcct).maybeSingle();
+  if (!document.getElementById("hcadContent")) return; // modal closed during fetch
+  if (error) {
+    el.innerHTML = '<span style="color:var(--red)">Error loading HCAD data: ' + error.message + '</span>';
+    return;
+  }
+  if (!data) {
+    el.innerHTML = '<span style="font-style:italic">Data not yet captured &mdash; run HCAD extension</span>';
+    return;
+  }
+  const fmt = v => (v === null || v === undefined || v === "") ? "--" : v;
+  const fmtNum = v => (v === null || v === undefined) ? "--" : Number(v).toLocaleString();
+  const fmtMoney = v => (v === null || v === undefined) ? "--" : "$" + Number(v).toLocaleString();
+  el.innerHTML = `
+    <div class="modal-grid">
+      <div><div class="modal-field-label">Bedrooms</div><div class="modal-field-value">${fmt(data.bedrooms)}</div></div>
+      <div><div class="modal-field-label">Bathrooms</div><div class="modal-field-value">${fmt(data.bathrooms)}</div></div>
+      <div><div class="modal-field-label">Square Feet</div><div class="modal-field-value">${fmtNum(data.sqft)}</div></div>
+      <div><div class="modal-field-label">Year Built</div><div class="modal-field-value">${fmt(data.year_built)}</div></div>
+      <div><div class="modal-field-label">Lot Size (sqft)</div><div class="modal-field-value">${fmtNum(data.lot_size_sqft)}</div></div>
+      <div><div class="modal-field-label">Market Value</div><div class="modal-field-value" style="color:var(--green);font-weight:700">${fmtMoney(data.market_value)}</div></div>
+      <div><div class="modal-field-label">Appraised Value</div><div class="modal-field-value">${fmtMoney(data.appraised_value)}</div></div>
+      <div><div class="modal-field-label">Structure Type</div><div class="modal-field-value">${fmt(data.structure_type)}</div></div>
+      <div><div class="modal-field-label">Parcel ID</div><div class="modal-field-value" style="font-family:monospace;font-size:0.75rem">${parcelAcct}</div></div>
+    </div>
+  `;
 }
 
 function closeModal() {
