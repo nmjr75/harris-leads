@@ -523,7 +523,19 @@
     .search-input { width: 100%; }
     .bar-label { width: 80px; font-size: 0.65rem; }
   }
+
+  /* Edit marker dot — shows next to score when row has manual edits */
+  .edit-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 5px;
+    background: var(--accent-light);
+    border-radius: 50%;
+    vertical-align: middle;
+  }
 </style>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -608,19 +620,24 @@
 
 <div class="pagination" id="pagination"></div>
 
-<!-- User Selector Modal -->
-<div class="modal-overlay" id="userSelectOverlay" style="display:none">
-  <div class="modal" style="max-width:360px;text-align:center;padding:32px">
-    <h2 style="margin-bottom:4px;font-size:1.1rem">Who are you?</h2>
-    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px">Select your name so edits are tracked</p>
-    <div id="userButtons" style="display:flex;flex-direction:column;gap:8px"></div>
+<!-- Login Modal -->
+<div class="modal-overlay" id="loginOverlay" style="display:none">
+  <div class="modal" style="max-width:380px;padding:32px">
+    <h2 style="margin-bottom:4px;font-size:1.25rem;text-align:center">Harris County <span style="color:var(--accent-light)">Motivated Sellers</span></h2>
+    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px;text-align:center">Sign in to continue</p>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
+      <button type="submit" id="loginBtn" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
+    </form>
   </div>
 </div>
 
 <!-- Logged-in user bar -->
-<div id="userBar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 24px;font-size:0.72rem;color:var(--text-muted);display:none;align-items:center;gap:12px;z-index:99">
-  <span>Logged in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
-  <button onclick="changeUser()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:2px 8px;font-size:0.65rem;cursor:pointer">Switch</button>
+<div id="userBar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 24px;font-size:0.72rem;color:var(--text-muted);align-items:center;gap:12px;z-index:99">
+  <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
+  <button onclick="handleLogout()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:2px 8px;font-size:0.65rem;cursor:pointer">Sign Out</button>
   <span style="margin-left:auto" id="editSyncStatus"></span>
 </div>
 
@@ -630,123 +647,168 @@
 </div>
 
 <script>
+// ── Supabase Client ───────────────────────────────────────────────
+const SUPABASE_URL = "https://oqkcmysnhgorjkinfamu.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_XfR5NTuo1LYF8p73_cqQ7w_Ug4LDl3_";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+// ── State ─────────────────────────────────────────────────────────
 let DATA = null;
-let FRCL_DATA = null;  // foreclosure records
+let FRCL_DATA = null;   // kept for compatibility with existing render/filter code
 let filtered = [];
 let sortCol = "score";
 let sortAsc = false;
 let currentPage = 1;
-let cardFilter = null;    // active stat-card filter
-let sourceFilter = "";    // "probate", "foreclosure", or "" (all)
+let cardFilter = null;
+let sourceFilter = "";
 let perPage = 50;
-const selectedRows = new Set();  // track selected doc_nums
+const selectedRows = new Set();
 
-// ── Google Sheets Integration ────────────────────────────────────
-const GSHEET_URL = "https://script.google.com/macros/s/AKfycbyD6vpa4ZuMiT_C21Jveo52UtuJ4DFJ2HthdhYWh3AcrC4D4AU8gIsgcJgLYcPjaFo/exec";
-const TEAM_MEMBERS = ["Nelson", "Nelly", "Bismarck", "Bernabe"];
-let currentUser = localStorage.getItem("harris_leads_user") || "";
+let currentSession = null;
+let currentProfile = null;
+let realtimeChannel = null;
 
-function showUserSelector() {
-  const overlay = document.getElementById("userSelectOverlay");
-  const btns = document.getElementById("userButtons");
-  btns.innerHTML = "";
-  TEAM_MEMBERS.forEach(name => {
-    const b = document.createElement("button");
-    b.textContent = name;
-    b.style.cssText = "padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.9rem;cursor:pointer;font-weight:600;transition:all 0.2s";
-    b.onmouseover = () => { b.style.borderColor = "var(--accent)"; b.style.background = "var(--accent)"; b.style.color = "#fff"; };
-    b.onmouseout = () => { b.style.borderColor = "var(--border)"; b.style.background = "var(--surface2)"; b.style.color = "var(--text)"; };
-    b.onclick = () => selectUser(name);
-    btns.appendChild(b);
-  });
-  overlay.style.display = "flex";
+// ── Auth ──────────────────────────────────────────────────────────
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); return false; }
+  currentSession = session;
+  await loadProfile();
+  return true;
 }
 
-function selectUser(name) {
-  currentUser = name;
-  localStorage.setItem("harris_leads_user", name);
-  document.getElementById("userSelectOverlay").style.display = "none";
-  document.getElementById("currentUserLabel").textContent = name;
+async function loadProfile() {
+  const { data, error } = await sb.from("profiles").select("*").eq("id", currentSession.user.id).single();
+  if (error || !data) {
+    currentProfile = { display_name: currentSession.user.email.split("@")[0], role: "viewer" };
+  } else {
+    currentProfile = data;
+  }
+  document.getElementById("currentUserLabel").textContent = `${currentProfile.display_name} (${currentProfile.role})`;
   document.getElementById("userBar").style.display = "flex";
 }
 
-function changeUser() {
-  showUserSelector();
+function showLogin() {
+  document.getElementById("loginOverlay").style.display = "flex";
+  document.getElementById("userBar").style.display = "none";
+  setTimeout(() => document.getElementById("loginEmail").focus(), 50);
 }
 
-function initUserBar() {
-  if (currentUser) {
-    document.getElementById("currentUserLabel").textContent = currentUser;
-    document.getElementById("userBar").style.display = "flex";
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  const btn = document.getElementById("loginBtn");
+  errEl.textContent = "";
+  btn.disabled = true; btn.textContent = "Signing in…";
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = "Sign In";
+  if (error) { errEl.textContent = error.message; return; }
+  currentSession = data.session;
+  document.getElementById("loginOverlay").style.display = "none";
+  document.getElementById("loginPassword").value = "";
+  await loadProfile();
+  await loadData();
+  subscribeRealtime();
+}
+
+async function handleLogout() {
+  if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+  await sb.auth.signOut();
+  currentSession = null;
+  currentProfile = null;
+  DATA = null;
+  showLogin();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("loginForm").addEventListener("submit", handleLogin);
+});
+
+// ── Save edit to Supabase ────────────────────────────────────────
+// Maps UI field names → Supabase column names and writes the update.
+function fieldToUpdate(field, newVal) {
+  if (field === "prop_address") {
+    const v = newVal || {};
+    return {
+      prop_address: v.address || null,
+      prop_city: v.city || null,
+      prop_state: v.state || null,
+      prop_zip: v.zip || null,
+    };
+  }
+  if (field === "mail_address") {
+    const v = newVal || {};
+    return {
+      mail_address: v.address || null,
+      mail_city: v.city || null,
+      mail_state: v.state || null,
+      mail_zip: v.zip || null,
+    };
+  }
+  if (field === "legal")     return { legal_description: newVal || null };
+  if (field === "sale_date") return { sale_date: newVal || null };
+  if (field === "filed")     return { filed_date: newVal || null };
+  return { [field]: newVal || null };
+}
+
+function applyUpdateToRecord(rec, field, newVal) {
+  if (field === "prop_address") {
+    const v = newVal || {};
+    rec.prop_address = v.address || "";
+    rec.prop_city    = v.city    || "";
+    rec.prop_state   = v.state   || "";
+    rec.prop_zip     = v.zip     || "";
+  } else if (field === "mail_address") {
+    const v = newVal || {};
+    rec.mail_address = v.address || "";
+    rec.mail_city    = v.city    || "";
+    rec.mail_state   = v.state   || "";
+    rec.mail_zip     = v.zip     || "";
+  } else if (field === "legal") {
+    rec.legal = newVal || "";
   } else {
-    showUserSelector();
+    rec[field] = newVal || "";
   }
 }
 
-// ── Manual Edits (Google Sheets + localStorage cache) ────────────
-// Keyed by doc_num → { owner: "...", prop_address: "...", prop_city: "...", ... }
-let manualEdits = {};
-try {
-  const stored = localStorage.getItem("harris_leads_edits");
-  if (stored) manualEdits = JSON.parse(stored);
-} catch(e) { manualEdits = {}; }
-
-function saveEditsToStorage() {
-  try { localStorage.setItem("harris_leads_edits", JSON.stringify(manualEdits)); } catch(e) {}
-}
-
-// Sync edit to Google Sheet (non-blocking)
-function syncEditToSheet(docNum, field, oldVal, newVal) {
+async function saveFieldToSupabase(docNum, field, newVal) {
   const status = document.getElementById("editSyncStatus");
-  if (status) status.textContent = "Saving...";
-  fetch(GSHEET_URL, {
-    method: "POST",
-    body: JSON.stringify({
-      action: "edit",
-      docNum: docNum,
-      field: field,
-      oldVal: typeof oldVal === "object" ? JSON.stringify(oldVal) : (oldVal || ""),
-      newVal: typeof newVal === "object" ? JSON.stringify(newVal) : (newVal || ""),
-      user: currentUser || "Unknown"
-    }),
-    headers: { "Content-Type": "text/plain" }
-  })
-  .then(r => r.json())
-  .then(d => { if (status) status.textContent = "Saved"; setTimeout(() => { if (status) status.textContent = ""; }, 2000); })
-  .catch(e => { if (status) status.textContent = "Sync error"; });
+  if (status) status.textContent = "Saving…";
+  const update = fieldToUpdate(field, newVal);
+  const { error } = await sb.from("records").update(update).eq("doc_num", docNum);
+  if (error) {
+    if (status) { status.textContent = "Save failed"; setTimeout(() => status.textContent = "", 3000); }
+    console.error("Save failed:", error);
+    return false;
+  }
+  const rec = DATA?.records?.find(r => r.doc_num === docNum);
+  if (rec) applyUpdateToRecord(rec, field, newVal);
+  if (status) { status.textContent = "Saved"; setTimeout(() => status.textContent = "", 1500); }
+  return true;
 }
 
-// Load edits from Google Sheet on startup
-async function loadEditsFromSheet() {
-  try {
-    const resp = await fetch(GSHEET_URL);
-    const rows = await resp.json();
-    if (!rows || rows.length <= 1) return; // empty or just headers
-    // rows[0] might be headers, data starts at 1
-    const startIdx = (rows[0] && rows[0][0] === "docNum") ? 1 : 0;
-    for (let i = startIdx; i < rows.length; i++) {
-      const [docNum, field, newVal, user, ts, oldVal] = rows[i];
-      if (!docNum || !field) continue;
-      if (!manualEdits[docNum]) manualEdits[docNum] = {};
-      // For address fields, the value might be JSON
-      if ((field === "prop_address" || field === "mail_address") && newVal) {
-        try {
-          // If it's a full address string like "123 Main, Houston, TX 77001", just store it
-          manualEdits[docNum][field] = newVal;
-        } catch(e) {
-          manualEdits[docNum][field] = newVal;
-        }
-      } else {
-        manualEdits[docNum][field] = newVal;
-      }
-    }
-    saveEditsToStorage();
-  } catch(e) { /* Sheet not available, use localStorage cache */ }
+// Parse "123 Main St, Houston, TX 77001" → { address, city, state, zip }
+function parseAddress(val) {
+  const parts = val.split(",").map(s => s.trim());
+  if (parts.length < 2) return { address: val, city: "", state: "", zip: "" };
+  const lastPart = parts[parts.length - 1];
+  const stZip = lastPart.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+  if (stZip) {
+    return {
+      address: parts[0],
+      city:    parts.length >= 3 ? parts.slice(1, -1).join(", ") : "",
+      state:   stZip[1].toUpperCase(),
+      zip:     stZip[2],
+    };
+  }
+  return { address: parts[0], city: parts.slice(1).join(", "), state: "", zip: "" };
 }
 
-// ── Undo History ──────────────────────────────────────────────────
-// Each entry: { docNum, field, oldVal, newVal, timestamp }
-// oldVal is an object for address fields: { address, city, state, zip }
+// ── Undo (localStorage, per-browser) ─────────────────────────────
 let undoStack = [];
 try {
   const stored = localStorage.getItem("harris_leads_undo");
@@ -754,17 +816,15 @@ try {
 } catch(e) { undoStack = []; }
 
 function saveUndoToStorage() {
-  // Keep last 50 undos max
   if (undoStack.length > 50) undoStack = undoStack.slice(-50);
   try { localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack)); } catch(e) {}
 }
 
 function pushUndo(docNum, field, oldVal, newVal) {
-  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now(), user: currentUser || "Unknown" });
+  const user = currentProfile?.display_name || "Unknown";
+  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now(), user });
   saveUndoToStorage();
   updateUndoUI();
-  // Sync to Google Sheet
-  syncEditToSheet(docNum, field, oldVal, newVal);
 }
 
 function updateUndoUI() {
@@ -777,115 +837,95 @@ function updateUndoUI() {
   } else {
     btn.disabled = false;
     const last = undoStack[undoStack.length - 1];
-    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal" };
-    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum}${last.user ? ' by ' + last.user : ''}`;
+    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", grantor_name: "Grantor", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal", sale_date: "Sale Date" };
+    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum} by ${last.user}`;
   }
 }
 
-function undoLastEdit() {
+async function undoLastEdit() {
   if (undoStack.length === 0) return;
   const entry = undoStack.pop();
   saveUndoToStorage();
-
-  const rec = DATA.records.find(r => r.doc_num === entry.docNum);
-  if (!rec) { updateUndoUI(); return; }
-
-  // Restore the old value
-  if (entry.field === "prop_address" || entry.field === "mail_address") {
-    const prefix = entry.field === "prop_address" ? "prop" : "mail";
-    const old = entry.oldVal || {};
-    rec[prefix + "_address"] = old.address || "";
-    rec[prefix + "_city"] = old.city || "";
-    rec[prefix + "_state"] = old.state || "";
-    rec[prefix + "_zip"] = old.zip || "";
-    // Update manualEdits
-    if (manualEdits[entry.docNum]) {
-      if (old.address || old.city || old.state || old.zip) {
-        manualEdits[entry.docNum][prefix + "_address"] = old.address || "";
-        manualEdits[entry.docNum][prefix + "_city"] = old.city || "";
-        manualEdits[entry.docNum][prefix + "_state"] = old.state || "";
-        manualEdits[entry.docNum][prefix + "_zip"] = old.zip || "";
-      } else {
-        delete manualEdits[entry.docNum][prefix + "_address"];
-        delete manualEdits[entry.docNum][prefix + "_city"];
-        delete manualEdits[entry.docNum][prefix + "_state"];
-        delete manualEdits[entry.docNum][prefix + "_zip"];
-      }
-    }
-  } else {
-    rec[entry.field] = entry.oldVal || "";
-    if (manualEdits[entry.docNum]) {
-      if (entry.oldVal) {
-        manualEdits[entry.docNum][entry.field] = entry.oldVal;
-      } else {
-        delete manualEdits[entry.docNum][entry.field];
-      }
-      // Clean up empty edit objects
-      if (Object.keys(manualEdits[entry.docNum]).length === 0) {
-        delete manualEdits[entry.docNum];
-      }
-    }
-  }
-
-  saveEditsToStorage();
   updateUndoUI();
-  renderTable();
-  renderPagination();
-}
-
-function applyManualEdits(records) {
-  records.forEach(r => {
-    const edits = manualEdits[r.doc_num];
-    if (edits) {
-      if (edits.owner) r.owner = edits.owner;
-      if (edits.co_borrower) r.co_borrower = edits.co_borrower;
-      if (edits.legal) r.legal = edits.legal;
-      if (edits.prop_address) r.prop_address = edits.prop_address;
-      if (edits.prop_city) r.prop_city = edits.prop_city;
-      if (edits.prop_state) r.prop_state = edits.prop_state;
-      if (edits.prop_zip) r.prop_zip = edits.prop_zip;
-      if (edits.mail_address) r.mail_address = edits.mail_address;
-      if (edits.mail_city) r.mail_city = edits.mail_city;
-      if (edits.mail_state) r.mail_state = edits.mail_state;
-      if (edits.mail_zip) r.mail_zip = edits.mail_zip;
-      if (edits.amount) r.amount = edits.amount;
-    }
-  });
+  const ok = await saveFieldToSupabase(entry.docNum, entry.field, entry.oldVal);
+  if (ok) { renderTable(); renderPagination(); }
 }
 
 function startEdit(docNum, field, cellEl) {
   if (cellEl.classList.contains("editing")) return;
+  // Only editors and admins can edit
+  if (!currentProfile || (currentProfile.role !== "admin" && currentProfile.role !== "editor")) {
+    const status = document.getElementById("editSyncStatus");
+    if (status) { status.textContent = "Read-only — ask admin for editor access"; setTimeout(() => status.textContent = "", 3000); }
+    return;
+  }
   cellEl.classList.add("editing");
 
   const rec = DATA.records.find(r => r.doc_num === docNum);
   if (!rec) return;
 
   let currentVal = "";
-  if (field === "owner") {
-    currentVal = rec.owner || "";
-  } else if (field === "co_borrower") {
-    currentVal = rec.co_borrower || "";
-  } else if (field === "prop_address") {
+  if (field === "prop_address") {
     currentVal = [rec.prop_address, rec.prop_city, rec.prop_state, rec.prop_zip].filter(Boolean).join(", ");
   } else if (field === "mail_address") {
     currentVal = [rec.mail_address, rec.mail_city, rec.mail_state, rec.mail_zip].filter(Boolean).join(", ");
-  } else if (field === "amount") {
-    currentVal = rec.amount || "";
-  } else if (field === "legal") {
-    currentVal = rec.legal || "";
+  } else {
+    currentVal = rec[field] || "";
+  }
+
+  // match_confidence uses a dropdown (fixed values: none / low / medium / high)
+  if (field === "match_confidence") {
+    const select = document.createElement("select");
+    select.style.cssText = "background:var(--surface2);color:var(--text);border:1px solid var(--accent);border-radius:4px;padding:3px 6px;font-size:0.75rem;outline:none;width:100%";
+    ["none", "low", "medium", "high"].forEach(opt => {
+      const o = document.createElement("option");
+      o.value = opt; o.textContent = opt;
+      if (opt === (currentVal || "none")) o.selected = true;
+      select.appendChild(o);
+    });
+    cellEl.innerHTML = "";
+    cellEl.appendChild(select);
+    select.focus();
+
+    let committed = false;
+    async function commitSelect() {
+      if (committed) return;
+      committed = true;
+      const val = select.value;
+      cellEl.classList.remove("editing");
+      if (val === (currentVal || "none")) {
+        cellEl.innerHTML = `<span class="conf-pill conf-${val}">${val}</span>`;
+        return;
+      }
+      pushUndo(docNum, field, currentVal || "none", val);
+      applyUpdateToRecord(rec, field, val);
+      cellEl.innerHTML = `<span class="conf-pill conf-${val}">${val}</span>`;
+      await saveFieldToSupabase(docNum, field, val);
+      cellEl.classList.add("edit-saved");
+      setTimeout(() => cellEl.classList.remove("edit-saved"), 700);
+    }
+
+    select.addEventListener("change", commitSelect);
+    select.addEventListener("blur", commitSelect);
+    select.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.preventDefault(); committed = true; cellEl.classList.remove("editing"); renderTable(); }
+    });
+    return;
   }
 
   const placeholders = {
     owner: "Enter owner name…",
     co_borrower: "Enter co-borrower name…",
+    grantor_name: "Enter grantor / deceased name…",
     prop_address: "Enter address, city, ST zip…",
     mail_address: "Enter address, city, ST zip…",
     amount: "Enter amount (e.g. $250,000)…",
-    legal: "Enter legal description…"
+    legal: "Enter legal description…",
+    sale_date: "YYYY-MM-DD",
   };
 
   const input = document.createElement("input");
-  input.type = "text";
+  input.type = field === "sale_date" ? "date" : "text";
   input.value = currentVal;
   input.placeholder = placeholders[field] || "Enter value…";
 
@@ -894,68 +934,42 @@ function startEdit(docNum, field, cellEl) {
   input.focus();
   input.select();
 
-  function commitEdit() {
+  async function commitEdit() {
     const val = input.value.trim();
     cellEl.classList.remove("editing");
 
-    // Skip if nothing changed
     if (val === currentVal) {
-      cellEl.innerHTML = currentVal || '<span style="color:var(--text-muted)">--</span>';
       if (field === "prop_address" || field === "mail_address") {
         const pfx = field === "prop_address" ? "prop" : "mail";
         const disp = [rec[pfx+"_address"], rec[pfx+"_city"], rec[pfx+"_state"], rec[pfx+"_zip"]].filter(Boolean).join(", ");
         cellEl.innerHTML = disp || '<span style="color:var(--text-muted)">--</span>';
+      } else {
+        cellEl.innerHTML = currentVal || '<span style="color:var(--text-muted)">--</span>';
       }
       return;
     }
 
-    if (!manualEdits[docNum]) manualEdits[docNum] = {};
-
-    if (field === "owner" || field === "co_borrower" || field === "legal") {
-      pushUndo(docNum, field, currentVal, val);
-      rec[field] = val;
-      manualEdits[docNum][field] = val;
-      cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
-    } else if (field === "prop_address" || field === "mail_address") {
-      // Snapshot old address components for undo
+    if (field === "prop_address" || field === "mail_address") {
       const prefix = field === "prop_address" ? "prop" : "mail";
-      pushUndo(docNum, field, {
+      const oldAddr = {
         address: rec[prefix + "_address"] || "",
-        city: rec[prefix + "_city"] || "",
-        state: rec[prefix + "_state"] || "",
-        zip: rec[prefix + "_zip"] || ""
-      }, val);
-      // Parse "address, city, ST zip" format
-      const parts = val.split(",").map(s => s.trim());
-      if (parts.length >= 2) {
-        rec[prefix + "_address"] = parts[0];
-        const lastPart = parts[parts.length - 1];
-        const stZip = lastPart.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-        if (stZip) {
-          rec[prefix + "_state"] = stZip[1].toUpperCase();
-          rec[prefix + "_zip"] = stZip[2];
-          rec[prefix + "_city"] = parts.length >= 3 ? parts.slice(1, -1).join(", ") : "";
-        } else {
-          rec[prefix + "_city"] = parts.slice(1).join(", ");
-        }
-      } else {
-        rec[prefix + "_address"] = val;
-      }
-      manualEdits[docNum][prefix + "_address"] = rec[prefix + "_address"] || "";
-      manualEdits[docNum][prefix + "_city"] = rec[prefix + "_city"] || "";
-      manualEdits[docNum][prefix + "_state"] = rec[prefix + "_state"] || "";
-      manualEdits[docNum][prefix + "_zip"] = rec[prefix + "_zip"] || "";
-
-      const display = [rec[prefix + "_address"], rec[prefix + "_city"], rec[prefix + "_state"], rec[prefix + "_zip"]].filter(Boolean).join(", ");
+        city:    rec[prefix + "_city"]    || "",
+        state:   rec[prefix + "_state"]   || "",
+        zip:     rec[prefix + "_zip"]     || "",
+      };
+      const newAddr = parseAddress(val);
+      pushUndo(docNum, field, oldAddr, newAddr);
+      applyUpdateToRecord(rec, field, newAddr);
+      const display = [newAddr.address, newAddr.city, newAddr.state, newAddr.zip].filter(Boolean).join(", ");
       cellEl.innerHTML = display || '<span style="color:var(--text-muted)">--</span>';
-    } else if (field === "amount") {
+      await saveFieldToSupabase(docNum, field, newAddr);
+    } else {
       pushUndo(docNum, field, currentVal, val);
-      rec.amount = val;
-      manualEdits[docNum].amount = val;
+      applyUpdateToRecord(rec, field, val);
       cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
+      await saveFieldToSupabase(docNum, field, val);
     }
 
-    saveEditsToStorage();
     cellEl.classList.add("edit-saved");
     setTimeout(() => cellEl.classList.remove("edit-saved"), 700);
   }
@@ -998,69 +1012,73 @@ const DISTRESS_FLAGS = new Set([
   "Probate / estate", "Bankruptcy",
 ]);
 
+// ── Normalize Supabase rows → dashboard shape ──────────────────────
+// Dashboard code expects `filed` and `legal`, Supabase stores `filed_date` and `legal_description`.
+// We aliass them after fetch so rendering/filtering code stays untouched.
+function normalizeFromDb(r) {
+  r.filed = r.filed_date || "";
+  r.legal = r.legal_description || "";
+  r._source = r.doc_type === "FRCL" ? "foreclosure" : "clerk";
+  // Foreclosure stat card + filter lookups use short code "FRCL"
+  if (r.doc_type === "FRCL") r.cat = "FRCL";
+  if (!r.flags) r.flags = [];
+  return r;
+}
+
 // ── Load Data ──────────────────────────────────────────────────────
 async function loadData() {
-  // Load shared edits from Google Sheet first
-  await loadEditsFromSheet();
-
-  const resp = await fetch("records.json");
-  DATA = await resp.json();
-
-  // Mark all main records as source "clerk"
-  DATA.records.forEach(r => { r._source = "clerk"; });
-
-  // Try loading foreclosure records (may not exist yet)
-  try {
-    const fResp = await fetch("foreclosures.json");
-    if (fResp.ok) {
-      FRCL_DATA = await fResp.json();
-      // Normalize foreclosure records into the same shape as main scraper records
-      (FRCL_DATA.records || []).forEach(fr => {
-        fr._source = "foreclosure";
-        fr.cat = "FRCL";
-        fr.cat_label = "Foreclosure Posting";
-        fr.doc_type = "FRCL";
-        fr.score = fr.score || 80;  // default high score for foreclosures
-        fr.filed = fr.file_date || "";
-        // Map grantor to owner (the person being foreclosed on IS the owner/contact)
-        fr.owner = fr.grantor || fr.grantor_name || "";
-        fr.co_borrower = fr.co_borrower || "";
-        fr.grantor_name = fr.grantor || fr.grantor_name || "";
-        // Map doc_id to doc_num so it shows in the Doc # column
-        fr.doc_num = fr.doc_id || fr.doc_num || "";
-        // Map legal_description to legal
-        fr.legal = fr.legal_description || fr.legal || "";
-        // Map property_address → prop_address (scraper vs dashboard field names)
-        fr.prop_address = fr.property_address || fr.prop_address || "";
-        fr.prop_city = fr.property_city || fr.prop_city || "";
-        fr.prop_state = fr.property_state || fr.prop_state || "";
-        fr.prop_zip = fr.property_zip || fr.prop_zip || "";
-        fr.flags = fr.flags || ["Pre-foreclosure / trustee sale"];
-        fr.match_confidence = fr.match_confidence || "none";
-        // Batch tagging — records without batch_id are from pre-batch runs
-        if (!fr.batch_id) {
-          fr.batch_id = "B0";
-          fr.batch_label = "Batch 0 — Pre-batch records";
-        }
-      });
-      // Apply any manual edits from localStorage
-      applyManualEdits(FRCL_DATA.records || []);
-      // Merge into main DATA
-      DATA.records = DATA.records.concat(FRCL_DATA.records || []);
-      DATA.total = DATA.records.length;
-    }
-  } catch(e) { /* foreclosures.json not yet available */ }
-
-  let metaHtml = `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}`;
-  if (FRCL_DATA) {
-    metaHtml += `<br>Foreclosures: ${FRCL_DATA.total || 0} postings`;
+  // Fetch in pages of 1000 (Supabase default max per request)
+  const all = [];
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from("records")
+      .select("*")
+      .order("score", { ascending: false, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (error) { console.error(error); alert("Load failed: " + error.message); return; }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
-  document.getElementById("meta").innerHTML = metaHtml;
+
+  all.forEach(normalizeFromDb);
+
+  const frclCount = all.filter(r => r.doc_type === "FRCL").length;
+  const dates = all.map(r => r.filed_date).filter(Boolean).sort();
+  DATA = {
+    fetched_at: new Date().toISOString(),
+    source: "Supabase (live)",
+    date_range: { from: dates[0] || "", to: dates[dates.length - 1] || "" },
+    total: all.length,
+    records: all,
+  };
+  FRCL_DATA = { total: frclCount };   // kept for legacy meta display
+
+  document.getElementById("meta").innerHTML =
+    `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}<br>Foreclosures: ${frclCount} postings`;
 
   buildStats();
   buildCharts();
   populateFilters();
   applyFilters();
+}
+
+// ── Realtime: live updates when anyone edits a record ──────────────
+function subscribeRealtime() {
+  if (realtimeChannel) return;
+  realtimeChannel = sb
+    .channel("records-changes")
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "records" }, (payload) => {
+      const updated = payload.new;
+      const rec = DATA?.records?.find(r => r.doc_num === updated.doc_num);
+      if (!rec) return;
+      Object.assign(rec, normalizeFromDb({ ...updated }));
+      renderTable();
+    })
+    .subscribe();
 }
 
 // ── Stat Cards ─────────────────────────────────────────────────────
@@ -1388,36 +1406,37 @@ function renderTable() {
     const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
 
     const rowIdx = (currentPage - 1) * perPage + filtered.indexOf(r);
-    const grantorCol = (r.cat === "PROBATE" || r.cat === "FRCL") ? (r.grantor_name || '<span style="color:var(--text-muted)">--</span>') : '<span style="color:var(--text-muted)">--</span>';
+    const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+    const hasEdits = (r.manual_overrides || []).length > 0;
+    const editMark = hasEdits ? '<span class="edit-dot" title="Manually edited"></span>' : '';
+    const mutedDash = '<span style="color:var(--text-muted)">--</span>';
+    const cell = (field, displayVal, extraStyle) => {
+      const content = displayVal || mutedDash;
+      const style = extraStyle ? ` style="${extraStyle}"` : "";
+      if (editable) {
+        return `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','${field}',this)" title="Double-click to edit"${style}>${content}</td>`;
+      }
+      return `<td onclick="openModal(${rowIdx})"${style}>${content}</td>`;
+    };
 
     html += `<tr class="${isSelected ? 'selected' : ''}" data-idx="${rowIdx}">
       <td><input type="checkbox" class="row-cb" ${isSelected ? 'checked' : ''} onchange="toggleRow('${r.doc_num}', this.checked)"></td>
-      <td class="score-cell" onclick="openModal(${rowIdx})"><span class="score-pill ${scoreCls}">${r.score}</span></td>
+      <td class="score-cell" onclick="openModal(${rowIdx})"><span class="score-pill ${scoreCls}">${r.score || 0}</span>${editMark}</td>
       <td onclick="openModal(${rowIdx})">${r.filed || ""}</td>
-      <td onclick="openModal(${rowIdx})">${r.sale_date || '<span style="color:var(--text-muted)">--</span>'}</td>
-      <td onclick="openModal(${rowIdx})"><span class="type-badge">${r.doc_type}</span></td>
-      <td onclick="openModal(${rowIdx})">${r.cat_label}</td>
-      ${r._source === "foreclosure"
-        ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','owner',this)" title="Double-click to edit">${r.owner || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
-        : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.owner || ""}</td>`}
-      ${r._source === "foreclosure"
-        ? `<td class="owner-cell editable-cell" ondblclick="startEdit('${r.doc_num}','co_borrower',this)" title="Double-click to edit">${r.co_borrower || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
-        : `<td class="owner-cell" onclick="openModal(${rowIdx})">${r.co_borrower || '<span style="color:var(--text-muted)">--</span>'}</td>`}
-      <td class="owner-cell" onclick="openModal(${rowIdx})">${grantorCol}</td>
+      ${cell("sale_date", r.sale_date)}
+      <td onclick="openModal(${rowIdx})"><span class="type-badge">${r.doc_type || ""}</span></td>
+      <td onclick="openModal(${rowIdx})">${r.cat_label || ""}</td>
+      ${cell("owner", r.owner)}
+      ${cell("co_borrower", r.co_borrower)}
+      ${cell("grantor_name", r.grantor_name)}
       <td onclick="openModal(${rowIdx})">${flagsHtml}</td>
-      ${r._source === "foreclosure"
-        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','legal',this)" title="Double-click to edit">${r.legal || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
-        : `<td onclick="openModal(${rowIdx})">${r.legal || ""}</td>`}
-      ${r._source === "foreclosure"
-        ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','prop_address',this)" title="Double-click to edit">${propAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
-        : `<td class="addr-cell" onclick="openModal(${rowIdx})">${propAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
-      ${r._source === "foreclosure"
-        ? `<td class="addr-cell editable-cell" ondblclick="startEdit('${r.doc_num}','mail_address',this)" title="Double-click to edit">${mailAddr || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
-        : `<td class="addr-cell" onclick="openModal(${rowIdx})">${mailAddr || '<span style="color:var(--text-muted)">--</span>'}</td>`}
-      ${r._source === "foreclosure"
-        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','amount',this)" title="Double-click to edit" style="font-size:0.78rem">${r.amount || '<span style=\"color:var(--text-muted)\">--</span>'}</td>`
-        : `<td onclick="openModal(${rowIdx})" style="font-size:0.78rem">${r.amount || '<span style="color:var(--text-muted)">--</span>'}</td>`}
-      <td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>
+      ${cell("legal", r.legal)}
+      ${cell("prop_address", propAddr)}
+      ${cell("mail_address", mailAddr)}
+      ${cell("amount", r.amount, "font-size:0.78rem")}
+      ${editable
+        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','match_confidence',this)" title="Double-click to edit"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>`
+        : `<td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>`}
       <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
@@ -1735,9 +1754,14 @@ function closeModal() {
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
 // ── Init ───────────────────────────────────────────────────────────
-initUserBar();
-loadData();
-updateUndoUI();
+(async () => {
+  updateUndoUI();
+  const ok = await checkAuth();
+  if (ok) {
+    await loadData();
+    subscribeRealtime();
+  }
+})();
 </script>
 </body>
 </html>

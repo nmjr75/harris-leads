@@ -1,0 +1,29 @@
+# Secrets — never commit these
+.env
+*.env
+supabase/.env
+!.env.example
+!supabase/.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Local scratch
+scratch/
+tmp/
