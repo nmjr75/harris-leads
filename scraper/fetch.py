@@ -1490,7 +1490,22 @@ class ClerkScraper:
                     if enc_id:
                         log.info(f"  Submitting auto-submit form...")
                         await pdf_page.evaluate("document.getElementById('form1').submit()")
-                        await asyncio.sleep(5)
+                        # Wait for the navigation triggered by the form submit to finish
+                        # before we inspect the page — prevents "execution context destroyed"
+                        try:
+                            await pdf_page.wait_for_load_state("domcontentloaded", timeout=30000)
+                        except Exception:
+                            pass
+                        await asyncio.sleep(2)
+
+                # Safe title read — page may still be navigating; retry once on race
+                async def _safe_title():
+                    for _ in range(2):
+                        try:
+                            return await pdf_page.title()
+                        except Exception:
+                            await asyncio.sleep(2)
+                    return ""
 
                 # Try to get the response body — might be PDF now
                 # Use page.pdf() to capture what's displayed, or check content
@@ -1505,7 +1520,7 @@ class ClerkScraper:
                         rec["_pdf_bytes"] = body
                         downloaded += 1
                         log.info(f"  PDF downloaded: {len(body):,} bytes")
-                    elif "View Instrument" in (await pdf_page.title()):
+                    elif "View Instrument" in (await _safe_title()):
                         # Still on the HTML page — try the form POST via API
                         enc_el = await pdf_page.query_selector("input#encId")
                         if enc_el:
@@ -1542,11 +1557,14 @@ class ClerkScraper:
                             log.warning(f"  {doc_num}: View Instrument page but no encId")
                             failed += 1
                     else:
-                        page_text = await pdf_page.inner_text("body")
+                        try:
+                            page_text = await pdf_page.inner_text("body")
+                        except Exception:
+                            page_text = ""
                         if "unavailable" in page_text.lower():
                             log.info(f"  {doc_num}: document unavailable")
                         else:
-                            log.warning(f"  {doc_num}: unexpected page — {(await pdf_page.title())[:50]}")
+                            log.warning(f"  {doc_num}: unexpected page — {(await _safe_title())[:50]}")
                         failed += 1
                 except Exception as api_err:
                     log.warning(f"  {doc_num}: API request failed — {api_err}")
