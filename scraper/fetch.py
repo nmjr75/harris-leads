@@ -1562,7 +1562,7 @@ class ClerkScraper:
                  f"out of {len(candidates)}")
 
     async def run(self):
-        """Scrape clerk records and download PDFs in the same browser session."""
+        """Scrape clerk records. Keeps browser open for PDF downloads later."""
         if not PLAYWRIGHT_AVAILABLE:
             log.error("Playwright not installed.")
             return []
@@ -1589,10 +1589,8 @@ class ClerkScraper:
             self.results.extend(recs)
             await asyncio.sleep(2)
 
-        # Download PDFs while browser is still open and authenticated
-        await self._download_pdfs(self._page, self.results)
-
-        await self.close_browser()
+        # Browser stays open — PDF downloads happen after HCAD enrichment
+        # (only for records HCAD can't resolve). Call close_browser() when done.
 
         return self.results
 
@@ -2160,19 +2158,22 @@ async def main():
              f"low={confidence_counts['low']}, "
              f"none={confidence_counts['none']}")
 
-    # 4b. PDF EXTRACTION — download and read clerk PDFs for records
-    #     with no property address (match_confidence == "none").
-    #     Uses same approach as foreclosure scraper:
-    #     Login with requests → download from ViewEdocs encrypted URLs → Gemini/OCR
+    # 4b. PDF DOWNLOAD + EXTRACTION — only for records HCAD couldn't resolve.
+    #     Downloads PDFs using the same Playwright browser that scraped results
+    #     (browser is still open). Then extracts addresses via Gemini/pdfplumber.
     no_address_records = [r for r in deduped
                           if r.get("match_confidence") == "none"
-                          and not r.get("prop_address", "").strip()]
+                          and not r.get("prop_address", "").strip()
+                          and r.get("clerk_url", "")
+                          and "ViewEdocs" in r.get("clerk_url", "")]
     if no_address_records:
-        log.info(f"Starting PDF extraction for {len(no_address_records)} records with no address...")
+        log.info(f"PDF download: {len(no_address_records)} records need PDFs (HCAD couldn't resolve)")
         try:
-            # Use Playwright browser: login + download PDFs
-            # (RP portal generates ViewEdocs links via JavaScript,
-            #  so only a real browser can access them)
+            # Download PDFs using the still-open Playwright browser
+            await scraper._download_pdfs(scraper._page, no_address_records,
+                                         max_pdfs=150, time_cap_minutes=120)
+
+            # Extract data from downloaded PDFs
             pdf_improved = await enrich_from_clerk_pdf(deduped,
                                                        max_pdfs=150,
                                                        time_cap_minutes=30)
@@ -2181,9 +2182,12 @@ async def main():
             with_address = sum(1 for r in deduped if r.get("prop_address", "").strip())
             log.info(f"After PDF extraction: {with_address} records with address")
         except Exception as e:
-            log.warning(f"PDF extraction failed: {e}")
+            log.warning(f"PDF download/extraction failed: {e}")
     else:
         log.info("All records already have addresses — skipping PDF extraction")
+
+    # Close Playwright browser — no longer needed
+    await scraper.close_browser()
 
     # 4c. HCAD LIVE VERIFICATION — probate cases only
     #     For probate records that STILL have no/low confidence after PDF
