@@ -1400,9 +1400,166 @@ class ClerkScraper:
 
         return records
 
-    async def run(self, keep_browser=False):
-        """Scrape clerk records. If keep_browser=True, leaves browser open
-        for PDF downloads (call close_browser() when done)."""
+    async def _download_pdfs(self, page, records: list, max_pdfs: int = 150,
+                             time_cap_minutes: int = 45):
+        """Download PDFs for records that have Film Code links.
+
+        Uses the SAME Playwright browser that scraped the results.
+        Clicks each Film Code link → login on first click → subsequent
+        PDFs download within the authenticated session.
+
+        The ViewEdocs page returns an HTML auto-submit form. We let the
+        browser handle it naturally — submit the form and capture the
+        PDF response.
+
+        Stores raw PDF bytes in rec["_pdf_bytes"] for later extraction.
+        """
+        candidates = [r for r in records
+                      if r.get("clerk_url", "")
+                      and "ViewEdocs" in r.get("clerk_url", "")]
+
+        if not candidates:
+            log.info("PDF download: no records with Film Code links")
+            return
+
+        if len(candidates) > max_pdfs:
+            log.info(f"PDF download: {len(candidates)} candidates, capping at {max_pdfs}")
+            candidates = candidates[:max_pdfs]
+
+        log.info(f"PDF download: {len(candidates)} PDFs to download during scraping")
+
+        username = os.environ.get("CCLERK_USERNAME", "")
+        password = os.environ.get("CCLERK_PASSWORD", "")
+        logged_in = False
+        downloaded = 0
+        failed = 0
+        deadline = time.time() + time_cap_minutes * 60
+
+        for i, rec in enumerate(candidates):
+            if time.time() > deadline:
+                log.warning(f"PDF download: {time_cap_minutes}-min time cap, "
+                            f"processed {i}/{len(candidates)}")
+                break
+
+            doc_num = rec.get("doc_num", "?")
+            clerk_url = rec.get("clerk_url", "")
+            log.info(f"  PDF [{i+1}/{len(candidates)}] {doc_num}")
+
+            try:
+                # Open a new tab to download the PDF (keeps search results intact)
+                pdf_page = await self._ctx.new_page()
+
+                # Navigate to the ViewEdocs URL
+                resp = await pdf_page.goto(clerk_url, timeout=30000,
+                                           wait_until="networkidle")
+
+                # Handle login redirect
+                if "login" in pdf_page.url.lower() and username and password:
+                    if not logged_in:
+                        log.info(f"  Login required — logging in...")
+                        await pdf_page.fill("input[name*='UserName']", username)
+                        await pdf_page.fill("input[name*='Password']", password)
+                        btn = pdf_page.locator("input[name*='LoginButton']")
+                        if await btn.count() == 0:
+                            btn = pdf_page.locator("text=LOG IN")
+                        await btn.first.click()
+                        await pdf_page.wait_for_load_state("networkidle", timeout=30000)
+                        await asyncio.sleep(2)
+                        logged_in = True
+                        log.info(f"  Login done — navigating to PDF...")
+
+                        # After login, navigate to the ViewEdocs URL again
+                        resp = await pdf_page.goto(clerk_url, timeout=30000,
+                                                   wait_until="networkidle")
+
+                # Now we should be on the "View Instrument" auto-submit form page.
+                # Wait for the form to auto-submit via jQuery (it does form1.submit())
+                # and the PDF to load.
+                await asyncio.sleep(3)
+
+                # Check if the auto-submit form is present and submit it manually
+                # (headless browser may not execute jQuery auto-submit)
+                form_exists = await pdf_page.locator("form#form1").count()
+                if form_exists > 0:
+                    enc_id = await pdf_page.locator("input#encId").get_attribute("value")
+                    if enc_id:
+                        log.info(f"  Submitting auto-submit form...")
+                        await pdf_page.evaluate("document.getElementById('form1').submit()")
+                        await asyncio.sleep(5)
+
+                # Try to get the response body — might be PDF now
+                # Use page.pdf() to capture what's displayed, or check content
+                current_url = pdf_page.url
+
+                # Check if we can get PDF via the API request using this context's cookies
+                try:
+                    api_resp = await self._ctx.request.get(current_url, timeout=30000)
+                    body = await api_resp.body()
+
+                    if body and body[:4] == b"%PDF":
+                        rec["_pdf_bytes"] = body
+                        downloaded += 1
+                        log.info(f"  PDF downloaded: {len(body):,} bytes")
+                    elif "View Instrument" in (await pdf_page.title()):
+                        # Still on the HTML page — try the form POST via API
+                        enc_el = await pdf_page.query_selector("input#encId")
+                        if enc_el:
+                            enc_val = await enc_el.get_attribute("value")
+                            form_el = await pdf_page.query_selector("form#form1")
+                            action = await form_el.get_attribute("action") if form_el else ""
+                            if action and enc_val:
+                                if not action.startswith("http"):
+                                    action = f"https://www.cclerk.hctx.net/applications/websearch/EComm/{action}"
+
+                                # Get ViewState from the page
+                                vs = await pdf_page.locator("input#__VIEWSTATE").get_attribute("value") or ""
+                                vsg = await pdf_page.locator("input#__VIEWSTATEGENERATOR").get_attribute("value") or ""
+                                ev = await pdf_page.locator("input#__EVENTVALIDATION").get_attribute("value") or ""
+
+                                post_resp = await self._ctx.request.post(action, form={
+                                    "__VIEWSTATE": vs,
+                                    "__VIEWSTATEGENERATOR": vsg,
+                                    "__EVENTVALIDATION": ev,
+                                    "encId": enc_val,
+                                })
+                                post_body = await post_resp.body()
+                                if post_body and post_body[:4] == b"%PDF":
+                                    rec["_pdf_bytes"] = post_body
+                                    downloaded += 1
+                                    log.info(f"  PDF via form POST: {len(post_body):,} bytes")
+                                else:
+                                    log.warning(f"  {doc_num}: form POST returned {len(post_body)} bytes, not PDF")
+                                    failed += 1
+                            else:
+                                log.warning(f"  {doc_num}: no encId or action on page")
+                                failed += 1
+                        else:
+                            log.warning(f"  {doc_num}: View Instrument page but no encId")
+                            failed += 1
+                    else:
+                        page_text = await pdf_page.inner_text("body")
+                        if "unavailable" in page_text.lower():
+                            log.info(f"  {doc_num}: document unavailable")
+                        else:
+                            log.warning(f"  {doc_num}: unexpected page — {(await pdf_page.title())[:50]}")
+                        failed += 1
+                except Exception as api_err:
+                    log.warning(f"  {doc_num}: API request failed — {api_err}")
+                    failed += 1
+
+                await pdf_page.close()
+
+            except Exception as e:
+                log.warning(f"  {doc_num}: error — {e}")
+                failed += 1
+
+            await asyncio.sleep(0.5)
+
+        log.info(f"PDF download: {downloaded} downloaded, {failed} failed "
+                 f"out of {len(candidates)}")
+
+    async def run(self):
+        """Scrape clerk records and download PDFs in the same browser session."""
         if not PLAYWRIGHT_AVAILABLE:
             log.error("Playwright not installed.")
             return []
@@ -1429,8 +1586,10 @@ class ClerkScraper:
             self.results.extend(recs)
             await asyncio.sleep(2)
 
-        if not keep_browser:
-            await self.close_browser()
+        # Download PDFs while browser is still open and authenticated
+        await self._download_pdfs(self._page, self.results)
+
+        await self.close_browser()
 
         return self.results
 
@@ -1790,270 +1949,98 @@ async def enrich_from_clerk_pdf(records: list,
                                 page=None,
                                 max_pdfs: int = 150,
                                 time_cap_minutes: int = 30) -> int:
-    """Download and parse clerk PDFs via requests.Session (no Playwright).
+    """Extract data from pre-downloaded PDFs (stored in rec["_pdf_bytes"]).
 
-    Proven two-step download process (tested locally 2026-04-18):
-      1. Login via ASP.NET form POST to clerk portal
-      2. Search by file number via form POST (with __EVENTTARGET)
-      3. GET the ViewEdocs URL → returns 1.5KB HTML auto-submit form
-      4. POST that form (ViewState + encId) → returns raw PDF bytes
-
-    The ViewEdocs page serves an HTML wrapper with jQuery auto-submit.
-    The actual PDF comes from the second POST. This approach uses pure
-    requests — no Playwright, no browser, no PDF viewer issues.
+    PDFs are downloaded during the Playwright scraping session by
+    ClerkScraper._download_pdfs(). This function only does extraction
+    (Gemini → pdfplumber → OCR) on records that have _pdf_bytes set.
 
     Args:
-        records: List of record dicts to process (modified in place).
-        page: Unused (kept for API compatibility).
-        max_pdfs: Maximum number of PDFs to process per run.
-        time_cap_minutes: Stop processing after this many minutes.
+        records: List of record dicts (with _pdf_bytes from download phase).
+        page: Unused.
+        max_pdfs: Maximum PDFs to extract per run.
+        time_cap_minutes: Stop after this many minutes.
 
     Returns:
         Count of records improved with address data.
     """
     to_process = [r for r in records
-                  if r.get("match_confidence") == "none"
-                  and not r.get("prop_address", "").strip()
-                  and r.get("doc_num", "")]
+                  if r.get("_pdf_bytes")
+                  and r.get("match_confidence") == "none"
+                  and not r.get("prop_address", "").strip()]
 
     if not to_process:
-        log.info("PDF extraction: no records need processing")
+        log.info("PDF extraction: no records with downloaded PDFs need processing")
         return 0
 
     if len(to_process) > max_pdfs:
-        log.info(f"PDF extraction: {len(to_process)} records need PDFs, capping at {max_pdfs}")
         to_process = to_process[:max_pdfs]
 
-    log.info(f"PDF extraction: {len(to_process)} records to process "
+    log.info(f"PDF extraction: {len(to_process)} PDFs to extract "
              f"(Gemini={HAS_GEMINI}, pdfplumber={HAS_PDFPLUMBER}, OCR={HAS_OCR})")
 
-    username = os.environ.get("CCLERK_USERNAME", "")
-    password = os.environ.get("CCLERK_PASSWORD", "")
-
-    if not username or not password:
-        log.warning("PDF extraction: CCLERK_USERNAME/PASSWORD not set — cannot download PDFs")
-        return 0
-
-    BASE = "https://www.cclerk.hctx.net"
-    LOGIN_URL = f"{BASE}/Applications/WebSearch/Registration/Login.aspx"
-    SEARCH_URL = f"{BASE}/applications/websearch/RP_R.aspx"
-
-    # Create requests session with full browser headers (must match
-    # foreclosure scraper — clerk portal requires these for auth)
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Referer": "https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx",
-    })
-
-    log.info("PDF extraction: logging in to clerk portal via requests...")
-    if not login_to_cclerk(session):
-        log.warning("PDF extraction: login failed — cannot download PDFs")
-        return 0
-    log.info(f"PDF extraction: login successful — cookies: "
-             f"{[(c.name, c.domain) for c in session.cookies]}")
-
-    # Verify the session works by hitting the search page
-    test_resp = session.get(SEARCH_URL, timeout=30)
-    if "Login.aspx" in test_resp.url:
-        log.warning(f"PDF extraction: session not valid — search page redirected to login")
-        log.warning(f"  URL: {test_resp.url[:100]}")
-        # Cookie domain mismatch? Try without www
-        log.info("  Retrying login without www...")
-        session2 = requests.Session()
-        session2.headers.update(session.headers)
-        alt_login = "https://cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx"
-        try:
-            resp = session2.get(alt_login, timeout=30)
-            soup2 = BeautifulSoup(resp.text, "html.parser")
-            fd = {}
-            for inp in soup2.find_all("input"):
-                name = inp.get("name", "")
-                if name: fd[name] = inp.get("value", "")
-            fd["ctl00$ContentPlaceHolder1$Login1$UserName"] = username
-            fd["ctl00$ContentPlaceHolder1$Login1$Password"] = password
-            fd["ctl00$ContentPlaceHolder1$Login1$LoginButton"] = "LOG IN"
-            resp = session2.post(alt_login, data=fd, timeout=30, allow_redirects=True)
-            if "LOGOUT" in resp.text.upper():
-                log.info("  Alt login successful — using non-www session")
-                session = session2
-            else:
-                log.warning("  Alt login also failed")
-                return 0
-        except Exception as e:
-            log.warning(f"  Alt login error: {e}")
-            return 0
-    else:
-        log.info("PDF extraction: session verified — search page accessible")
-
     improved = 0
-    downloaded = 0
-    failed = 0
     deadline = time.time() + time_cap_minutes * 60
 
     for i, rec in enumerate(to_process):
         if time.time() > deadline:
-            log.warning(f"PDF extraction: {time_cap_minutes}-min time cap reached, "
-                        f"processed {i} of {len(to_process)}")
+            log.warning(f"PDF extraction: {time_cap_minutes}-min time cap, "
+                        f"processed {i}/{len(to_process)}")
             break
 
         doc_num = rec.get("doc_num", "unknown")
         doc_type = rec.get("doc_type", "")
+        pdf_bytes = rec.pop("_pdf_bytes")  # Remove from record after use
 
-        log.info(f"PDF [{i+1}/{len(to_process)}] {doc_num} ({doc_type})")
+        log.info(f"  Extract [{i+1}/{len(to_process)}] {doc_num} ({len(pdf_bytes):,} bytes)")
 
-        try:
-            # Step 1: Search by file number
-            resp = session.get(SEARCH_URL, timeout=30)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            form_data = {}
-            for inp in soup.find_all("input"):
-                name = inp.get("name", "")
-                if name:
-                    form_data[name] = inp.get("value", "")
+        extracted = None
+        extract_source = "none"
 
-            form_data["ctl00$ContentPlaceHolder1$txtFN"] = doc_num
-            form_data["__EVENTTARGET"] = "ctl00$ContentPlaceHolder1$btnSearch"
-            # Remove button value — ASP.NET uses EVENTTARGET instead
-            form_data.pop("ctl00$ContentPlaceHolder1$btnSearch", None)
-            form_data.pop("ctl00$ContentPlaceHolder1$btnClear", None)
+        if HAS_GEMINI:
+            gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
+            if gemini_result and (gemini_result.get("property_address") or
+                                  gemini_result.get("legal_description")):
+                extracted = gemini_result
+                extract_source = "gemini_pdf"
+                log.info(f"    Source: Gemini Vision")
 
-            resp = session.post(SEARCH_URL, data=form_data, timeout=30)
+        if not extracted:
+            raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
+            if raw_text:
+                parsed = parse_address_from_text(raw_text)
+                if parsed.get("property_address") or parsed.get("legal_description"):
+                    extracted = parsed
+                    extract_source = "pdf_text"
+                    log.info(f"    Source: text extraction + regex")
 
-            # Step 2: Find the ViewEdocs URL in search results
-            edoc_matches = re.findall(
-                r'EComm/ViewEdocs\.aspx\?ID=[^"&]+', resp.text
-            )
-            if not edoc_matches:
-                log.warning(f"  {doc_num}: no ViewEdocs link in search results")
-                rec["pdf_status"] = "no_link"
-                failed += 1
-                continue
+        if extracted:
+            addr = extracted.get("property_address", "")
+            if addr:
+                rec["prop_address"] = addr
+                rec["prop_city"] = extracted.get("property_city", "") or "Houston"
+                rec["prop_zip"] = extracted.get("property_zip", "")
+                rec["match_confidence"] = "high"
+                rec["address_source"] = extract_source
+                improved += 1
+                log.info(f"    Address found: {addr[:50]}")
 
-            viewedocs_url = f"{BASE}/applications/websearch/{edoc_matches[0]}"
+            legal = extracted.get("legal_description", "")
+            if legal and not rec.get("legal", "").strip():
+                rec["legal"] = legal
 
-            # Step 3: GET the ViewEdocs page (returns HTML auto-submit form)
-            resp = session.get(viewedocs_url, timeout=60)
+            amount = extracted.get("amount", "")
+            if amount and not rec.get("amount", "").strip():
+                rec["amount"] = amount
 
-            if "Login.aspx" in resp.url:
-                log.warning(f"  {doc_num}: session expired — re-logging in...")
-                if login_to_cclerk(session):
-                    resp = session.get(viewedocs_url, timeout=60)
-                else:
-                    rec["pdf_status"] = "login_required"
-                    failed += 1
-                    continue
+            if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
+                rec["grantor_name"] = extracted["grantor_name"]
+            if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
+                rec["grantee_names"] = extracted["grantee_name"]
+        else:
+            log.info(f"    No property info extracted from {doc_num}")
 
-            # Check if we already got a PDF (some docs serve PDF directly)
-            if resp.content[:4] == b"%PDF":
-                pdf_bytes = resp.content
-                log.info(f"  PDF downloaded directly: {len(pdf_bytes):,} bytes")
-                downloaded += 1
-                rec["pdf_status"] = "downloaded"
-            else:
-                # Step 4: Parse the auto-submit form and POST it
-                soup = BeautifulSoup(resp.text, "html.parser")
-                form = soup.find("form", {"id": "form1"})
-                if not form:
-                    log.warning(f"  {doc_num}: no form found on ViewEdocs page")
-                    rec["pdf_status"] = "no_form"
-                    failed += 1
-                    continue
-
-                action = form.get("action", "")
-                if not action.startswith("http"):
-                    action = f"{BASE}/applications/websearch/EComm/{action}"
-
-                post_data = {}
-                for inp in soup.find_all("input"):
-                    name = inp.get("name", "")
-                    if name:
-                        post_data[name] = inp.get("value", "")
-
-                resp = session.post(action, data=post_data, timeout=60)
-                ct = resp.headers.get("Content-Type", "")
-
-                if resp.content[:4] == b"%PDF":
-                    pdf_bytes = resp.content
-                    log.info(f"  PDF downloaded OK: {len(pdf_bytes):,} bytes")
-                    downloaded += 1
-                    rec["pdf_status"] = "downloaded"
-                elif "Login.aspx" in resp.url:
-                    log.warning(f"  {doc_num}: redirected to login on PDF POST")
-                    login_to_cclerk(session)
-                    rec["pdf_status"] = "login_required"
-                    failed += 1
-                    continue
-                else:
-                    preview = resp.text[:150] if resp.text else "(empty)"
-                    log.warning(f"  {doc_num}: not PDF — type={ct}, size={len(resp.content)}")
-                    log.warning(f"  Preview: {preview}")
-                    rec["pdf_status"] = "not_pdf"
-                    failed += 1
-                    continue
-
-            # Step 5: Extract data from PDF (Gemini → pdfplumber → OCR)
-            extracted = None
-            extract_source = "none"
-
-            if HAS_GEMINI:
-                gemini_result = parse_clerk_pdf_with_gemini(pdf_bytes, doc_num, doc_type)
-                if gemini_result and (gemini_result.get("property_address") or
-                                      gemini_result.get("legal_description")):
-                    extracted = gemini_result
-                    extract_source = "gemini_pdf"
-                    log.info(f"  Source: Gemini Vision")
-
-            if not extracted:
-                raw_text = extract_text_from_pdf(pdf_bytes, doc_num)
-                if raw_text:
-                    parsed = parse_address_from_text(raw_text)
-                    if parsed.get("property_address") or parsed.get("legal_description"):
-                        extracted = parsed
-                        extract_source = "pdf_text"
-                        log.info(f"  Source: text extraction + regex")
-
-            if extracted:
-                addr = extracted.get("property_address", "")
-                if addr:
-                    rec["prop_address"] = addr
-                    rec["prop_city"] = extracted.get("property_city", "") or "Houston"
-                    rec["prop_zip"] = extracted.get("property_zip", "")
-                    rec["match_confidence"] = "high"
-                    rec["address_source"] = extract_source
-                    improved += 1
-                    log.info(f"  Address found: {addr[:50]}")
-
-                legal = extracted.get("legal_description", "")
-                if legal and not rec.get("legal", "").strip():
-                    rec["legal"] = legal
-
-                amount = extracted.get("amount", "")
-                if amount and not rec.get("amount", "").strip():
-                    rec["amount"] = amount
-
-                if extracted.get("grantor_name") and not rec.get("grantor_name", "").strip():
-                    rec["grantor_name"] = extracted["grantor_name"]
-                if extracted.get("grantee_name") and not rec.get("grantee_names", "").strip():
-                    rec["grantee_names"] = extracted["grantee_name"]
-            else:
-                log.info(f"  No property info extracted from {doc_num}")
-
-            time.sleep(0.5)  # Rate limit
-
-        except Exception as e:
-            log.warning(f"  {doc_num}: error — {e}")
-            rec["pdf_status"] = "error"
-            failed += 1
-
-    log.info(f"PDF extraction: {downloaded} downloaded, {failed} failed, "
-             f"{improved} improved out of {len(to_process)} records")
+    log.info(f"PDF extraction: {improved} improved out of {len(to_process)}")
     return improved
 
 
