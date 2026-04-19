@@ -1449,9 +1449,11 @@ class ClerkScraper:
                 # Open a new tab to download the PDF (keeps search results intact)
                 pdf_page = await self._ctx.new_page()
 
-                # Navigate to the ViewEdocs URL
-                resp = await pdf_page.goto(clerk_url, timeout=30000,
-                                           wait_until="networkidle")
+                # Navigate to the ViewEdocs URL (use domcontentloaded —
+                # networkidle never fires because PDF pages keep connections open)
+                resp = await pdf_page.goto(clerk_url, timeout=60000,
+                                           wait_until="domcontentloaded")
+                await asyncio.sleep(2)
 
                 # Handle login redirect
                 if "login" in pdf_page.url.lower() and username and password:
@@ -1463,14 +1465,15 @@ class ClerkScraper:
                         if await btn.count() == 0:
                             btn = pdf_page.locator("text=LOG IN")
                         await btn.first.click()
-                        await pdf_page.wait_for_load_state("networkidle", timeout=30000)
-                        await asyncio.sleep(2)
+                        await pdf_page.wait_for_load_state("domcontentloaded", timeout=60000)
+                        await asyncio.sleep(3)
                         logged_in = True
                         log.info(f"  Login done — navigating to PDF...")
 
                         # After login, navigate to the ViewEdocs URL again
-                        resp = await pdf_page.goto(clerk_url, timeout=30000,
-                                                   wait_until="networkidle")
+                        resp = await pdf_page.goto(clerk_url, timeout=60000,
+                                                   wait_until="domcontentloaded")
+                        await asyncio.sleep(2)
 
                 # Now we should be on the "View Instrument" auto-submit form page.
                 # Wait for the form to auto-submit via jQuery (it does form1.submit())
