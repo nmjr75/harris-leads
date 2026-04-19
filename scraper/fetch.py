@@ -1838,11 +1838,18 @@ async def enrich_from_clerk_pdf(records: list,
     LOGIN_URL = f"{BASE}/Applications/WebSearch/Registration/Login.aspx"
     SEARCH_URL = f"{BASE}/applications/websearch/RP_R.aspx"
 
-    # Create requests session and login
+    # Create requests session with full browser headers (must match
+    # foreclosure scraper — clerk portal requires these for auth)
     session = requests.Session()
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Referer": "https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx",
     })
 
     log.info("PDF extraction: logging in to clerk portal via requests...")
