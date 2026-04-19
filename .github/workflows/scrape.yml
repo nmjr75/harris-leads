@@ -2,14 +2,23 @@ name: Harris County Lead Scraper
 
 on:
   schedule:
-    # Runs at 9:00 AM UTC every day (4 AM CDT / 3 AM CST)
-    - cron: "0 9 * * *"
+    # Weekly catch-up: Sundays at 9:00 AM UTC (4 AM CDT / 3 AM CST)
+    # Picks up back-posted docs from the previous 10 days
+    - cron: "0 9 * * 0"
   workflow_dispatch:
     inputs:
-      lookback_days:
-        description: "Days to look back (default 4)"
+      start_date:
+        description: "Start date YYYY-MM-DD (leave blank to use lookback_days)"
         required: false
-        default: "4"
+        default: ""
+      end_date:
+        description: "End date YYYY-MM-DD (leave blank = today)"
+        required: false
+        default: ""
+      lookback_days:
+        description: "Days to look back (used only if start_date is blank)"
+        required: false
+        default: "1"
 
 permissions:
   contents: write
@@ -27,7 +36,9 @@ jobs:
     timeout-minutes: 180
 
     env:
-      LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
+      START_DATE: ${{ github.event.inputs.start_date || '' }}
+      END_DATE: ${{ github.event.inputs.end_date || '' }}
+      LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '10' }}
       TZ: America/Chicago
 
     steps:
@@ -63,6 +74,8 @@ jobs:
       - name: Run scraper
         run: python scraper/fetch.py
         env:
+          START_DATE: ${{ env.START_DATE }}
+          END_DATE: ${{ env.END_DATE }}
           LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}

@@ -65,6 +65,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "4"))
+START_DATE_ENV = os.getenv("START_DATE", "").strip()
+END_DATE_ENV = os.getenv("END_DATE", "").strip()
 
 CLERK_SEARCH_URL = "https://cclerk.hctx.net/applications/websearch/RP.aspx"
 CLERK_BASE       = "https://www.cclerk.hctx.net"
@@ -2102,8 +2104,16 @@ def export_ghl_csv(records: list, path: str):
 #  Main
 # ═══════════════════════════════════════════════════════════════════════════════
 async def main():
-    end_date   = datetime.now()
-    start_date = end_date - timedelta(days=LOOKBACK_DAYS)
+    if START_DATE_ENV:
+        start_date = datetime.strptime(START_DATE_ENV, "%Y-%m-%d")
+        if END_DATE_ENV:
+            end_date = datetime.strptime(END_DATE_ENV, "%Y-%m-%d")
+        else:
+            end_date = datetime.now()
+        log.info(f"Using explicit date range from START_DATE/END_DATE env")
+    else:
+        end_date   = datetime.now()
+        start_date = end_date - timedelta(days=LOOKBACK_DAYS)
 
     log.info("Harris County Motivated Seller Scraper")
     log.info(f"Date range: {start_date.date()} to {end_date.date()}")
