@@ -669,6 +669,7 @@ const selectedRows = new Set();
 let currentSession = null;
 let currentProfile = null;
 let realtimeChannel = null;
+let currentModalParcelAcct = null;
 
 // ── Auth ──────────────────────────────────────────────────────────
 async function checkAuth() {
@@ -1077,6 +1078,13 @@ function subscribeRealtime() {
       if (!rec) return;
       Object.assign(rec, normalizeFromDb({ ...updated }));
       renderTable();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "property_data" }, (payload) => {
+      const row = payload.new || payload.old;
+      if (!row || !row.parcel_acct) return;
+      if (row.parcel_acct === currentModalParcelAcct) {
+        loadHcadData(currentModalParcelAcct);
+      }
     })
     .subscribe();
 }
@@ -1750,6 +1758,7 @@ function openModal(idx) {
   document.getElementById("modalOverlay").classList.add("active");
   document.body.style.overflow = "hidden";
 
+  currentModalParcelAcct = r.parcel_acct || null;
   loadHcadData(r.parcel_acct);
 }
 
@@ -1791,6 +1800,7 @@ async function loadHcadData(parcelAcct) {
 function closeModal() {
   document.getElementById("modalOverlay").classList.remove("active");
   document.body.style.overflow = "";
+  currentModalParcelAcct = null;
 }
 
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
