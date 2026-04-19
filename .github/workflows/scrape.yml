@@ -67,6 +67,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}
           CCLERK_PASSWORD: ${{ secrets.CCLERK_PASSWORD }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Verify output
         run: |

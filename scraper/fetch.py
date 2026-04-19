@@ -2304,6 +2304,39 @@ async def main():
 
     log.info(f"Done. Total: {len(deduped)} | With address: {with_address}")
 
+    # 8. Slack notification
+    slack_url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if slack_url:
+        try:
+            by_cat = {}
+            for rec in deduped:
+                cat = rec.get("cat_label", rec.get("cat", "Other"))
+                by_cat[cat] = by_cat.get(cat, 0) + 1
+
+            elapsed = (datetime.now() - start_date).days
+            lines = [
+                f"*Harris County Lead Scraper* — {datetime.now().strftime('%Y-%m-%d %I:%M %p CT')}",
+                f"Date range: {start_date.strftime('%m/%d')} – {end_date.strftime('%m/%d/%Y')} ({elapsed} days)",
+                f"*{len(deduped):,} total records* | *{with_address:,} with address* ({100*with_address//max(len(deduped),1)}%)",
+                "",
+                "*By type:*",
+            ]
+            for cat, count in sorted(by_cat.items(), key=lambda x: -x[1]):
+                lines.append(f"  • {cat}: {count}")
+
+            if added_count or merged_count:
+                lines.append("")
+                lines.append(f"*Merge:* {added_count} new, {merged_count} updated")
+
+            lines.append("")
+            lines.append(f"<https://nmjr75.github.io/harris-leads/|View Dashboard>")
+
+            payload = {"text": "\n".join(lines)}
+            requests.post(slack_url, json=payload, timeout=10)
+            log.info("Slack notification sent")
+        except Exception as e:
+            log.warning(f"Slack notification failed: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
