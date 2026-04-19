@@ -1496,7 +1496,7 @@ class ClerkScraper:
 
                 # Check if we can get PDF via the API request using this context's cookies
                 try:
-                    api_resp = await self._ctx.request.get(current_url, timeout=30000)
+                    api_resp = await self._ctx.request.get(current_url, timeout=90000)
                     body = await api_resp.body()
 
                     if body and body[:4] == b"%PDF":
@@ -1519,7 +1519,7 @@ class ClerkScraper:
                                 vsg = await pdf_page.locator("input#__VIEWSTATEGENERATOR").get_attribute("value") or ""
                                 ev = await pdf_page.locator("input#__EVENTVALIDATION").get_attribute("value") or ""
 
-                                post_resp = await self._ctx.request.post(action, form={
+                                post_resp = await self._ctx.request.post(action, timeout=90000, form={
                                     "__VIEWSTATE": vs,
                                     "__VIEWSTATEGENERATOR": vsg,
                                     "__EVENTVALIDATION": ev,
