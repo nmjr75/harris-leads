@@ -1,0 +1,61 @@
+name: HCAD Bulk Sync
+
+# Downloads HCAD's public data ZIPs weekly and populates property_data
+# for every parcel that matches a record in our database.
+#
+# Saturday 3 AM CT = Saturday 8 AM UTC. HCAD refreshes these files
+# roughly once a week, so weekly cadence is enough.
+
+on:
+  schedule:
+    - cron: "0 8 * * 6"  # Saturday 08:00 UTC
+  workflow_dispatch:
+    inputs:
+      sync_all:
+        description: "Load ALL Harris County parcels (Pro-tier only — ignores match filter)"
+        required: false
+        default: "0"
+      data_year:
+        description: "HCAD data year folder (e.g. 2026)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hcad-bulk-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync HCAD → property_data
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SYNC_ALL_PARCELS: ${{ github.event.inputs.sync_all || '0' }}
+      HCAD_DATA_YEAR: ${{ github.event.inputs.data_year || '2026' }}
+      HCAD_WORK_DIR: /tmp/hcad_sync
+      TZ: America/Chicago
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install --upgrade pip && pip install supabase>=2.10.0 python-dotenv
+
+      - name: Run HCAD bulk sync
+        run: python scraper/sync_hcad_bulk.py
+
+      - name: Clean up
+        if: always()
+        run: rm -rf /tmp/hcad_sync

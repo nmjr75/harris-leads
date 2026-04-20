@@ -1,19 +1,25 @@
 name: SIFTstack Queue Worker
 
-# Pulls pending rows from siftstack_queue, runs HCAD enrichment against
-# each record's property address, writes the result to property_data.
+# Pulls pending rows from siftstack_queue, runs the full SIFTstack
+# enrichment pipeline (Smarty + obituary/heir + entity research), generates
+# per-record deep-prospecting PDFs, uploads them to Google Drive, uploads
+# the batch CSV to DataSift (with property enrichment ON, skip trace OFF),
+# and sends a Slack message with all the links.
+#
+# Every queue row that processes successfully is marked 'completed'. Failed
+# rows carry the error message in siftstack_queue.error.
 #
 # Setup (one-time):
-#   1. Create a PAT at https://github.com/settings/tokens/new with `repo`
-#      scope so this workflow can clone the private nmjr75/SiftStack repo.
-#   2. Add it as GH Actions secret `SIFTSTACK_REPO_PAT` in this repo.
-#   3. Ensure SUPABASE_URL + SUPABASE_SECRET_KEY secrets are already set
-#      (they were added for the scraper dual-write).
+#   1. Create a GitHub PAT with `repo` scope so we can clone the private
+#      nmjr75/SiftStack repo. Store as secret SIFTSTACK_REPO_PAT.
+#   2. Set ALL the secrets listed under `env:` below in repo Settings →
+#      Secrets → Actions. Values live in Nelson's password manager.
 
 on:
   schedule:
-    # Every 15 minutes. Idle runs are cheap — checkout + Python setup
-    # + empty-queue exit in ~45s.
+    # Every 15 minutes. Idle runs are cheap — checkout + Python setup +
+    # empty-queue exit in under 1 minute. Slack only fires when there's
+    # an actual DataSift upload.
     - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
@@ -33,13 +39,29 @@ jobs:
   worker:
     name: Process SIFTstack queue
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      # Supabase
+      SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY:  ${{ secrets.SUPABASE_SECRET_KEY }}
+      # Worker config
       SIFTSTACK_BATCH_SIZE: ${{ github.event.inputs.batch_size || '25' }}
-      SIFTSTACK_SRC: ./SiftStack/src
+      SIFTSTACK_SRC:        ./SiftStack/src
+      # Enrichment APIs
+      ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+      SMARTY_AUTH_ID:       ${{ secrets.SMARTY_AUTH_ID }}
+      SMARTY_AUTH_TOKEN:    ${{ secrets.SMARTY_AUTH_TOKEN }}
+      SERPER_API_KEY:       ${{ secrets.SERPER_API_KEY }}
+      FIRECRAWL_API_KEY:    ${{ secrets.FIRECRAWL_API_KEY }}
+      # DataSift upload
+      DATASIFT_EMAIL:       ${{ secrets.DATASIFT_EMAIL }}
+      DATASIFT_PASSWORD:    ${{ secrets.DATASIFT_PASSWORD }}
+      # Google Drive (PDF + CSV storage)
+      GOOGLE_SERVICE_ACCOUNT_KEY:    ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+      GOOGLE_DRIVE_FOLDER_ID_HARRIS: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID_HARRIS }}
+      # Slack notifications
+      SLACK_WEBHOOK_URL:    ${{ secrets.SLACK_WEBHOOK_URL }}
       TZ: America/Chicago
 
     steps:
@@ -62,14 +84,14 @@ jobs:
             scraper/requirements.txt
             SiftStack/requirements.txt
 
-      - name: Install worker dependencies
-        # Keep this lean: just what run_siftstack_worker.py + HCAD lookup need.
-        # (Not installing SiftStack's full requirements.txt — most of it is
-        # for TN scraping, DataSift upload, OCR, etc. which this worker
-        # doesn't touch.)
+      - name: Install SiftStack dependencies
+        # Full pipeline needs Smarty, obituary research, entity research,
+        # PDF generation, DataSift upload, Drive upload. Install SiftStack's
+        # requirements.txt plus harris-leads' supabase.
         run: |
           pip install --upgrade pip
-          pip install supabase>=2.10.0 python-dotenv playwright
+          pip install -r SiftStack/requirements.txt
+          pip install supabase>=2.10.0
 
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
