@@ -1,0 +1,78 @@
+name: SIFTstack Queue Worker
+
+# Pulls pending rows from siftstack_queue, runs HCAD enrichment against
+# each record's property address, writes the result to property_data.
+#
+# Setup (one-time):
+#   1. Create a PAT at https://github.com/settings/tokens/new with `repo`
+#      scope so this workflow can clone the private nmjr75/SiftStack repo.
+#   2. Add it as GH Actions secret `SIFTSTACK_REPO_PAT` in this repo.
+#   3. Ensure SUPABASE_URL + SUPABASE_SECRET_KEY secrets are already set
+#      (they were added for the scraper dual-write).
+
+on:
+  schedule:
+    # Every 15 minutes. Idle runs are cheap — checkout + Python setup
+    # + empty-queue exit in ~45s.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "Max queue rows to process this run"
+        required: false
+        default: "25"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: siftstack-worker
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: Process SIFTstack queue
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SIFTSTACK_BATCH_SIZE: ${{ github.event.inputs.batch_size || '25' }}
+      SIFTSTACK_SRC: ./SiftStack/src
+      TZ: America/Chicago
+
+    steps:
+      - name: Checkout harris-leads
+        uses: actions/checkout@v4
+
+      - name: Checkout SiftStack (private)
+        uses: actions/checkout@v4
+        with:
+          repository: nmjr75/SiftStack
+          token: ${{ secrets.SIFTSTACK_REPO_PAT }}
+          path: SiftStack
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            scraper/requirements.txt
+            SiftStack/requirements.txt
+
+      - name: Install worker dependencies
+        # Keep this lean: just what run_siftstack_worker.py + HCAD lookup need.
+        # (Not installing SiftStack's full requirements.txt — most of it is
+        # for TN scraping, DataSift upload, OCR, etc. which this worker
+        # doesn't touch.)
+        run: |
+          pip install --upgrade pip
+          pip install supabase>=2.10.0 python-dotenv playwright
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run worker
+        run: python scraper/run_siftstack_worker.py
