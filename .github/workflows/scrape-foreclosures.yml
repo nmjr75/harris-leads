@@ -53,6 +53,8 @@ jobs:
           CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}
           CCLERK_PASSWORD: ${{ secrets.CCLERK_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: python scraper/fetch_foreclosures.py
 
       - name: Verify output

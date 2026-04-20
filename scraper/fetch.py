@@ -2330,6 +2330,14 @@ async def main():
     today = datetime.now().strftime("%Y%m%d")
     export_ghl_csv(deduped, f"data/ghl_export_{today}.csv")
 
+    # Dual-write to Supabase + auto-queue qualifying records for SIFTstack.
+    # Silent no-op if SUPABASE_URL / SUPABASE_SECRET_KEY are not set.
+    try:
+        from supabase_sync import upsert_and_autoqueue
+        upsert_and_autoqueue(deduped, source="clerk")
+    except Exception as e:
+        log.warning(f"Supabase sync/auto-queue failed: {e}")
+
     log.info(f"Done. Total: {len(deduped)} | With address: {with_address}")
 
     # 8. Slack notification

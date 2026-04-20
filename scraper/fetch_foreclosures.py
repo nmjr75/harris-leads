@@ -1802,6 +1802,14 @@ def _save_output(records: list, seen_ids: set, today: str, target_months: list):
         json.dump({"seen_ids": sorted(seen_ids), "last_updated": today}, f, indent=2)
     log.info(f"Saved {SEEN_FILE}: {len(seen_ids)} tracked IDs")
 
+    # Dual-write to Supabase + auto-queue qualifying records for SIFTstack.
+    # Silent no-op if SUPABASE_URL / SUPABASE_SECRET_KEY are not set.
+    try:
+        from supabase_sync import upsert_and_autoqueue
+        upsert_and_autoqueue(records, source="foreclosure")
+    except Exception as e:
+        log.warning(f"Supabase sync/auto-queue failed: {e}")
+
     log.info(f"Done. Total: {len(records)} | With address: {with_address}")
 
 
@@ -3560,6 +3568,14 @@ def _save_output(records: list, seen_ids: set, today: str, target_months: list):
     with open(SEEN_FILE, "w") as f:
         json.dump({"seen_ids": sorted(seen_ids), "last_updated": today}, f, indent=2)
     log.info(f"Saved {SEEN_FILE}: {len(seen_ids)} tracked IDs")
+
+    # Dual-write to Supabase + auto-queue qualifying records for SIFTstack.
+    # Silent no-op if SUPABASE_URL / SUPABASE_SECRET_KEY are not set.
+    try:
+        from supabase_sync import upsert_and_autoqueue
+        upsert_and_autoqueue(records, source="foreclosure")
+    except Exception as e:
+        log.warning(f"Supabase sync/auto-queue failed: {e}")
 
     log.info(f"Done. Total: {len(records)} | With address: {with_address}")
 

@@ -81,6 +81,8 @@ jobs:
           CCLERK_USERNAME: ${{ secrets.CCLERK_USERNAME }}
           CCLERK_PASSWORD: ${{ secrets.CCLERK_PASSWORD }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
 
       - name: Verify output
         run: |
