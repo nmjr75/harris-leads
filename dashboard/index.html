@@ -287,6 +287,59 @@
   .conf-medium { background: rgba(245,158,11,0.18); color: var(--orange); }
   .conf-low    { background: rgba(239,68,68,0.18); color: var(--red); }
   .conf-none   { background: rgba(139,143,163,0.12); color: var(--text-muted); }
+
+  /* SIFTstack submission status pill */
+  .siftstack-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: help;
+    white-space: nowrap;
+  }
+  .siftstack-pill.ss-completed { background: rgba(34,197,94,0.18); color: var(--green); }
+  .siftstack-pill.ss-queued    { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .siftstack-pill.ss-failed    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .siftstack-pill.ss-none      { background: rgba(139,143,163,0.12); color: var(--text-muted); }
+
+  /* Stat card color variants for siftstack filters */
+  .stat-card.enriched .value { color: var(--green); }
+  .stat-card.queued   .value { color: var(--orange); }
+  .stat-card.manual   .value { color: var(--red); }
+
+  /* SIFTstack queue-confirm modal */
+  .siftstack-confirm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10000;
+  }
+  .siftstack-confirm {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    max-width: 460px;
+    width: 92%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .siftstack-confirm h3 { margin: 0 0 12px; color: var(--text); font-size: 1.1rem; }
+  .siftstack-confirm p  { color: var(--text-muted); font-size: 0.9rem; margin: 8px 0; }
+  .siftstack-confirm ul { color: var(--text); font-size: 0.9rem; margin: 8px 0 16px; padding-left: 22px; }
+  .siftstack-confirm ul li { margin: 4px 0; }
+  .siftstack-confirm-buttons {
+    display: flex; flex-direction: column; gap: 8px; margin-top: 16px;
+  }
+  .siftstack-confirm-buttons .btn { width: 100%; justify-content: center; }
+
+  /* SIFTstack action button (next to Export Selected) */
+  .btn-siftstack {
+    background: #7c5cfc; color: #fff; border-color: #7c5cfc;
+  }
+  .btn-siftstack:hover:not(:disabled) { background: #6a4af0; }
+  .btn-siftstack:disabled { opacity: 0.45; cursor: not-allowed; }
   td a { color: var(--accent-light); text-decoration: none; }
   td a:hover { text-decoration: underline; }
   .addr-cell { max-width: 200px; }
@@ -596,6 +649,7 @@
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
     <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
+    <button class="btn btn-siftstack" id="siftstackBtn" onclick="handleSiftstackButton()" disabled title="Queue selected records for SIFTstack enrichment">SIFTstack <span class="selected-count" id="siftstackCount"></span></button>
     <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
@@ -997,6 +1051,7 @@ const COLS = [
   {key: "mail_address", label: "Mail Address", w: "150px"},
   {key: "amount", label: "Amount", w: "100px"},
   {key: "match_confidence", label: "Confidence", w: "80px"},
+  {key: "siftstack", label: "SIFTstack", w: "110px"},
   {key: "doc_num", label: "Doc #", w: "100px"},
   {key: "link", label: "Links", w: "80px"},
 ];
@@ -1076,8 +1131,11 @@ function subscribeRealtime() {
       const updated = payload.new;
       const rec = DATA?.records?.find(r => r.doc_num === updated.doc_num);
       if (!rec) return;
+      const prevStatus = rec.siftstack_status || null;
       Object.assign(rec, normalizeFromDb({ ...updated }));
       renderTable();
+      // Refresh stat cards if siftstack_status changed (count could differ)
+      if (prevStatus !== (rec.siftstack_status || null)) buildStats();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "property_data" }, (payload) => {
       const row = payload.new || payload.old;
@@ -1097,6 +1155,15 @@ function buildStats() {
   const withAddr = DATA.records.filter(r => r.prop_address && r.prop_address.trim()).length;
   const pct = DATA.total ? Math.round(withAddr / DATA.total * 100) : 0;
 
+  const ssCompleted = DATA.records.filter(r => r.siftstack_status === "completed").length;
+  const ssQueued    = DATA.records.filter(r => r.siftstack_status === "queued").length;
+  const ssManual    = DATA.records.filter(r => {
+    if (r.siftstack_status) return false; // already submitted or in flight
+    const hasAddr = !!(r.prop_address && r.prop_address.trim());
+    const hasName = !!((r.owner || r.grantor_name || "").trim());
+    return !hasAddr || !hasName;
+  }).length;
+
   let html = `
     <div class="stat-card total" data-filter="all" onclick="toggleCardFilter('all')">
       <div class="value">${DATA.total.toLocaleString()}</div>
@@ -1106,6 +1173,18 @@ function buildStats() {
       <div class="value">${withAddr.toLocaleString()}</div>
       <div class="label">With Address</div>
       <div class="pct">${pct}%</div>
+    </div>
+    <div class="stat-card enriched" data-filter="ss:completed" onclick="toggleCardFilter('ss:completed')">
+      <div class="value">${ssCompleted.toLocaleString()}</div>
+      <div class="label">Enriched</div>
+    </div>
+    <div class="stat-card queued" data-filter="ss:queued" onclick="toggleCardFilter('ss:queued')">
+      <div class="value">${ssQueued.toLocaleString()}</div>
+      <div class="label">Queued</div>
+    </div>
+    <div class="stat-card manual" data-filter="ss:manual" onclick="toggleCardFilter('ss:manual')">
+      <div class="value">${ssManual.toLocaleString()}</div>
+      <div class="label">Needs Manual</div>
     </div>`;
 
   // Top categories as cards
@@ -1308,6 +1387,15 @@ function getFiltered() {
         if (!r.prop_address || !r.prop_address.trim()) return false;
       } else if (cardFilter.startsWith("cat:")) {
         if (r.cat !== cardFilter.slice(4)) return false;
+      } else if (cardFilter === "ss:completed") {
+        if (r.siftstack_status !== "completed") return false;
+      } else if (cardFilter === "ss:queued") {
+        if (r.siftstack_status !== "queued") return false;
+      } else if (cardFilter === "ss:manual") {
+        if (r.siftstack_status) return false;
+        const hasAddr = !!(r.prop_address && r.prop_address.trim());
+        const hasName = !!((r.owner || r.grantor_name || "").trim());
+        if (hasAddr && hasName) return false; // has both → not manual
       }
       // "all" = no filter
     }
@@ -1335,7 +1423,12 @@ function applyFilters() {
   // Active filter tag
   let tag = "";
   if (cardFilter && cardFilter !== "all") {
-    const label = cardFilter === "addr" ? "With Address" : cardFilter.replace("cat:", "");
+    const label =
+      cardFilter === "addr" ? "With Address" :
+      cardFilter === "ss:completed" ? "SIFTstack Enriched" :
+      cardFilter === "ss:queued" ? "SIFTstack Queued" :
+      cardFilter === "ss:manual" ? "Needs Manual Research" :
+      cardFilter.replace("cat:", "");
     tag = `<span class="filter-tag">${label} <span class="x" onclick="toggleCardFilter('${cardFilter}')">&times;</span></span>`;
   }
   document.getElementById("activeFilter").innerHTML = tag;
@@ -1445,11 +1538,12 @@ function renderTable() {
       ${editable
         ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','match_confidence',this)" title="Double-click to edit"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>`
         : `<td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>`}
+      <td onclick="openModal(${rowIdx})">${renderSiftstackPill(r)}</td>
       <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
     </tr>`;
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="17" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="18" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -1487,6 +1581,123 @@ function updateSelectionUI() {
   const badge = document.getElementById("selCount");
   btn.disabled = count === 0;
   badge.textContent = count > 0 ? `(${count})` : "";
+
+  const ssBtn = document.getElementById("siftstackBtn");
+  const ssBadge = document.getElementById("siftstackCount");
+  if (ssBtn && ssBadge) {
+    const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+    ssBtn.disabled = count === 0 || !editable;
+    ssBadge.textContent = count > 0 ? `(${count})` : "";
+  }
+}
+
+// ── SIFTstack submission pill + queue button ─────────────────────
+function renderSiftstackPill(r) {
+  const status = r.siftstack_status || "none";
+  const ts = r.siftstack_completed_at;
+  const labels = {
+    completed: "✓ Enriched",
+    queued:    "⏳ Queued",
+    failed:    "✗ Failed",
+    none:      "—",
+  };
+  const label = labels[status] || "—";
+  let title = "Not yet submitted";
+  if (status === "completed")
+    title = ts ? "Enriched " + new Date(ts).toLocaleString() : "Enriched";
+  else if (status === "failed")
+    title = ts ? "Failed " + new Date(ts).toLocaleString() : "Failed";
+  else if (status === "queued")
+    title = "Queued — awaiting SIFTstack worker";
+  // Escape quotes for safe HTML attribute
+  const safeTitle = String(title).replace(/"/g, "&quot;");
+  return `<span class="siftstack-pill ss-${status}" title="${safeTitle}">${label}</span>`;
+}
+
+async function handleSiftstackButton() {
+  if (!currentSession?.user?.id) { alert("Not signed in."); return; }
+  const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+  if (!editable) { alert("Only editors can queue records."); return; }
+  if (selectedRows.size === 0) return;
+
+  const selected    = DATA.records.filter(r => selectedRows.has(r.doc_num));
+  const completedL  = selected.filter(r => r.siftstack_status === "completed");
+  const queuedL     = selected.filter(r => r.siftstack_status === "queued");
+  const freshL      = selected.filter(r => !r.siftstack_status || r.siftstack_status === "failed");
+
+  let toQueue;
+  if (completedL.length > 0) {
+    const choice = await showSiftstackConfirm(selected.length, completedL.length, queuedL.length, freshL.length);
+    if (choice === "cancel") return;
+    if (choice === "reenrich") toQueue = [...freshL, ...completedL];
+    else if (choice === "skip") toQueue = freshL;
+  } else {
+    toQueue = freshL;
+    if (queuedL.length > 0 && freshL.length === 0) {
+      alert(`All ${queuedL.length} selected records are already queued. Nothing to do.`);
+      return;
+    }
+  }
+
+  if (!toQueue || toQueue.length === 0) {
+    alert("No records to submit.");
+    return;
+  }
+
+  const batchId = (crypto.randomUUID && crypto.randomUUID()) ||
+    "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+
+  const rows = toQueue.map(r => ({
+    record_id: r.id,
+    batch_id:  batchId,
+    queued_by: currentSession.user.id,
+    status:    "pending",
+  }));
+
+  const { error } = await sb.from("siftstack_queue").insert(rows);
+  if (error) {
+    alert("Failed to queue: " + error.message);
+    return;
+  }
+
+  // Trigger will set records.siftstack_status = 'queued' for each one.
+  // Realtime subscription on records table picks up the change.
+  alert(`Queued ${rows.length} record(s) for SIFTstack enrichment.`);
+  selectedRows.clear();
+  renderTable();
+  updateSelectionUI();
+}
+
+function showSiftstackConfirm(total, completedN, queuedN, freshN) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "siftstack-confirm-overlay";
+    overlay.innerHTML = `
+      <div class="siftstack-confirm">
+        <h3>SIFTstack Queue</h3>
+        <p>You selected <b>${total}</b> record(s).</p>
+        <ul>
+          ${completedN ? `<li><b>${completedN}</b> already enriched</li>` : ""}
+          ${queuedN    ? `<li><b>${queuedN}</b> already queued (will be skipped either way)</li>` : ""}
+          ${freshN     ? `<li><b>${freshN}</b> not yet submitted</li>` : ""}
+        </ul>
+        <p>What would you like to do?</p>
+        <div class="siftstack-confirm-buttons">
+          <button class="btn btn-siftstack" id="ss-reenrich">Re-enrich enriched + queue fresh (${completedN + freshN})</button>
+          <button class="btn btn-green" id="ss-skip">Skip enriched, queue only fresh (${freshN})</button>
+          <button class="btn" id="ss-cancel">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = (result) => { overlay.remove(); resolve(result); };
+    overlay.querySelector("#ss-reenrich").onclick = () => close("reenrich");
+    overlay.querySelector("#ss-skip").onclick     = () => close("skip");
+    overlay.querySelector("#ss-cancel").onclick   = () => close("cancel");
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close("cancel"); });
+  });
 }
 
 // ── Pagination ─────────────────────────────────────────────────────
