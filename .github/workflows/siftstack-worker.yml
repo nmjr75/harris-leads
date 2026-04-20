@@ -58,6 +58,8 @@ jobs:
       DATASIFT_EMAIL:       ${{ secrets.DATASIFT_EMAIL }}
       DATASIFT_PASSWORD:    ${{ secrets.DATASIFT_PASSWORD }}
       # Dropbox (PDF + CSV storage + shareable links for Slack)
+      # ACCESS_TOKEN takes priority when set; REFRESH_TOKEN is the long-lived fallback
+      DROPBOX_ACCESS_TOKEN:  ${{ secrets.DROPBOX_ACCESS_TOKEN }}
       DROPBOX_APP_KEY:       ${{ secrets.DROPBOX_APP_KEY }}
       DROPBOX_APP_SECRET:    ${{ secrets.DROPBOX_APP_SECRET }}
       DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
