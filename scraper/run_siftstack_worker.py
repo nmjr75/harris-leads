@@ -54,8 +54,6 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY", "").strip()
 SIFTSTACK_SRC = os.environ.get("SIFTSTACK_SRC", "./SiftStack/src").strip()
 BATCH_SIZE = int(os.environ.get("SIFTSTACK_BATCH_SIZE", "25"))
-DRIVE_FOLDER_HARRIS = os.environ.get("GOOGLE_DRIVE_FOLDER_ID_HARRIS", "").strip()
-GSA_KEY_B64 = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY", "").strip()
 SLACK_WEBHOOK = os.environ.get("SLACK_WEBHOOK_URL", "").strip()
 
 if not SUPABASE_URL or not SUPABASE_KEY:
@@ -85,7 +83,7 @@ try:
     from report_generator import generate_record_pdf              # type: ignore
     from datasift_formatter import write_datasift_csv             # type: ignore
     from datasift_uploader import upload_to_datasift              # type: ignore
-    from drive_uploader import upload_file                        # type: ignore
+    from dropbox_uploader import upload_and_share, upload_batch   # type: ignore
     from slack_notifier import send_slack_notification            # type: ignore
 except Exception as e:
     log.error("Failed to import SiftStack modules: %s", e)
@@ -261,42 +259,12 @@ def build_notice(queue_row: dict) -> tuple[NoticeData, int, str]:
     return n, qid, rec_id
 
 
-# ── Drive upload helper ────────────────────────────────────────────────
-def upload_pdf_to_drive(pdf_path: Path, subfolder_id: str) -> str | None:
-    return upload_file(
-        pdf_path,
-        folder_id=subfolder_id,
-        service_account_key_b64=GSA_KEY_B64,
-    )
+# ── Dropbox upload helpers ────────────────────────────────────────────
+DROPBOX_OUTPUT_ROOT = os.environ.get("DROPBOX_HARRIS_OUTPUT_FOLDER", "/Harris Leads").rstrip("/")
 
 
-def create_drive_subfolder(parent_id: str, name: str) -> str | None:
-    """Create a date/time subfolder inside the Harris Drive folder."""
-    import base64
-    import json
-    from google.oauth2.service_account import Credentials
-    from googleapiclient.discovery import build
-
-    try:
-        key_json = json.loads(base64.b64decode(GSA_KEY_B64))
-        creds = Credentials.from_service_account_info(
-            key_json, scopes=["https://www.googleapis.com/auth/drive.file"],
-        )
-        svc = build("drive", "v3", credentials=creds, cache_discovery=False)
-        meta = {
-            "name": name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [parent_id],
-        }
-        folder = svc.files().create(body=meta, fields="id").execute()
-        return folder.get("id")
-    except Exception as e:
-        log.warning("Drive subfolder create failed: %s", e)
-        return None
-
-
-def get_folder_weblink(folder_id: str) -> str:
-    return f"https://drive.google.com/drive/folders/{folder_id}"
+def build_dropbox_path(subfolder: str, filename: str) -> str:
+    return f"{DROPBOX_OUTPUT_ROOT}/{subfolder}/{filename}"
 
 
 # ── Main run ───────────────────────────────────────────────────────────
@@ -371,40 +339,34 @@ async def run_once() -> int:
 
     log.info("Generated %d PDFs in %s", len(pdf_paths), pdf_dir)
 
-    # ── Create Drive subfolder + upload PDFs + CSV ────────────────────
-    drive_links: list[tuple[str, str]] = []
-    folder_weblink = ""
-    csv_link = None
-    if DRIVE_FOLDER_HARRIS and GSA_KEY_B64:
-        subfolder_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        subfolder_id = create_drive_subfolder(DRIVE_FOLDER_HARRIS, subfolder_name)
-        if subfolder_id:
-            folder_weblink = get_folder_weblink(subfolder_id)
-            log.info("Uploading %d PDFs to Drive subfolder %s ...", len(pdf_paths), subfolder_name)
-            for n, p in pdf_paths:
-                link = upload_pdf_to_drive(p, subfolder_id)
-                if link:
-                    drive_links.append((p.name, link))
-        else:
-            log.warning("Drive subfolder not created — skipping PDF upload")
-    else:
-        log.info("Drive not configured (missing folder ID or service key) — skipping PDF upload")
-
     # ── Generate DataSift CSV ─────────────────────────────────────────
     # write_datasift_csv writes into SiftStack's config.OUTPUT_DIR
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     csv_path = write_datasift_csv(enriched, filename=f"harris_siftstack_{ts}.csv")
     log.info("DataSift CSV: %s (%d records)", csv_path, len(enriched))
 
-    # Upload CSV to Drive as backup
-    if DRIVE_FOLDER_HARRIS and GSA_KEY_B64:
-        link = upload_file(
-            Path(csv_path),
-            folder_id=DRIVE_FOLDER_HARRIS,
-            service_account_key_b64=GSA_KEY_B64,
-        )
-        if link:
-            csv_link = link
+    # ── Upload PDFs + CSV to Dropbox + collect share links ────────────
+    drive_links: list[tuple[str, str]] = []   # (name, url) — reused for Slack
+    csv_link = None
+    subfolder_name = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    try:
+        uploads: list[tuple[Path, str]] = []
+        for _n, p in pdf_paths:
+            uploads.append((p, build_dropbox_path(subfolder_name, p.name)))
+        uploads.append((Path(csv_path), build_dropbox_path(subfolder_name, Path(csv_path).name)))
+        log.info("Uploading %d files to Dropbox under %s/%s ...",
+                 len(uploads), DROPBOX_OUTPUT_ROOT, subfolder_name)
+        results = upload_batch(uploads)
+        for local, url in results:
+            if url is None:
+                log.warning("Dropbox upload failed for %s", local.name)
+                continue
+            if local.suffix.lower() == ".csv":
+                csv_link = url
+            else:
+                drive_links.append((local.name, url))
+    except Exception as e:
+        log.warning("Dropbox batch upload crashed: %s", e)
 
     # ── Upload to DataSift (Playwright) ───────────────────────────────
     upload_result: dict = {}
@@ -424,8 +386,6 @@ async def run_once() -> int:
     # ── Slack notification ────────────────────────────────────────────
     if SLACK_WEBHOOK:
         pdf_links_for_slack = [(name, url) for name, url in drive_links[:20]]
-        if folder_weblink:
-            pdf_links_for_slack.insert(0, (f"📁 All PDFs ({len(drive_links)})", folder_weblink))
         try:
             send_slack_notification(
                 enriched,

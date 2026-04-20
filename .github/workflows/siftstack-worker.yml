@@ -57,9 +57,10 @@ jobs:
       # DataSift upload
       DATASIFT_EMAIL:       ${{ secrets.DATASIFT_EMAIL }}
       DATASIFT_PASSWORD:    ${{ secrets.DATASIFT_PASSWORD }}
-      # Google Drive (PDF + CSV storage)
-      GOOGLE_SERVICE_ACCOUNT_KEY:    ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-      GOOGLE_DRIVE_FOLDER_ID_HARRIS: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID_HARRIS }}
+      # Dropbox (PDF + CSV storage + shareable links for Slack)
+      DROPBOX_APP_KEY:       ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET:    ${{ secrets.DROPBOX_APP_SECRET }}
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
       # Slack notifications
       SLACK_WEBHOOK_URL:    ${{ secrets.SLACK_WEBHOOK_URL }}
       TZ: America/Chicago
