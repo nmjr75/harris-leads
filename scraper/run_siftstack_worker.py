@@ -108,11 +108,8 @@ DOC_TYPE_MAP = {
     "LIEN":   "tax_delinquent",
     "T/L":    "tax_delinquent",
     "LEVY":   "tax_delinquent",
-    "JUDGE":  "foreclosure",
     "A/J":    "foreclosure",
     "L/P":    "foreclosure",
-    "BNKRCY": "foreclosure",
-    "REL":    "foreclosure",
 }
 
 

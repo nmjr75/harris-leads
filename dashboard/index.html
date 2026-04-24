@@ -1058,8 +1058,7 @@ const COLS = [
 
 const CAT_COLORS = {
   LP: "#ef4444", NOFC: "#f59e0b", TAXLIEN: "#f97316", LIEN: "#eab308",
-  JUD: "#a855f7", LEVY: "#ec4899", PROBATE: "#06b6d4", BNKRCY: "#6366f1",
-  REL: "#64748b", FRCL: "#dc2626",
+  AOJ: "#a855f7", LEVY: "#ec4899", PROBATE: "#06b6d4", FRCL: "#dc2626",
 };
 
 const DISTRESS_FLAGS = new Set([
@@ -1188,7 +1187,7 @@ function buildStats() {
     </div>`;
 
   // Top categories as cards
-  const catOrder = ["FRCL","LP","NOFC","TAXLIEN","LIEN","JUD","LEVY","PROBATE","BNKRCY","REL"];
+  const catOrder = ["FRCL","LP","NOFC","TAXLIEN","LIEN","AOJ","LEVY","PROBATE"];
   const catLabels = {};
   DATA.records.forEach(r => { catLabels[r.cat] = r.cat_label; });
 
@@ -1233,7 +1232,6 @@ function buildCharts() {
 
   let barHtml = "";
   sortedCats.forEach(([cat, count]) => {
-    if (cat === "REL") return;  // skip releases from chart
     const pct = (count / maxCat * 100).toFixed(0);
     const color = CAT_COLORS[cat] || "#7c5cfc";
     const shortLabel = (catLabels[cat] || cat).replace(/ \/ /g, "/").substring(0, 20);

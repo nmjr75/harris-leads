@@ -82,14 +82,11 @@ DOC_TYPE_MAP = {
     "TRSALE": ("NOFC",    "Trustee Sale"),
     "T/L":    ("TAXLIEN", "Notice of Federal Tax Lien"),
     "LIEN":   ("LIEN",    "Lien (HOA / State Tax / Child Support / Other)"),
-    "JUDGE":  ("JUD",     "Judgment"),
-    "A/J":    ("JUD",     "Abstract of Judgment"),
+    "A/J":    ("AOJ",     "Abstract of Judgment"),
     "LEVY":   ("LEVY",    "Notice of Levy on Real Estate"),
     "PROB":   ("PROBATE", "Probate Proceedings"),
     "AFFT":   ("PROBATE", "Affidavit of Heirship / Small Estate"),
     "WILL":   ("PROBATE", "Certified Copy of Probated Will"),
-    "BNKRCY": ("BNKRCY",  "Bankruptcy"),
-    "REL":    ("REL",     "Release (Lien / Judgment / Tax Lien / DOT)"),
 }
 
 TARGET_TYPES = list(DOC_TYPE_MAP.keys())
