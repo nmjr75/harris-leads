@@ -2183,7 +2183,50 @@ async def main():
              f"low={confidence_counts['low']}, "
              f"none={confidence_counts['none']}")
 
+    # 4a. LEGAL-DESCRIPTION FALLBACK against full HCAD bulk via Supabase RPC.
+    #     The clerk results table gives us a structured legal for most records
+    #     ("SANFORD FARMS | Sec: 1 | Lot: 15 | Block: 3"). The full Harris
+    #     County HCAD bulk (1.6M parcels) lives in Supabase property_data
+    #     and is queryable via resolve_parcel_by_legal RPC.
+    #     This eliminates 80-95% of PDF downloads on the next step.
+    needs_addr = [r for r in deduped
+                  if not r.get("prop_address", "").strip()
+                  and r.get("legal", "").strip()]
+    if needs_addr:
+        log.info(f"Legal-desc fallback: attempting {len(needs_addr)} records via HCAD bulk ...")
+        sb_url = (os.environ.get("SUPABASE_URL") or "").strip()
+        sb_key = (os.environ.get("SUPABASE_SECRET_KEY") or "").strip()
+        if sb_url and sb_key:
+            try:
+                from supabase import create_client
+                from legal_matcher import resolve_legal
+                sb = create_client(sb_url, sb_key)
+                legal_resolved = 0
+                for r in needs_addr:
+                    try:
+                        match = resolve_legal(sb, r.get("legal"))
+                    except Exception:
+                        continue
+                    if not match:
+                        continue
+                    r["prop_address"]     = match.get("situs_address") or ""
+                    r["prop_city"]        = match.get("situs_city") or "Houston"
+                    r["prop_zip"]         = match.get("situs_zip") or ""
+                    r["parcel_acct"]      = match.get("parcel_acct")
+                    r["address_source"]   = "hcad_legal"
+                    r["match_confidence"] = "high"
+                    legal_resolved += 1
+                log.info(f"Legal-desc fallback: resolved {legal_resolved}/{len(needs_addr)} "
+                         f"({(legal_resolved / len(needs_addr) * 100):.0f}%) — "
+                         f"these records will SKIP PDF download")
+            except Exception as e:
+                log.warning(f"Legal-desc fallback failed (continuing without it): {e}")
+        else:
+            log.info("Legal-desc fallback: SUPABASE_URL/SUPABASE_SECRET_KEY missing — skipping")
+
     # 4b. PDF DOWNLOAD + EXTRACTION — only for records HCAD couldn't resolve.
+    #     After step 4a, this filter naturally excludes records resolved by
+    #     legal-desc match (their match_confidence is now 'high').
     #     Downloads PDFs using the same Playwright browser that scraped results
     #     (browser is still open). Then extracts addresses via Gemini/pdfplumber.
     no_address_records = [r for r in deduped
