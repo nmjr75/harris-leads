@@ -129,6 +129,20 @@
     font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;
   }
 
+  .result-card .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px 16px; margin: 10px 0; font-size: 0.82rem;
+  }
+  .result-card .meta-grid .lbl { color: var(--text-muted); display: block; font-size: 0.7rem; }
+  .result-card .meta-grid .val { color: var(--text); }
+  .result-card .badge-row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .result-card .badge {
+    display: inline-block; font-size: 0.7rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .badge-homestead { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-owner     { background: rgba(124,92,252,0.15); color: var(--accent-light); }
+
   .examples {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 18px 20px; margin-top: 24px;
@@ -144,6 +158,7 @@
   .example-item:last-child { border-bottom: none; }
   .example-item:hover { color: #fff; }
 </style>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -292,65 +307,11 @@ function parseLegal(text) {
 }
 
 // ── HCAD lookup data ──
-let hcadData = null;
-let loadingState = "idle"; // idle | loading | loaded | error
-
-async function loadHCAD() {
-  if (loadingState === "loaded" || loadingState === "loading") return;
-  loadingState = "loading";
-  showStatus("Loading HCAD database...", "loading");
-  try {
-    const resp = await fetch("hcad_lookup.json");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    hcadData = await resp.json();
-    onDataLoaded();
-  } catch (e) {
-    // fetch fails on file:// — show the file picker option
-    loadingState = "idle";
-    document.getElementById("resultArea").innerHTML = `
-      <div class="status-msg">
-        <p>Could not auto-load HCAD database.</p>
-        <p style="margin-top:12px;">
-          <label class="btn btn-primary" style="cursor:pointer;">
-            Load hcad_lookup.json
-            <input type="file" accept=".json" id="fileInput"
-                   style="display:none;" onchange="loadFromFile(event)">
-          </label>
-        </p>
-        <p style="font-size:0.8rem;margin-top:8px;color:var(--text-muted);">
-          Select the hcad_lookup.json file from the same folder as this page.
-        </p>
-      </div>`;
-  }
-}
-
-function loadFromFile(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  loadingState = "loading";
-  showStatus("Loading HCAD database from file...", "loading");
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      hcadData = JSON.parse(e.target.result);
-      onDataLoaded();
-    } catch(err) {
-      loadingState = "error";
-      showStatus("Error parsing JSON file: " + err.message, "error");
-    }
-  };
-  reader.readAsText(file);
-}
-
-function onDataLoaded() {
-  loadingState = "loaded";
-  const count = Object.keys(hcadData).length;
-  showStatus(`HCAD database loaded: ${count.toLocaleString()} legal descriptions indexed`, "");
-  setTimeout(() => {
-    if (document.getElementById("resultArea").textContent.includes("indexed"))
-      showStatus("", "");
-  }, 3000);
-}
+// ── Supabase client (live HCAD via lookup_parcels_by_legal RPC) ──
+const SUPABASE_URL = "https://oqkcmysnhgorjkinfamu.supabase.co";
+const SUPABASE_KEY = "sb_publishable_XfR5NTuo1LYF8p73_cqQ7w_Ug4LDl3_";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let busy = false;
 
 function showStatus(msg, cls) {
   const el = document.getElementById("resultArea");
@@ -359,13 +320,10 @@ function showStatus(msg, cls) {
 }
 
 // ── Search logic ──
-function doSearch() {
+async function doSearch() {
+  if (busy) return;
   const input = document.getElementById("legalInput").value.trim();
   if (!input) return;
-  if (loadingState !== "loaded") {
-    showStatus("HCAD database not loaded yet. Please wait...", "error");
-    return;
-  }
 
   const parsed = parseLegal(input);
   showParsedInfo(parsed);
@@ -378,8 +336,16 @@ function doSearch() {
     return;
   }
 
-  const results = searchHCAD(parsed);
-  renderResults(results, parsed);
+  busy = true;
+  showStatus("Searching HCAD ...", "loading");
+  try {
+    const results = await searchHCAD(parsed);
+    renderResults(results, parsed);
+  } catch (e) {
+    showStatus("Search failed: " + (e.message || e), "error");
+  } finally {
+    busy = false;
+  }
 }
 
 function showParsedInfo(parsed) {
@@ -392,125 +358,108 @@ function showParsedInfo(parsed) {
   el.innerHTML = tags.length ? tags.join("") : '<span style="color:var(--red)">Could not parse</span>';
 }
 
-function searchHCAD(parsed) {
-  const subdiv = parsed.subdivision ? parsed.subdivision.toUpperCase().replace(/\s+/g, " ").trim() : "";
-  const blk = parsed.block;
-  const lot = parsed.lot;
-  const sec = parsed.section;
-  const results = [];
+async function searchHCAD(parsed) {
+  const subdiv = parsed.subdivision ? parsed.subdivision.toUpperCase().trim() : "";
+  if (!subdiv) return [];
 
-  // ── Strategy 1: Block-based keys (standard lot/block/subdivision) ──
-  if (subdiv && blk) {
-    const key1 = `${subdiv}|BLK${blk}`;
-    if (hcadData[key1]) {
-      results.push({ key: key1, data: hcadData[key1], matchType: "exact" });
-    }
-    // With SEC appended to subdivision
-    if (sec) {
-      const key2 = `${subdiv} SEC ${sec}|BLK${blk}`;
-      if (hcadData[key2]) {
-        results.push({ key: key2, data: hcadData[key2], matchType: "exact" });
-      }
-    }
-    if (results.length > 0) return results;
+  const args = {
+    p_subdiv:  subdiv,
+    p_section: parsed.section ? String(parsed.section) : null,
+    p_lot:     parsed.lot     ? String(parsed.lot)     : null,
+    p_block:   parsed.block   ? String(parsed.block)   : null,
+  };
+
+  // Tier 1: full key (subdiv + section + lot + block, whichever provided)
+  let { data, error } = await sb.rpc("lookup_parcels_by_legal", args);
+  if (error) throw new Error(error.message);
+
+  // Tier 2: drop section if no hits
+  if ((!data || data.length === 0) && args.p_section) {
+    ({ data, error } = await sb.rpc("lookup_parcels_by_legal",
+      { ...args, p_section: null }));
+    if (error) throw new Error(error.message);
   }
 
-  // ── Strategy 2: Lot-only keys (subdivisions without blocks) ──
-  if (subdiv && lot && !blk) {
-    const keyLot = `${subdiv}|LT${lot}`;
-    if (hcadData[keyLot]) {
-      results.push({ key: keyLot, data: hcadData[keyLot], matchType: "exact" });
-    }
-    if (sec) {
-      const keyLotSec = `${subdiv} SEC ${sec}|LT${lot}`;
-      if (hcadData[keyLotSec]) {
-        results.push({ key: keyLotSec, data: hcadData[keyLotSec], matchType: "exact" });
-      }
-    }
-    if (results.length > 0) return results;
+  // Tier 3: drop block if still no hits
+  if ((!data || data.length === 0) && args.p_block) {
+    ({ data, error } = await sb.rpc("lookup_parcels_by_legal",
+      { ...args, p_section: null, p_block: null }));
+    if (error) throw new Error(error.message);
   }
 
-  // ── Strategy 3: Also try lot-only even when block exists (some parcels indexed both ways) ──
-  if (subdiv && lot && blk && results.length === 0) {
-    const keyLotFallback = `${subdiv}|LT${lot}`;
-    if (hcadData[keyLotFallback]) {
-      results.push({ key: keyLotFallback, data: hcadData[keyLotFallback], matchType: "exact" });
-    }
-    if (results.length > 0) return results;
-  }
+  if (!data || data.length === 0) return [];
 
-  // ── Strategy 4: Fuzzy match on subdivision name ──
-  if (!subdiv) return results;
+  const matchType = data.length === 1 ? "exact" : "fuzzy";
+  return data.map(row => ({ ...row, matchType }));
+}
 
-  const subdivWords = subdiv.split(/\s+/);
-  const fuzzyHits = [];
+function _esc(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
-  // Determine which suffix to search for
-  const suffixes = [];
-  if (blk) suffixes.push(`|BLK${blk}`);
-  if (lot) suffixes.push(`|LT${lot}`);
-  if (suffixes.length === 0) return results;
-
-  for (const hKey in hcadData) {
-    let matchedSuffix = false;
-    for (const suffix of suffixes) {
-      if (hKey.endsWith(suffix)) { matchedSuffix = true; break; }
-    }
-    if (!matchedSuffix) continue;
-
-    const pipeIdx = hKey.lastIndexOf("|");
-    const hSubdiv = hKey.substring(0, pipeIdx);
-
-    // If sec specified, check it matches
-    if (sec && !hSubdiv.includes(`SEC ${sec}`)) continue;
-
-    const hWords = hSubdiv.split(/\s+/);
-    let matching = 0;
-    for (const w of subdivWords) {
-      if (hWords.includes(w)) matching++;
-    }
-    const firstMatch = subdivWords.length > 0 && hWords.length > 0 && subdivWords[0] === hWords[0];
-    const score = matching / Math.max(subdivWords.length, 1);
-
-    if (firstMatch && score >= 0.5) {
-      fuzzyHits.push({ key: hKey, data: hcadData[hKey], matchType: "fuzzy", score });
-    }
-  }
-
-  fuzzyHits.sort((a, b) => b.score - a.score);
-  return fuzzyHits.slice(0, 10);
+function _fmtMoney(n) {
+  if (n == null) return "";
+  return "$" + Number(n).toLocaleString(undefined, {maximumFractionDigits: 0});
 }
 
 function renderResults(results, parsed) {
   const area = document.getElementById("resultArea");
-  if (results.length === 0) {
+  if (!results || results.length === 0) {
     area.innerHTML = `
       <div class="status-msg">
-        No matches found for <b>${parsed.subdivision} BLK ${parsed.block}${parsed.section ? " SEC " + parsed.section : ""}</b>.<br>
+        No matches found for <b>${_esc(parsed.subdivision || "")}${parsed.block ? " BLK " + _esc(parsed.block) : ""}${parsed.section ? " SEC " + _esc(parsed.section) : ""}</b>.<br>
         <span style="font-size:0.8rem;">Try different wording or check the subdivision spelling.</span>
       </div>`;
     return;
   }
 
-  let html = `<div class="result-count">${results.length} result${results.length > 1 ? "s" : ""} found</div><div class="results">`;
-  for (const r of results) {
-    const d = r.data;
-    const hcadLink = d.t ? `<a href="https://public.hcad.org/records/details.asp?cession=2026A&search_type=OwnerAddress&tab=overview&acct=${d.t}" target="_blank">HCAD Record &rarr;</a>` : "";
-    const matchBadge = r.matchType === "exact"
+  const cap = (results.length >= 20)
+    ? `<div class="result-count">Showing first 20 matches — narrow your search to filter further</div>`
+    : `<div class="result-count">${results.length} result${results.length > 1 ? "s" : ""} found</div>`;
+
+  let html = cap + `<div class="results">`;
+  for (const d of results) {
+    const matchBadge = d.matchType === "exact"
       ? '<span class="match-type match-exact">EXACT</span>'
       : '<span class="match-type match-fuzzy">FUZZY</span>';
-    const gMapLink = d.a ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(d.a + ", " + (d.c || "Houston") + ", TX " + (d.z || ""))}" target="_blank">Google Maps &rarr;</a>` : "";
+    const addr = d.situs_address || "(no situs address)";
+    const cityLine = `${_esc(d.situs_city || "Houston")}, TX ${_esc(d.situs_zip || "")}`;
+    const hcadLink = d.parcel_acct
+      ? `<a href="https://public.hcad.org/records/details.asp?cession=2026A&search_type=OwnerAddress&tab=overview&acct=${encodeURIComponent(d.parcel_acct)}" target="_blank">HCAD record &rarr;</a>`
+      : "";
+    const gMapLink = d.situs_address
+      ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(d.situs_address + ", " + (d.situs_city || "Houston") + ", TX " + (d.situs_zip || ""))}" target="_blank">Google Maps &rarr;</a>`
+      : "";
+
+    const metaCells = [];
+    if (d.tot_appr_val != null)        metaCells.push(`<div><span class="lbl">Appraised</span><span class="val">${_fmtMoney(d.tot_appr_val)}</span></div>`);
+    if (d.sqft != null)                metaCells.push(`<div><span class="lbl">Sqft</span><span class="val">${Number(d.sqft).toLocaleString()}</span></div>`);
+    if (d.bedrooms != null)            metaCells.push(`<div><span class="lbl">Beds</span><span class="val">${d.bedrooms}</span></div>`);
+    if (d.bathrooms != null)           metaCells.push(`<div><span class="lbl">Baths</span><span class="val">${d.bathrooms}</span></div>`);
+    if (d.year_built != null)          metaCells.push(`<div><span class="lbl">Year built</span><span class="val">${d.year_built}</span></div>`);
+    if (d.new_owner_date)              metaCells.push(`<div><span class="lbl">Owner since</span><span class="val">${_esc(d.new_owner_date)}</span></div>`);
+    if (d.school_district_label)       metaCells.push(`<div><span class="lbl">School district</span><span class="val">${_esc(d.school_district_label)}</span></div>`);
+    if (d.state_class_label)           metaCells.push(`<div><span class="lbl">Type</span><span class="val">${_esc(d.state_class_label)}</span></div>`);
+
+    const badges = [];
+    if (d.has_homestead) badges.push('<span class="badge badge-homestead">Homestead</span>');
+    if (d.owner_name)    badges.push(`<span class="badge badge-owner">${_esc(d.owner_name)}</span>`);
 
     html += `
       <div class="result-card">
-        <div class="address">${d.a || "No address"}${matchBadge}</div>
-        <div class="city-line">${d.c || "Houston"}, TX ${d.z || ""}</div>
+        <div class="address">${_esc(addr)}${matchBadge}</div>
+        <div class="city-line">${cityLine}</div>
+        <div class="badge-row">${badges.join("")}</div>
+        ${metaCells.length ? `<div class="meta-grid">${metaCells.join("")}</div>` : ""}
         <div class="meta-row">
-          ${d.t ? `<span>Acct: ${d.t}</span>` : ""}
+          ${d.parcel_acct ? `<span>Acct: ${_esc(d.parcel_acct)}</span>` : ""}
           ${hcadLink}
           ${gMapLink}
         </div>
-        <div class="key-label">${r.key}</div>
+        <div class="key-label">${_esc(d.legal_description || "")}</div>
       </div>`;
   }
   html += "</div>";
@@ -536,8 +485,8 @@ document.getElementById("legalInput").addEventListener("keydown", function(e) {
   }
 });
 
-// Load HCAD data on page load
-loadHCAD();
+// Connected via Supabase — no preload needed. Show ready state.
+showStatus("", "");
 </script>
 </body>
 </html>
