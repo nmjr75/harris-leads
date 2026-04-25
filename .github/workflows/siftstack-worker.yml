@@ -17,10 +17,15 @@ name: SIFTstack Queue Worker
 
 on:
   schedule:
-    # Every 15 minutes. Idle runs are cheap — checkout + Python setup +
-    # empty-queue exit in under 1 minute. Slack only fires when there's
-    # an actual DataSift upload.
-    - cron: "*/15 * * * *"
+    # Every 5 minutes. Real-world runs take 5-18 min for a 25-record
+    # batch (per-record enrichment via Smarty + obituary + entity APIs
+    # is the slow path). With concurrency:cancel-in-progress=false set
+    # below, overlapping cron triggers serialize via the lock — the
+    # next slot fires the moment the prior run finishes, instead of
+    # waiting a full 15 min between runs. Net effect: ~2-3x queue
+    # drain speed with zero code change. Idle runs (empty queue) exit
+    # in under 1 minute. Slack only fires on actual DataSift uploads.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       batch_size:
