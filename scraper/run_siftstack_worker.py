@@ -139,21 +139,49 @@ def fetch_pending(n: int) -> list[dict]:
 
 
 def resolve_parcel(record: dict) -> str | None:
-    """If record.parcel_acct is unset, try to resolve via property_data."""
+    """If record.parcel_acct is unset, try to resolve it via:
+       1. address-based RPC (resolve_parcel_by_address)
+       2. legal-description fallback (resolve_parcel_by_legal)
+    Returns the parcel_acct or None if neither path matches."""
     if record.get("parcel_acct"):
         return record["parcel_acct"]
+
+    # Tier 1: address-based
     addr = record.get("prop_address")
-    if not addr:
-        return None
-    try:
-        rpc = client.rpc(
-            "resolve_parcel_by_address",
-            {"p_address": addr, "p_zip": record.get("prop_zip")},
-        ).execute()
-        return rpc.data
-    except Exception as e:
-        log.debug("parcel resolve failed for %s: %s", addr, e)
-        return None
+    if addr:
+        try:
+            rpc = client.rpc(
+                "resolve_parcel_by_address",
+                {"p_address": addr, "p_zip": record.get("prop_zip")},
+            ).execute()
+            if rpc.data:
+                return rpc.data
+        except Exception as e:
+            log.debug("address parcel resolve failed for %s: %s", addr, e)
+
+    # Tier 2: legal-description fallback
+    legal = record.get("legal_description")
+    if legal:
+        try:
+            from .legal_matcher import resolve_legal  # type: ignore
+        except ImportError:
+            try:
+                from legal_matcher import resolve_legal  # type: ignore
+            except ImportError:
+                return None
+        match = resolve_legal(client, legal)
+        if match:
+            # Patch the record dict in-place so build_notice picks up
+            # the HCAD situs address downstream.
+            if not record.get("prop_address") and match.get("situs_address"):
+                record["prop_address"] = match["situs_address"]
+            if not record.get("prop_city") and match.get("situs_city"):
+                record["prop_city"] = match["situs_city"]
+            if not record.get("prop_zip") and match.get("situs_zip"):
+                record["prop_zip"] = match["situs_zip"]
+            return match["parcel_acct"]
+
+    return None
 
 
 def fetch_property_data(parcel_acct: str) -> dict | None:

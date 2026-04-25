@@ -175,6 +175,49 @@ def upsert_and_autoqueue(
             return
     log.info(f"Upserted {upserted} records to Supabase")
 
+    # ── Live legal-description fallback ─────────────────────────────
+    # For any record that came in without a prop_address but DOES have
+    # a legal description, try to resolve it against the HCAD bulk via
+    # the resolve_parcel_by_legal RPC. Newly-resolved records get
+    # patched in-place (records table + the local normalized dict) so
+    # they qualify for the auto-queue step that follows.
+    try:
+        from .legal_matcher import resolve_legal
+    except ImportError:
+        try:
+            from legal_matcher import resolve_legal  # type: ignore
+        except ImportError:
+            resolve_legal = None
+
+    if resolve_legal is not None:
+        legal_resolved = 0
+        for r in normalized:
+            if r.get("prop_address") or not r.get("legal_description"):
+                continue
+            match = resolve_legal(client, r["legal_description"])
+            if not match:
+                continue
+            patch = {
+                "parcel_acct":      match["parcel_acct"],
+                "prop_address":     match.get("situs_address") or "",
+                "prop_city":        match.get("situs_city") or "Houston",
+                "prop_zip":         match.get("situs_zip") or "",
+                "address_source":   "hcad_legal",
+                "match_confidence": "high",
+            }
+            try:
+                client.table("records").update(patch).eq(
+                    "doc_num", r["doc_num"]
+                ).execute()
+                # Mirror into the normalized dict so auto-queue sees it
+                r.update(patch)
+                legal_resolved += 1
+            except Exception as e:
+                log.debug(f"legal-fallback patch failed for {r.get('doc_num')}: {e}")
+        if legal_resolved:
+            log.info(f"Legal-fallback resolved {legal_resolved} records "
+                     "(address filled from HCAD via legal description)")
+
     # Auto-queue: only records with both address and owner/grantor name
     # AND not yet submitted to SIFTstack (status is null or 'failed').
     qualifying = [r for r in normalized if _qualifies_for_autoqueue(r)]
