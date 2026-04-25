@@ -241,6 +241,48 @@ def find_parcels(index: dict[tuple, list[dict]],
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  Queue helper — pushes a record into siftstack_queue if eligible
+# ═══════════════════════════════════════════════════════════════════════
+import uuid as _uuid
+
+
+def queue_if_eligible(record: dict) -> bool:
+    """Queue this record for SIFTstack processing if it has parcel +
+    address + owner/grantor AND isn't already in the pipeline.
+    Returns True if a new queue row was created."""
+    if not record.get("parcel_acct"):
+        return False
+    if not record.get("prop_address"):
+        return False
+    if not (record.get("owner") or record.get("grantor_name")):
+        return False
+    try:
+        existing = (
+            client.table("siftstack_queue")
+            .select("id")
+            .eq("record_id", record["id"])
+            .in_("status", ["pending", "processing", "completed"])
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            return False
+    except Exception:
+        return False
+    try:
+        client.table("siftstack_queue").insert({
+            "record_id": record["id"],
+            "batch_id":  str(_uuid.uuid4()),
+            "queued_by": None,
+            "status":    "pending",
+        }).execute()
+        return True
+    except Exception as e:
+        log.debug("queue insert failed for %s: %s", record["id"], e)
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  Pull all records from Supabase
 # ═══════════════════════════════════════════════════════════════════════
 def fetch_all_records() -> list[dict]:
@@ -283,16 +325,18 @@ def main() -> int:
     # Make sure the keys we always report are present even at zero
     for k in ("already_linked", "by_address", "legal_exact",
               "legal_no_section", "legal_no_block",
-              "no_legal", "no_match", "ambiguous"):
+              "no_legal", "no_match", "ambiguous", "queued"):
         stats[k] = 0
 
     for rec in records:
         rid = rec["id"]
         overrides = set(rec.get("manual_overrides") or [])
 
-        # 1) Already linked → skip
+        # 1) Already linked → may still need queueing
         if rec.get("parcel_acct"):
             stats["already_linked"] += 1
+            if not DRY_RUN and queue_if_eligible(rec):
+                stats["queued"] += 1
             continue
 
         # 2) Address-based resolution (only if record has an address)
@@ -310,6 +354,9 @@ def main() -> int:
                             "address_source":   "hcad_address",
                             "match_confidence": "high",
                         }).eq("id", rid).execute()
+                        rec["parcel_acct"] = rpc.data
+                        if queue_if_eligible(rec):
+                            stats["queued"] += 1
                     continue
             except Exception as e:
                 log.debug("  address rpc failed for %s: %s", rid, e)
@@ -357,6 +404,9 @@ def main() -> int:
         if not DRY_RUN:
             try:
                 client.table("records").update(update).eq("id", rid).execute()
+                rec.update(update)  # mirror so queue_if_eligible sees latest state
+                if queue_if_eligible(rec):
+                    stats["queued"] += 1
             except Exception as e:
                 log.warning("  update failed for %s: %s", rid, e)
 
