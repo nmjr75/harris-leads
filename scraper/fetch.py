@@ -1434,6 +1434,37 @@ class ClerkScraper:
         failed = 0
         deadline = time.time() + time_cap_minutes * 60
 
+        # ─── DIAGNOSTIC INSTRUMENTATION (added 2026-04-25) ────────────────
+        # Goal: capture VERIFIED evidence of why PDF downloads fail with
+        # "Web Inquiry" warnings on long runs. The suspected cause is
+        # .ASPXAUTH cookie expiration, but this has NEVER been verified.
+        # See memory/project_harris_pdf_attempts.md for full history.
+        # Remove once root cause is verified and re-login fix is shipped.
+        diag_failure_count = 0  # counts Web Inquiry hits
+
+        async def _diag_dump_session(label: str):
+            """Dump cookie state to logs. Called at key checkpoints."""
+            try:
+                cookies = await self._ctx.cookies()
+                aspxauth = next((c for c in cookies if c["name"] == ".ASPXAUTH"), None)
+                if aspxauth:
+                    exp = aspxauth.get("expires", -1)
+                    if exp and exp > 0:
+                        exp_in_sec = int(exp - time.time())
+                        exp_str = f"expires_in={exp_in_sec}s ({exp_in_sec // 60}m)"
+                    else:
+                        exp_str = "session-cookie (no expiry)"
+                    log.info(f"  [DIAG {label}] .ASPXAUTH present, {exp_str}, "
+                             f"len={len(aspxauth.get('value', ''))}")
+                else:
+                    log.warning(f"  [DIAG {label}] .ASPXAUTH MISSING. "
+                                f"Cookies present: {sorted(c['name'] for c in cookies)}")
+            except Exception as e:
+                log.warning(f"  [DIAG {label}] cookie dump failed: {e}")
+
+        await _diag_dump_session("start-of-pdfs")
+        # ──────────────────────────────────────────────────────────────────
+
         for i, rec in enumerate(candidates):
             if time.time() > deadline:
                 log.warning(f"PDF download: {time_cap_minutes}-min time cap, "
@@ -1468,6 +1499,7 @@ class ClerkScraper:
                         await asyncio.sleep(3)
                         logged_in = True
                         log.info(f"  Login done — navigating to PDF...")
+                        await _diag_dump_session("post-login")
 
                         # After login, navigate to the ViewEdocs URL again
                         resp = await pdf_page.goto(clerk_url, timeout=60000,
@@ -1561,7 +1593,26 @@ class ClerkScraper:
                         if "unavailable" in page_text.lower():
                             log.info(f"  {doc_num}: document unavailable")
                         else:
-                            log.warning(f"  {doc_num}: unexpected page — {(await _safe_title())[:50]}")
+                            title = (await _safe_title())[:80]
+                            log.warning(f"  {doc_num}: unexpected page — {title}")
+                            # ─── DIAG: capture evidence for root-cause analysis ───
+                            # Verbose dump on first 3 failures + every 10th after,
+                            # to confirm/refute the .ASPXAUTH-expiry hypothesis
+                            # without spamming the log on long failure runs.
+                            diag_failure_count += 1
+                            if diag_failure_count <= 3 or diag_failure_count % 10 == 0:
+                                body_snippet = (page_text or "")[:500].replace("\n", " | ")
+                                log.warning(
+                                    f"    [DIAG fail #{diag_failure_count}] "
+                                    f"PDF idx {i+1}/{len(candidates)}, "
+                                    f"page_url={pdf_page.url}"
+                                )
+                                log.warning(
+                                    f"    [DIAG fail #{diag_failure_count}] "
+                                    f"body[:500]={body_snippet}"
+                                )
+                                await _diag_dump_session(f"fail #{diag_failure_count}")
+                            # ──────────────────────────────────────────────────────
                         failed += 1
                 except Exception as api_err:
                     log.warning(f"  {doc_num}: API request failed — {api_err}")
@@ -1982,10 +2033,17 @@ async def enrich_from_clerk_pdf(records: list,
     Returns:
         Count of records improved with address data.
     """
-    to_process = [r for r in records
-                  if r.get("_pdf_bytes")
-                  and r.get("match_confidence") == "none"
-                  and not r.get("prop_address", "").strip()]
+    # PROBATE: extract whenever confidence isn't "high" — name-match addresses
+    # need PDF verification. NON-PROBATE: only extract when we have nothing.
+    def _needs_extract(r):
+        if not r.get("_pdf_bytes"):
+            return False
+        conf = r.get("match_confidence", "none")
+        if r.get("cat") == "PROBATE":
+            return conf != "high"
+        return conf == "none" and not r.get("prop_address", "").strip()
+
+    to_process = [r for r in records if _needs_extract(r)]
 
     if not to_process:
         log.info("PDF extraction: no records with downloaded PDFs need processing")
@@ -2188,10 +2246,21 @@ async def main():
     #     ("SANFORD FARMS | Sec: 1 | Lot: 15 | Block: 3"). The full Harris
     #     County HCAD bulk (1.6M parcels) lives in Supabase property_data
     #     and is queryable via resolve_parcel_by_legal RPC.
-    #     This eliminates 80-95% of PDF downloads on the next step.
+    #
+    #     PROBATE RULE: even if Step 4 already filled prop_address from a
+    #     grantor name match (medium/low confidence), we re-check via legal
+    #     here. Name matches on a deceased person can hit the wrong parcel
+    #     (title companies, name collisions, the deceased owning multiple
+    #     properties). A legal-description hit upgrades to "high" confidence
+    #     and overwrites the address. Anything that doesn't upgrade falls
+    #     through to PDF verification in Step 4b.
     needs_addr = [r for r in deduped
-                  if not r.get("prop_address", "").strip()
-                  and r.get("legal", "").strip()]
+                  if r.get("legal", "").strip()
+                  and (
+                      not r.get("prop_address", "").strip()
+                      or (r.get("cat") == "PROBATE"
+                          and r.get("match_confidence") != "high")
+                  )]
     if needs_addr:
         log.info(f"Legal-desc fallback: attempting {len(needs_addr)} records via HCAD bulk ...")
         sb_url = (os.environ.get("SUPABASE_URL") or "").strip()
@@ -2224,16 +2293,26 @@ async def main():
         else:
             log.info("Legal-desc fallback: SUPABASE_URL/SUPABASE_SECRET_KEY missing — skipping")
 
-    # 4b. PDF DOWNLOAD + EXTRACTION — only for records HCAD couldn't resolve.
-    #     After step 4a, this filter naturally excludes records resolved by
-    #     legal-desc match (their match_confidence is now 'high').
-    #     Downloads PDFs using the same Playwright browser that scraped results
-    #     (browser is still open). Then extracts addresses via Gemini/pdfplumber.
-    no_address_records = [r for r in deduped
-                          if r.get("match_confidence") == "none"
-                          and not r.get("prop_address", "").strip()
-                          and r.get("clerk_url", "")
-                          and "ViewEdocs" in r.get("clerk_url", "")]
+    # 4b. PDF DOWNLOAD + EXTRACTION — pull PDFs whenever we don't have HIGH
+    #     confidence on the property address.
+    #
+    #     PROBATE: any non-"high" confidence forces a PDF, even if a name
+    #     match filled prop_address. Wrong probate property = wasted
+    #     marketing dollars on the wrong house — we can't ship that.
+    #     Only legal-description matches (high) are trusted to skip PDF.
+    #
+    #     NON-PROBATE: PDF only when we have nothing — name matches on
+    #     living owners are reliable enough (the property is in their
+    #     name today, in HCAD's current bulk).
+    def _needs_pdf(r):
+        if not r.get("clerk_url", "") or "ViewEdocs" not in r.get("clerk_url", ""):
+            return False
+        conf = r.get("match_confidence", "none")
+        if r.get("cat") == "PROBATE":
+            return conf != "high"
+        return conf == "none" and not r.get("prop_address", "").strip()
+
+    no_address_records = [r for r in deduped if _needs_pdf(r)]
     if no_address_records:
         log.info(f"PDF download: {len(no_address_records)} records need PDFs (HCAD couldn't resolve)")
         try:
