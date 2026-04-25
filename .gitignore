@@ -27,3 +27,10 @@ Thumbs.db
 # Local scratch
 scratch/
 tmp/
+
+# Legacy JSON dumps — Supabase is the source of truth now.
+# Keeping these tracked grew the repo to >100 MB and broke pushes.
+# Scraper still writes them locally, but they no longer ship to git.
+dashboard/records.json
+data/records.json
+data/ghl_export_*.csv

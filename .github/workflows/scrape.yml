@@ -97,15 +97,12 @@ jobs:
           "
 
       - name: Commit and push updated records
+        # Supabase is now the source of truth — records.json is local-only.
+        # Nothing in dashboard/ needs committing from a scrape run anymore.
+        # If we re-introduce a small artifact (e.g. a metrics summary), add
+        # it here and explicitly stage just that file.
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dashboard/records.json data/
-          # Only commit if there are actual changes
-          git diff --cached --quiet || git commit -m "chore: update leads $(TZ=America/Chicago date +'%Y-%m-%d %I:%M %p CT')"
-          # Pull any changes pushed while scraper was running, then push
-          git pull --rebase origin main
-          git push
+          echo "Skipping git commit — Supabase holds all scraper output now."
 
   deploy-pages:
     name: Deploy Dashboard to GitHub Pages
