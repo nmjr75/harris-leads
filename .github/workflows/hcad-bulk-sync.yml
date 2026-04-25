@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       sync_all:
-        description: "Load ALL Harris County parcels (Pro-tier only — ignores match filter)"
+        description: "Load ALL Harris County parcels (Pro-tier). Set '0' to only load address-matched parcels."
         required: false
-        default: "0"
+        default: "1"
       data_year:
         description: "HCAD data year folder (e.g. 2026)"
         required: false
@@ -36,7 +36,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      SYNC_ALL_PARCELS: ${{ github.event.inputs.sync_all || '0' }}
+      SYNC_ALL_PARCELS: ${{ github.event.inputs.sync_all || '1' }}
       HCAD_DATA_YEAR: ${{ github.event.inputs.data_year || '2026' }}
       HCAD_WORK_DIR: /tmp/hcad_sync
       TZ: America/Chicago
