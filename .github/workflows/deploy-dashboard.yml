@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "dashboard/index.html"
+      - "dashboard/**"
   workflow_dispatch:
 
 permissions:
