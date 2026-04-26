@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-04-25T08:41:52.878725Z",
+  "fetched_at": "2026-04-26T08:49:06.692431Z",
   "source": "Harris County Clerk - Foreclosure Postings (cclerk.hctx.net)",
   "target_months": [
     "May 2026",
@@ -18136,9 +18136,9 @@
       "cat_label": "Foreclosure Posting",
       "sale_date": "06/02/2026",
       "file_date": "03/12/2026",
-      "date_scraped": "2026-04-25",
-      "batch_id": "B32",
-      "batch_label": "Run #41 / Batch 32 \u00e2\u0080\u0094 2026-04-25 08:41 AM",
+      "date_scraped": "2026-04-26",
+      "batch_id": "B34",
+      "batch_label": "Run #42 / Batch 34 \u00e2\u0080\u0094 2026-04-26 08:48 AM",
       "grantor": "",
       "co_borrower": "",
       "amount": "",
