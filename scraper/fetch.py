@@ -1448,7 +1448,8 @@ class ClerkScraper:
         login_state = {"logged_in": False}
         diag_state  = {"failure_count": 0}
         counts      = {"downloaded": 0, "failed": 0, "unavailable": 0,
-                       "storage_saved": 0, "storage_skipped": 0}
+                       "storage_saved": 0, "storage_skipped": 0,
+                       "from_cache": 0}
 
         # ─── LAYER 1: PERSISTENT PDF STORAGE (added 2026-04-26) ────────────
         # Every successfully-downloaded PDF is saved to Supabase Storage
@@ -1507,6 +1508,53 @@ class ClerkScraper:
                 log.warning(f"  [W{worker_id}] {doc_num}: Storage save failed — "
                             f"{type(e).__name__}: {e}")
                 return False
+
+        async def _list_storage_pdfs() -> set:
+            """Return set of doc_nums (without .pdf) currently in Storage at
+            STORAGE_PREFIX. Handles pagination. Empty set if Storage disabled
+            or any error — graceful degradation to fresh download."""
+            if not sb_client:
+                return set()
+            pdfs: set = set()
+            page_size = 1000  # supabase-storage list cap is ~1000/call
+            offset = 0
+            while True:
+                try:
+                    page = await asyncio.to_thread(
+                        lambda o=offset: sb_client.storage.from_(STORAGE_BUCKET).list(
+                            path=STORAGE_PREFIX,
+                            options={"limit": page_size, "offset": o},
+                        )
+                    )
+                except Exception as e:
+                    log.warning(f"PDF storage: list failed at offset={offset} — {e}")
+                    break
+                if not page:
+                    break
+                for item in page:
+                    name = item.get("name", "") if isinstance(item, dict) else getattr(item, "name", "")
+                    if name.endswith(".pdf"):
+                        pdfs.add(name[:-4])  # strip .pdf
+                if len(page) < page_size:
+                    break
+                offset += page_size
+            return pdfs
+
+        async def _fetch_pdf_from_storage(doc_num: str):
+            """Download cached PDF bytes from Storage. Returns bytes on success,
+            None on missing/corrupt/error — caller falls back to fresh download."""
+            if not sb_client:
+                return None
+            path = f"{STORAGE_PREFIX}/{doc_num}.pdf"
+            try:
+                body = await asyncio.to_thread(
+                    lambda: sb_client.storage.from_(STORAGE_BUCKET).download(path)
+                )
+                return body
+            except Exception as e:
+                log.warning(f"PDF storage: fetch failed for {doc_num} — "
+                            f"{type(e).__name__}: {str(e)[:120]}")
+                return None
         # ──────────────────────────────────────────────────────────────────
 
         # ─── DIAGNOSTIC INSTRUMENTATION (added 2026-04-25) ────────────────
@@ -1545,7 +1593,7 @@ class ClerkScraper:
             """
             doc_num   = rec.get("doc_num", "?")
             clerk_url = rec.get("clerk_url", "")
-            log.info(f"  [W{worker_id}] PDF [{idx+1}/{len(candidates)}] {doc_num} "
+            log.info(f"  [W{worker_id}] PDF [{idx+1}/{len(fresh_records)}] {doc_num} "
                      f"(try {attempt+1}/{max_retries+1})")
 
             pdf_page = None
@@ -1665,7 +1713,7 @@ class ClerkScraper:
                 fc = diag_state["failure_count"]
                 if fc <= 3 or fc % 10 == 0:
                     body_snippet = (page_text or "")[:500].replace("\n", " | ")
-                    log.warning(f"    [DIAG fail #{fc}] PDF idx {idx+1}/{len(candidates)}, "
+                    log.warning(f"    [DIAG fail #{fc}] PDF idx {idx+1}/{len(fresh_records)}, "
                                 f"page_url={pdf_page.url}")
                     log.warning(f"    [DIAG fail #{fc}] body[:500]={body_snippet}")
                     await _diag_dump_session(f"fail #{fc}")
@@ -1681,9 +1729,55 @@ class ClerkScraper:
                     except Exception:
                         pass
 
+        # ─── LAYER 2: PRE-FLIGHT STORAGE CHECK (added 2026-04-26) ─────────
+        # For every record whose PDF is already cached in Storage, fetch the
+        # bytes from Storage instead of re-downloading from clerk. Eliminates
+        # the redundant ~75-sec/PDF clerk roundtrip on the 10-day lookback
+        # window. Storage hits are ~50-100ms each → 10x faster + zero load
+        # on clerk's already-flaky PDF generator.
+        existing_in_storage = await _list_storage_pdfs() if sb_client else set()
+        if sb_client:
+            log.info(f"PDF storage: {len(existing_in_storage)} PDFs already cached "
+                     f"in {STORAGE_BUCKET}/{STORAGE_PREFIX}/")
+
+        cached_records = [r for r in candidates
+                          if r.get("doc_num", "") in existing_in_storage]
+        fresh_records  = [r for r in candidates
+                          if r.get("doc_num", "") not in existing_in_storage]
+
+        if cached_records:
+            log.info(f"PDF download: {len(cached_records)} from cache, "
+                     f"{len(fresh_records)} need fresh download from clerk")
+
+            # Hydrate cached records in parallel — Storage is fast, semaphore
+            # of 10 keeps it polite without saturating Supabase.
+            cache_sem = asyncio.Semaphore(10)
+            cache_failed: list = []  # cached entries that came back bad → fall back to fresh
+
+            async def _hydrate(rec):
+                async with cache_sem:
+                    doc_num = rec.get("doc_num", "")
+                    body = await _fetch_pdf_from_storage(doc_num)
+                    if body and body[:4] == b"%PDF":
+                        rec["_pdf_bytes"] = body
+                        counts["downloaded"] += 1
+                        counts["from_cache"] += 1
+                        log.info(f"  PDF from cache: {doc_num} ({len(body):,} bytes)")
+                    else:
+                        cache_failed.append(rec)
+                        log.warning(f"  PDF cache miss/corrupt for {doc_num} — "
+                                    f"will retry fresh from clerk")
+
+            await asyncio.gather(*[_hydrate(r) for r in cached_records])
+            # Cache misses fall through to the fresh-download queue.
+            fresh_records.extend(cache_failed)
+        # ──────────────────────────────────────────────────────────────────
+
         # Build the work queue with (idx, rec, attempt_count) tuples.
+        # Only fresh records hit the queue — cached ones already have
+        # _pdf_bytes populated and will flow into extraction directly.
         queue: asyncio.Queue = asyncio.Queue()
-        for idx, rec in enumerate(candidates):
+        for idx, rec in enumerate(fresh_records):
             queue.put_nowait((idx, rec, 0))
 
         async def worker(worker_id: int):
@@ -1718,13 +1812,16 @@ class ClerkScraper:
             log.warning(f"PDF download: {time_cap_minutes}-min time cap hit, "
                         f"{remaining} retry slots left in queue")
 
-        log.info(f"PDF download: {counts['downloaded']} downloaded, "
+        fresh_landed = counts["downloaded"] - counts["from_cache"]
+        log.info(f"PDF download: {counts['downloaded']} total "
+                 f"({counts['from_cache']} from cache, {fresh_landed} fresh from clerk), "
                  f"{counts['failed']} failed, {counts['unavailable']} unavailable, "
                  f"out of {len(candidates)} "
                  f"(concurrency={concurrency}, max_retries={max_retries})")
         if sb_client:
-            log.info(f"PDF storage: {counts['storage_saved']} saved to Supabase, "
-                     f"{counts['storage_skipped']} skipped (errors)")
+            log.info(f"PDF storage: {counts['storage_saved']} new uploads to Supabase, "
+                     f"{counts['from_cache']} cache hits, "
+                     f"{counts['storage_skipped']} upload errors")
 
     async def run(self):
         """Scrape clerk records. Keeps browser open for PDF downloads later."""
