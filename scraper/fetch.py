@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import sys
 import time
@@ -1429,21 +1430,31 @@ class ClerkScraper:
 
         username = os.environ.get("CCLERK_USERNAME", "")
         password = os.environ.get("CCLERK_PASSWORD", "")
-        logged_in = False
-        downloaded = 0
-        failed = 0
         deadline = time.time() + time_cap_minutes * 60
 
-        # ─── DIAGNOSTIC INSTRUMENTATION (added 2026-04-25) ────────────────
-        # Goal: capture VERIFIED evidence of why PDF downloads fail with
-        # "Web Inquiry" warnings on long runs. The suspected cause is
-        # .ASPXAUTH cookie expiration, but this has NEVER been verified.
-        # See memory/project_harris_pdf_attempts.md for full history.
-        # Remove once root cause is verified and re-login fix is shipped.
-        diag_failure_count = 0  # counts Web Inquiry hits
+        # Retry + concurrency tuning. Apr 25 PM run analysis (see
+        # memory/project_harris_pdf_attempts.md): clerk rejects ~88% of
+        # individual requests randomly with "Web Inquiry" redirect, regardless
+        # of session state. Each retry is an independent ~12% chance.
+        # Cumulative success: 1 retry → 22%, 2 retries → 32%, 3 → 41%.
+        # Concurrency 2 keeps us safely inside whatever clerk's session
+        # tolerance is; bump to 3 only after observing this works clean.
+        max_retries = 2     # 3 attempts total
+        concurrency = 2     # parallel download tabs sharing one auth context
 
+        # Shared state across workers (asyncio is single-threaded so no lock
+        # needed for counters; lock is only for the login phase).
+        login_lock  = asyncio.Lock()
+        login_state = {"logged_in": False}
+        diag_state  = {"failure_count": 0}
+        counts      = {"downloaded": 0, "failed": 0, "unavailable": 0}
+
+        # ─── DIAGNOSTIC INSTRUMENTATION (added 2026-04-25) ────────────────
+        # Captures cookie state at start, post-login, and on the 1st-3rd +
+        # every 10th Web Inquiry failure. Per Apr 25 analysis, the
+        # .ASPXAUTH-expiry hypothesis was falsified — keeping these dumps
+        # to lock the falsification in with empirical proof every run.
         async def _diag_dump_session(label: str):
-            """Dump cookie state to logs. Called at key checkpoints."""
             try:
                 cookies = await self._ctx.cookies()
                 aspxauth = next((c for c in cookies if c["name"] == ".ASPXAUTH"), None)
@@ -1465,69 +1476,65 @@ class ClerkScraper:
         await _diag_dump_session("start-of-pdfs")
         # ──────────────────────────────────────────────────────────────────
 
-        for i, rec in enumerate(candidates):
-            if time.time() > deadline:
-                log.warning(f"PDF download: {time_cap_minutes}-min time cap, "
-                            f"processed {i}/{len(candidates)}")
-                break
-
-            doc_num = rec.get("doc_num", "?")
+        async def _try_one_pdf(rec, idx, worker_id, attempt):
+            """Attempt one PDF download. Returns one of:
+              'pdf'         — success, rec['_pdf_bytes'] populated
+              'unavailable' — doc genuinely missing on clerk side; do NOT retry
+              'fail'        — Web Inquiry / unexpected page; retry-eligible
+              'error'       — exception during attempt; retry-eligible
+            """
+            doc_num   = rec.get("doc_num", "?")
             clerk_url = rec.get("clerk_url", "")
-            log.info(f"  PDF [{i+1}/{len(candidates)}] {doc_num}")
+            log.info(f"  [W{worker_id}] PDF [{idx+1}/{len(candidates)}] {doc_num} "
+                     f"(try {attempt+1}/{max_retries+1})")
 
+            pdf_page = None
             try:
-                # Open a new tab to download the PDF (keeps search results intact)
                 pdf_page = await self._ctx.new_page()
-
-                # Navigate to the ViewEdocs URL (use domcontentloaded —
-                # networkidle never fires because PDF pages keep connections open)
-                resp = await pdf_page.goto(clerk_url, timeout=60000,
-                                           wait_until="domcontentloaded")
+                await pdf_page.goto(clerk_url, timeout=60000,
+                                    wait_until="domcontentloaded")
                 await asyncio.sleep(2)
 
-                # Handle login redirect
+                # Login coordination — only the first worker that hits the
+                # login redirect actually logs in. Others wait at the lock,
+                # then see logged_in=True and skip. Cookie persists on the
+                # shared context so all subsequent navigations are auth'd.
                 if "login" in pdf_page.url.lower() and username and password:
-                    if not logged_in:
-                        log.info(f"  Login required — logging in...")
-                        await pdf_page.fill("input[name*='UserName']", username)
-                        await pdf_page.fill("input[name*='Password']", password)
-                        btn = pdf_page.locator("input[name*='LoginButton']")
-                        if await btn.count() == 0:
-                            btn = pdf_page.locator("text=LOG IN")
-                        await btn.first.click()
-                        await pdf_page.wait_for_load_state("domcontentloaded", timeout=60000)
-                        await asyncio.sleep(3)
-                        logged_in = True
-                        log.info(f"  Login done — navigating to PDF...")
-                        await _diag_dump_session("post-login")
+                    async with login_lock:
+                        if not login_state["logged_in"]:
+                            log.info(f"  [W{worker_id}] Login required — logging in...")
+                            await pdf_page.fill("input[name*='UserName']", username)
+                            await pdf_page.fill("input[name*='Password']", password)
+                            btn = pdf_page.locator("input[name*='LoginButton']")
+                            if await btn.count() == 0:
+                                btn = pdf_page.locator("text=LOG IN")
+                            await btn.first.click()
+                            await pdf_page.wait_for_load_state("domcontentloaded", timeout=60000)
+                            await asyncio.sleep(3)
+                            login_state["logged_in"] = True
+                            log.info(f"  [W{worker_id}] Login done")
+                            await _diag_dump_session("post-login")
+                    # Re-navigate after login (whether we did the login or
+                    # waited for another worker to finish it).
+                    await pdf_page.goto(clerk_url, timeout=60000,
+                                        wait_until="domcontentloaded")
+                    await asyncio.sleep(2)
 
-                        # After login, navigate to the ViewEdocs URL again
-                        resp = await pdf_page.goto(clerk_url, timeout=60000,
-                                                   wait_until="domcontentloaded")
-                        await asyncio.sleep(2)
-
-                # Now we should be on the "View Instrument" auto-submit form page.
-                # Wait for the form to auto-submit via jQuery (it does form1.submit())
-                # and the PDF to load.
+                # Wait for the JS auto-submit form to render.
                 await asyncio.sleep(3)
 
-                # Check if the auto-submit form is present and submit it manually
-                # (headless browser may not execute jQuery auto-submit)
                 form_exists = await pdf_page.locator("form#form1").count()
                 if form_exists > 0:
                     enc_id = await pdf_page.locator("input#encId").get_attribute("value")
                     if enc_id:
-                        log.info(f"  Submitting auto-submit form...")
+                        log.info(f"  [W{worker_id}] Submitting auto-submit form...")
                         await pdf_page.evaluate("document.getElementById('form1').submit()")
-                        # Wait for the navigation triggered by the form submit to finish
-                        # before we inspect the page — prevents "execution context destroyed"
                         try:
                             await pdf_page.wait_for_load_state("domcontentloaded", timeout=30000)
                         except Exception:
                             pass
                         await asyncio.sleep(2)
 
-                # Safe title read — page may still be navigating; retry once on race
                 async def _safe_title():
                     for _ in range(2):
                         try:
@@ -1536,98 +1543,123 @@ class ClerkScraper:
                             await asyncio.sleep(2)
                     return ""
 
-                # Try to get the response body — might be PDF now
-                # Use page.pdf() to capture what's displayed, or check content
                 current_url = pdf_page.url
 
-                # Check if we can get PDF via the API request using this context's cookies
+                api_resp = await self._ctx.request.get(current_url, timeout=90000)
+                body = await api_resp.body()
+
+                if body and body[:4] == b"%PDF":
+                    rec["_pdf_bytes"] = body
+                    log.info(f"  [W{worker_id}] PDF downloaded: {len(body):,} bytes")
+                    return "pdf"
+
+                if "View Instrument" in (await _safe_title()):
+                    enc_el = await pdf_page.query_selector("input#encId")
+                    if enc_el:
+                        enc_val = await enc_el.get_attribute("value")
+                        form_el = await pdf_page.query_selector("form#form1")
+                        action  = await form_el.get_attribute("action") if form_el else ""
+                        if action and enc_val:
+                            if not action.startswith("http"):
+                                action = f"https://www.cclerk.hctx.net/applications/websearch/EComm/{action}"
+                            vs  = await pdf_page.locator("input#__VIEWSTATE").get_attribute("value") or ""
+                            vsg = await pdf_page.locator("input#__VIEWSTATEGENERATOR").get_attribute("value") or ""
+                            ev  = await pdf_page.locator("input#__EVENTVALIDATION").get_attribute("value") or ""
+                            post_resp = await self._ctx.request.post(action, timeout=90000, form={
+                                "__VIEWSTATE":           vs,
+                                "__VIEWSTATEGENERATOR":  vsg,
+                                "__EVENTVALIDATION":     ev,
+                                "encId":                 enc_val,
+                            })
+                            post_body = await post_resp.body()
+                            if post_body and post_body[:4] == b"%PDF":
+                                rec["_pdf_bytes"] = post_body
+                                log.info(f"  [W{worker_id}] PDF via form POST: {len(post_body):,} bytes")
+                                return "pdf"
+                            log.warning(f"  [W{worker_id}] {doc_num}: form POST returned "
+                                        f"{len(post_body)} bytes, not PDF")
+                            return "fail"
+                        log.warning(f"  [W{worker_id}] {doc_num}: no encId or action on page")
+                        return "fail"
+                    log.warning(f"  [W{worker_id}] {doc_num}: View Instrument page but no encId")
+                    return "fail"
+
+                # Not %PDF and not "View Instrument" — Web Inquiry or other.
                 try:
-                    api_resp = await self._ctx.request.get(current_url, timeout=90000)
-                    body = await api_resp.body()
+                    page_text = await pdf_page.inner_text("body")
+                except Exception:
+                    page_text = ""
+                if "unavailable" in page_text.lower():
+                    log.info(f"  [W{worker_id}] {doc_num}: document unavailable")
+                    return "unavailable"
 
-                    if body and body[:4] == b"%PDF":
-                        rec["_pdf_bytes"] = body
-                        downloaded += 1
-                        log.info(f"  PDF downloaded: {len(body):,} bytes")
-                    elif "View Instrument" in (await _safe_title()):
-                        # Still on the HTML page — try the form POST via API
-                        enc_el = await pdf_page.query_selector("input#encId")
-                        if enc_el:
-                            enc_val = await enc_el.get_attribute("value")
-                            form_el = await pdf_page.query_selector("form#form1")
-                            action = await form_el.get_attribute("action") if form_el else ""
-                            if action and enc_val:
-                                if not action.startswith("http"):
-                                    action = f"https://www.cclerk.hctx.net/applications/websearch/EComm/{action}"
+                title = (await _safe_title())[:80]
+                log.warning(f"  [W{worker_id}] {doc_num}: unexpected page — {title} "
+                            f"(try {attempt+1})")
 
-                                # Get ViewState from the page
-                                vs = await pdf_page.locator("input#__VIEWSTATE").get_attribute("value") or ""
-                                vsg = await pdf_page.locator("input#__VIEWSTATEGENERATOR").get_attribute("value") or ""
-                                ev = await pdf_page.locator("input#__EVENTVALIDATION").get_attribute("value") or ""
+                # Diag dump — verbose on first 3 + every 10th, single counter
+                # across all workers (asyncio single-threaded so no lock needed).
+                diag_state["failure_count"] += 1
+                fc = diag_state["failure_count"]
+                if fc <= 3 or fc % 10 == 0:
+                    body_snippet = (page_text or "")[:500].replace("\n", " | ")
+                    log.warning(f"    [DIAG fail #{fc}] PDF idx {idx+1}/{len(candidates)}, "
+                                f"page_url={pdf_page.url}")
+                    log.warning(f"    [DIAG fail #{fc}] body[:500]={body_snippet}")
+                    await _diag_dump_session(f"fail #{fc}")
 
-                                post_resp = await self._ctx.request.post(action, timeout=90000, form={
-                                    "__VIEWSTATE": vs,
-                                    "__VIEWSTATEGENERATOR": vsg,
-                                    "__EVENTVALIDATION": ev,
-                                    "encId": enc_val,
-                                })
-                                post_body = await post_resp.body()
-                                if post_body and post_body[:4] == b"%PDF":
-                                    rec["_pdf_bytes"] = post_body
-                                    downloaded += 1
-                                    log.info(f"  PDF via form POST: {len(post_body):,} bytes")
-                                else:
-                                    log.warning(f"  {doc_num}: form POST returned {len(post_body)} bytes, not PDF")
-                                    failed += 1
-                            else:
-                                log.warning(f"  {doc_num}: no encId or action on page")
-                                failed += 1
-                        else:
-                            log.warning(f"  {doc_num}: View Instrument page but no encId")
-                            failed += 1
-                    else:
-                        try:
-                            page_text = await pdf_page.inner_text("body")
-                        except Exception:
-                            page_text = ""
-                        if "unavailable" in page_text.lower():
-                            log.info(f"  {doc_num}: document unavailable")
-                        else:
-                            title = (await _safe_title())[:80]
-                            log.warning(f"  {doc_num}: unexpected page — {title}")
-                            # ─── DIAG: capture evidence for root-cause analysis ───
-                            # Verbose dump on first 3 failures + every 10th after,
-                            # to confirm/refute the .ASPXAUTH-expiry hypothesis
-                            # without spamming the log on long failure runs.
-                            diag_failure_count += 1
-                            if diag_failure_count <= 3 or diag_failure_count % 10 == 0:
-                                body_snippet = (page_text or "")[:500].replace("\n", " | ")
-                                log.warning(
-                                    f"    [DIAG fail #{diag_failure_count}] "
-                                    f"PDF idx {i+1}/{len(candidates)}, "
-                                    f"page_url={pdf_page.url}"
-                                )
-                                log.warning(
-                                    f"    [DIAG fail #{diag_failure_count}] "
-                                    f"body[:500]={body_snippet}"
-                                )
-                                await _diag_dump_session(f"fail #{diag_failure_count}")
-                            # ──────────────────────────────────────────────────────
-                        failed += 1
-                except Exception as api_err:
-                    log.warning(f"  {doc_num}: API request failed — {api_err}")
-                    failed += 1
-
-                await pdf_page.close()
-
+                return "fail"
             except Exception as e:
-                log.warning(f"  {doc_num}: error — {e}")
-                failed += 1
+                log.warning(f"  [W{worker_id}] {doc_num}: error — {e}")
+                return "error"
+            finally:
+                if pdf_page:
+                    try:
+                        await pdf_page.close()
+                    except Exception:
+                        pass
 
-            await asyncio.sleep(0.5)
+        # Build the work queue with (idx, rec, attempt_count) tuples.
+        queue: asyncio.Queue = asyncio.Queue()
+        for idx, rec in enumerate(candidates):
+            queue.put_nowait((idx, rec, 0))
 
-        log.info(f"PDF download: {downloaded} downloaded, {failed} failed "
-                 f"out of {len(candidates)}")
+        async def worker(worker_id: int):
+            while time.time() < deadline:
+                try:
+                    idx, rec, attempt = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    return
+
+                result = await _try_one_pdf(rec, idx, worker_id, attempt)
+
+                if result == "pdf":
+                    counts["downloaded"] += 1
+                elif result == "unavailable":
+                    counts["unavailable"] += 1
+                elif result in ("fail", "error"):
+                    if attempt < max_retries:
+                        # Jittered backoff so retries don't synchronise across workers.
+                        await asyncio.sleep(random.uniform(0.5, 2.0))
+                        queue.put_nowait((idx, rec, attempt + 1))
+                    else:
+                        counts["failed"] += 1
+
+                # Small spacer between PDFs from the same worker.
+                await asyncio.sleep(0.5)
+
+        workers = [asyncio.create_task(worker(i + 1)) for i in range(concurrency)]
+        await asyncio.gather(*workers, return_exceptions=True)
+
+        remaining = queue.qsize()
+        if remaining > 0:
+            log.warning(f"PDF download: {time_cap_minutes}-min time cap hit, "
+                        f"{remaining} retry slots left in queue")
+
+        log.info(f"PDF download: {counts['downloaded']} downloaded, "
+                 f"{counts['failed']} failed, {counts['unavailable']} unavailable, "
+                 f"out of {len(candidates)} "
+                 f"(concurrency={concurrency}, max_retries={max_retries})")
 
     async def run(self):
         """Scrape clerk records. Keeps browser open for PDF downloads later."""
