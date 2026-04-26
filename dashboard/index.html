@@ -1083,6 +1083,22 @@ function normalizeFromDb(r) {
   return r;
 }
 
+// ── Central Time formatter (Houston operations) ────────────────────
+// Every timestamp shown on the dashboard MUST go through this helper.
+// Browser-locale defaults are wrong - viewers in other timezones see
+// shifted times that don't match what was logged.
+function formatCT(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d)) return "";
+  return d.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    year:  "numeric", month: "short", day:    "numeric",
+    hour:  "2-digit", minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 // ── Load Data ──────────────────────────────────────────────────────
 async function loadData() {
   // Fetch in pages of 1000 (Supabase default max per request)
@@ -1116,7 +1132,7 @@ async function loadData() {
   FRCL_DATA = { total: frclCount };   // kept for legacy meta display
 
   document.getElementById("meta").innerHTML =
-    `Updated: ${new Date(DATA.fetched_at).toLocaleString()}<br>${DATA.date_range.from} to ${DATA.date_range.to}<br>Foreclosures: ${frclCount} postings`;
+    `Updated: ${formatCT(DATA.fetched_at)}<br>${DATA.date_range.from} to ${DATA.date_range.to}<br>Foreclosures: ${frclCount} postings`;
 
   buildStats();
   buildCharts();
@@ -1153,11 +1169,7 @@ async function loadRuns() {
   sel.innerHTML = '<option value="">All Runs</option>';
 
   RUNS.forEach(r => {
-    const dt = r.started_at ? new Date(r.started_at) : null;
-    const dtStr = dt && !isNaN(dt) ? dt.toLocaleString(undefined, {
-      year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    }) : "";
+    const dtStr = formatCT(r.started_at);
     const wf = (r.workflow_name || "").replace(/\.yml$/, "")
       .replace("scrape-foreclosures", "Foreclosure")
       .replace("scrape", "Lead");
@@ -1696,9 +1708,9 @@ function renderSiftstackPill(r) {
   const label = labels[status] || "—";
   let title = "Not yet submitted";
   if (status === "completed")
-    title = ts ? "Enriched " + new Date(ts).toLocaleString() : "Enriched";
+    title = ts ? "Enriched " + formatCT(ts) : "Enriched";
   else if (status === "failed")
-    title = ts ? "Failed " + new Date(ts).toLocaleString() : "Failed";
+    title = ts ? "Failed " + formatCT(ts) : "Failed";
   else if (status === "queued")
     title = "Queued — awaiting SIFTstack worker";
   // Escape quotes for safe HTML attribute
