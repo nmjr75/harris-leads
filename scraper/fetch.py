@@ -2385,6 +2385,22 @@ async def main():
     log.info("Harris County Motivated Seller Scraper")
     log.info(f"Date range: {start_date.date()} to {end_date.date()}")
 
+    # ── Per-run audit trail (Step 3 of run-picker build) ─────────────
+    # Open a scraper_runs row at the very start so it's tagged with
+    # the correct date range. Closed at the end with totals or marked
+    # 'failed' on exception. Silent no-op if Supabase not configured.
+    try:
+        from run_audit import start_run as _start_run, finish_run as _finish_run
+    except ImportError:
+        _start_run = _finish_run = None
+    audit_run_pk = None
+    if _start_run:
+        audit_run_pk = _start_run(
+            workflow_name="scrape.yml",
+            date_range_from=start_date.date().isoformat(),
+            date_range_to=end_date.date().isoformat(),
+        )
+
     # 1. Load HCAD parcel data
     parcel = HCADParcelLoader()
     parcel_count = parcel.load()
@@ -2645,11 +2661,28 @@ async def main():
 
     # Dual-write to Supabase + auto-queue qualifying records for SIFTstack.
     # Silent no-op if SUPABASE_URL / SUPABASE_SECRET_KEY are not set.
+    sync_summary = {"seen": 0, "created": 0, "updated": 0, "enriched": 0, "total": 0}
     try:
         from supabase_sync import upsert_and_autoqueue
-        upsert_and_autoqueue(deduped, source="clerk")
+        sync_summary = upsert_and_autoqueue(
+            deduped, source="clerk", run_id=audit_run_pk
+        ) or sync_summary
     except Exception as e:
         log.warning(f"Supabase sync/auto-queue failed: {e}")
+
+    # Close the audit run with totals from the sync summary
+    if audit_run_pk and _finish_run:
+        try:
+            _finish_run(
+                audit_run_pk,
+                status="completed",
+                total_seen=sync_summary.get("seen", 0),
+                total_created=sync_summary.get("created", 0),
+                total_updated=(sync_summary.get("updated", 0)
+                               + sync_summary.get("enriched", 0)),
+            )
+        except Exception as e:
+            log.warning(f"run_audit finish_run failed: {e}")
 
     log.info(f"Done. Total: {len(deduped)} | With address: {with_address}")
 

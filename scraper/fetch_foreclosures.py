@@ -1804,11 +1804,30 @@ def _save_output(records: list, seen_ids: set, today: str, target_months: list):
 
     # Dual-write to Supabase + auto-queue qualifying records for SIFTstack.
     # Silent no-op if SUPABASE_URL / SUPABASE_SECRET_KEY are not set.
+    sync_summary = {"seen": 0, "created": 0, "updated": 0, "enriched": 0, "total": 0}
+    _audit_pk = locals().get("audit_run_pk")
+    _audit_finish = locals().get("_finish_run")
     try:
         from supabase_sync import upsert_and_autoqueue
-        upsert_and_autoqueue(records, source="foreclosure")
+        sync_summary = upsert_and_autoqueue(
+            records, source="foreclosure", run_id=_audit_pk
+        ) or sync_summary
     except Exception as e:
         log.warning(f"Supabase sync/auto-queue failed: {e}")
+
+    # Close the audit run (status + totals)
+    if _audit_pk and _audit_finish:
+        try:
+            _audit_finish(
+                _audit_pk,
+                status="completed",
+                total_seen=sync_summary.get("seen", 0),
+                total_created=sync_summary.get("created", 0),
+                total_updated=(sync_summary.get("updated", 0)
+                               + sync_summary.get("enriched", 0)),
+            )
+        except Exception as e:
+            log.warning(f"run_audit finish_run failed: {e}")
 
     log.info(f"Done. Total: {len(records)} | With address: {with_address}")
 
@@ -3261,6 +3280,21 @@ def main():
     now_ts = datetime.now().strftime("%Y-%m-%d %I:%M %p")
     run_number2 = os.environ.get("GITHUB_RUN_NUMBER", "")
     run_tag2 = f"Run #{run_number2} / " if run_number2 else ""
+    # ── Per-run audit trail (Step 3 of run-picker build) ─────────────
+    # Open a scraper_runs row now; close with totals at end of main(),
+    # or mark 'failed' on exception. Handed to upsert_and_autoqueue so
+    # per-record diffs (created/updated/seen/enriched) write to
+    # scraper_run_records. Silent no-op if Supabase not configured.
+    try:
+        from run_audit import start_run as _start_run, finish_run as _finish_run
+    except ImportError:
+        _start_run = _finish_run = None
+    audit_run_pk = None
+    if _start_run:
+        audit_run_pk = _start_run(
+            workflow_name="scrape-foreclosures.yml",
+            run_id_text=f"B{next_batch_num}",
+        )
     batch_label = f"{run_tag2}Batch {next_batch_num} â {now_ts}"
     log.info(f"This run: {batch_id} ({batch_label})")
 
@@ -3571,11 +3605,30 @@ def _save_output(records: list, seen_ids: set, today: str, target_months: list):
 
     # Dual-write to Supabase + auto-queue qualifying records for SIFTstack.
     # Silent no-op if SUPABASE_URL / SUPABASE_SECRET_KEY are not set.
+    sync_summary = {"seen": 0, "created": 0, "updated": 0, "enriched": 0, "total": 0}
+    _audit_pk = locals().get("audit_run_pk")
+    _audit_finish = locals().get("_finish_run")
     try:
         from supabase_sync import upsert_and_autoqueue
-        upsert_and_autoqueue(records, source="foreclosure")
+        sync_summary = upsert_and_autoqueue(
+            records, source="foreclosure", run_id=_audit_pk
+        ) or sync_summary
     except Exception as e:
         log.warning(f"Supabase sync/auto-queue failed: {e}")
+
+    # Close the audit run (status + totals)
+    if _audit_pk and _audit_finish:
+        try:
+            _audit_finish(
+                _audit_pk,
+                status="completed",
+                total_seen=sync_summary.get("seen", 0),
+                total_created=sync_summary.get("created", 0),
+                total_updated=(sync_summary.get("updated", 0)
+                               + sync_summary.get("enriched", 0)),
+            )
+        except Exception as e:
+            log.warning(f"run_audit finish_run failed: {e}")
 
     log.info(f"Done. Total: {len(records)} | With address: {with_address}")
 
