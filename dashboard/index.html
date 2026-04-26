@@ -636,6 +636,9 @@
     <option value="clerk">Clerk Records</option>
     <option value="foreclosure">Foreclosures</option>
   </select>
+  <select id="runPicker" title="Pick a scraper run to see only the records it touched">
+    <option value="">All Runs</option>
+  </select>
   <select id="batchFilter">
     <option value="">All Batches</option>
   </select>
@@ -1118,7 +1121,88 @@ async function loadData() {
   buildStats();
   buildCharts();
   populateFilters();
+  await loadRuns();
   applyFilters();
+}
+
+// ── Run-picker: load scraper_runs and populate the Run dropdown ────
+//
+// Fetches up to ~5,000 most recent runs (each scraper run is one row).
+// On select, queries scraper_run_records for that run, builds a Map of
+// record_id -> action, and applyFilters() narrows the table to those
+// records. Picking "All Runs" clears the filter.
+let RUNS = [];
+let SELECTED_RUN_RECORD_IDS = null;   // null = no run filter; Map otherwise
+
+async function loadRuns() {
+  try {
+    const { data, error } = await sb
+      .from("scraper_runs")
+      .select("id,run_id,gh_run_number,workflow_name,started_at,completed_at,status,total_seen,total_created,total_updated")
+      .order("id", { ascending: false })
+      .limit(5000);
+    if (error) { console.error("loadRuns failed:", error); return; }
+    RUNS = data || [];
+  } catch (e) {
+    console.error("loadRuns exception:", e);
+    RUNS = [];
+  }
+
+  const sel = document.getElementById("runPicker");
+  // Wipe any previously-built options except the leading "All Runs"
+  sel.innerHTML = '<option value="">All Runs</option>';
+
+  RUNS.forEach(r => {
+    const dt = r.started_at ? new Date(r.started_at) : null;
+    const dtStr = dt && !isNaN(dt) ? dt.toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    }) : "";
+    const wf = (r.workflow_name || "").replace(/\.yml$/, "")
+      .replace("scrape-foreclosures", "Foreclosure")
+      .replace("scrape", "Lead");
+    const ghTag = r.gh_run_number ? `Run #${r.gh_run_number}` : (r.run_id || `id ${r.id}`);
+    const seen = r.total_seen ?? 0;
+    const created = r.total_created ?? 0;
+    const updated = r.total_updated ?? 0;
+    const stats = `seen ${seen} / new ${created} / upd ${updated}`;
+    const opt = document.createElement("option");
+    opt.value = String(r.id);
+    opt.textContent = `${ghTag} ${wf ? "- " + wf : ""} ${dtStr ? "- " + dtStr : ""}  (${stats})`;
+    sel.appendChild(opt);
+  });
+}
+
+// When the user picks a run, load the junction rows for that run and
+// build a Set of record_ids that the filter will use.
+async function applyRunPickerSelection(runIdStr) {
+  if (!runIdStr) {
+    SELECTED_RUN_RECORD_IDS = null;
+    return;
+  }
+  const runId = Number(runIdStr);
+  try {
+    // Pull the junction rows for this run, paginated (1000 cap per request)
+    const ids = new Map();   // record_id -> action
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await sb
+        .from("scraper_run_records")
+        .select("record_id,action")
+        .eq("run_id", runId)
+        .range(from, from + PAGE - 1);
+      if (error) { console.error("loadRunRecords failed:", error); break; }
+      if (!data || data.length === 0) break;
+      data.forEach(row => ids.set(row.record_id, row.action));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    SELECTED_RUN_RECORD_IDS = ids;
+  } catch (e) {
+    console.error("applyRunPickerSelection exception:", e);
+    SELECTED_RUN_RECORD_IDS = null;
+  }
 }
 
 // ── Realtime: live updates when anyone edits a record ──────────────
@@ -1320,6 +1404,11 @@ function populateFilters() {
   document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("batchFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("runPicker").addEventListener("change", async (e) => {
+    currentPage = 1;
+    await applyRunPickerSelection(e.target.value);
+    applyFilters();
+  });
   document.getElementById("saleMonthFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("filedFrom").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("filedTo").addEventListener("change", () => { currentPage = 1; applyFilters(); });
@@ -1368,6 +1457,9 @@ function getFiltered() {
   return DATA.records.filter(r => {
     if (src && (r._source || "clerk") !== src) return false;
     if (batch && (r.batch_id || "") !== batch) return false;
+    // Run-picker filter: SELECTED_RUN_RECORD_IDS is a Map(record_id -> action)
+    // populated when the user picks a run. Records not in the Map are excluded.
+    if (SELECTED_RUN_RECORD_IDS && !SELECTED_RUN_RECORD_IDS.has(r.id)) return false;
     // Sale month filter (by sale_date)
     if (saleMonth && r.sale_date) {
       const d = new Date(r.sale_date);
@@ -1443,6 +1535,8 @@ function resetFilters() {
   document.getElementById("confFilter").value = "";
   document.getElementById("sourceFilter").value = "";
   document.getElementById("batchFilter").value = "";
+  document.getElementById("runPicker").value = "";
+  SELECTED_RUN_RECORD_IDS = null;
   document.getElementById("saleMonthFilter").value = "";
   document.getElementById("filedFrom").value = "";
   document.getElementById("filedTo").value = "";
