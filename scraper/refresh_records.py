@@ -91,33 +91,14 @@ def _norm_token(s: str | None) -> str | None:
     return s
 
 
-def parse_clerk_legal(legal: str | None) -> tuple[str, str | None, str | None, str | None] | None:
-    """Parse the clerk-side stored format produced by fetch.py:
-        'SANFORD FARMS | Sec: 1 | Lot: 15 | Block: 3'
-    Returns (subdivision, section, lot, block) or None if unparseable.
-    Subdivision is required; the rest may be None."""
-    if not legal:
-        return None
-    parts = [p.strip() for p in legal.split("|")]
-    subdiv = (parts[0] or "").strip().upper()
-    if not subdiv:
-        return None
-    section = lot = block = None
-    for p in parts[1:]:
-        if not p:
-            continue
-        if ":" not in p:
-            continue
-        label, val = p.split(":", 1)
-        label = label.strip().lower()
-        val   = val.strip()
-        if label.startswith("sec"):
-            section = _norm_token(val)
-        elif label.startswith("lot"):
-            lot = _norm_token(val)
-        elif label.startswith("block"):
-            block = _norm_token(val)
-    return (subdiv, section, lot, block)
+# Use the shared multi-format parser. Handles pipe ('SUBDIV | Sec: N |
+# Lot: N | Block: N'), HCAD ('LT 15 BLK 3 SUBDIV SEC N'), and prose
+# ('Lot Thirteen (13) in Block Three (3) of Hidden Meadow, Sec 9') —
+# all four foreclosure-PDF + lead-scraper formats normalize through it.
+try:
+    from legal_matcher import parse_clerk_legal  # noqa: F401
+except ImportError:
+    from .legal_matcher import parse_clerk_legal  # type: ignore  # noqa: F401
 
 
 _HCAD_LOT_RE   = re.compile(r"\bLT\s+([0-9A-Z]+)", re.IGNORECASE)
