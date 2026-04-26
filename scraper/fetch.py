@@ -1447,7 +1447,67 @@ class ClerkScraper:
         login_lock  = asyncio.Lock()
         login_state = {"logged_in": False}
         diag_state  = {"failure_count": 0}
-        counts      = {"downloaded": 0, "failed": 0, "unavailable": 0}
+        counts      = {"downloaded": 0, "failed": 0, "unavailable": 0,
+                       "storage_saved": 0, "storage_skipped": 0}
+
+        # ─── LAYER 1: PERSISTENT PDF STORAGE (added 2026-04-26) ────────────
+        # Every successfully-downloaded PDF is saved to Supabase Storage
+        # immediately, before extraction. Path scheme: harris_tx/{doc_num}.pdf
+        # (county/state prefix future-proofs the bucket for multi-county).
+        # If extraction times out or the workflow dies, PDFs survive as
+        # durable assets — no re-download needed on the next run.
+        # Failures to save are logged but never break the download.
+        sb_url = (os.environ.get("SUPABASE_URL") or "").strip()
+        sb_key = (os.environ.get("SUPABASE_SECRET_KEY") or "").strip()
+        sb_client = None
+        if sb_url and sb_key:
+            try:
+                from supabase import create_client
+                sb_client = create_client(sb_url, sb_key)
+                log.info(f"PDF storage: Supabase Storage enabled "
+                         f"(bucket=clerk_pdfs, prefix=harris_tx/)")
+            except Exception as e:
+                log.warning(f"PDF storage: Supabase init failed — {e}. "
+                            f"PDFs will not be persisted; extraction still works.")
+                sb_client = None
+        else:
+            log.warning(f"PDF storage: SUPABASE_URL/SUPABASE_SECRET_KEY missing — "
+                        f"PDFs will NOT be persisted to Storage")
+
+        STORAGE_BUCKET = "clerk_pdfs"
+        STORAGE_PREFIX = "harris_tx"
+
+        async def _save_pdf_to_storage(doc_num: str, pdf_bytes: bytes,
+                                       worker_id: int) -> bool:
+            """Upload PDF bytes to Supabase Storage. Idempotent (upsert).
+            Returns True on success or if storage is disabled (graceful no-op).
+            Never raises — failures are logged so download flow continues.
+            """
+            if not sb_client:
+                return True  # storage disabled, treat as no-op success
+            path = f"{STORAGE_PREFIX}/{doc_num}.pdf"
+            try:
+                # supabase-py is sync; offload to thread to keep event loop responsive
+                await asyncio.to_thread(
+                    lambda: sb_client.storage.from_(STORAGE_BUCKET).upload(
+                        path=path,
+                        file=pdf_bytes,
+                        file_options={
+                            "content-type": "application/pdf",
+                            "upsert": "true",
+                        },
+                    )
+                )
+                counts["storage_saved"] += 1
+                log.info(f"  [W{worker_id}] PDF saved to Storage: "
+                         f"{STORAGE_BUCKET}/{path} ({len(pdf_bytes):,} bytes)")
+                return True
+            except Exception as e:
+                counts["storage_skipped"] += 1
+                log.warning(f"  [W{worker_id}] {doc_num}: Storage save failed — "
+                            f"{type(e).__name__}: {e}")
+                return False
+        # ──────────────────────────────────────────────────────────────────
 
         # ─── DIAGNOSTIC INSTRUMENTATION (added 2026-04-25) ────────────────
         # Captures cookie state at start, post-login, and on the 1st-3rd +
@@ -1551,6 +1611,7 @@ class ClerkScraper:
                 if body and body[:4] == b"%PDF":
                     rec["_pdf_bytes"] = body
                     log.info(f"  [W{worker_id}] PDF downloaded: {len(body):,} bytes")
+                    await _save_pdf_to_storage(doc_num, body, worker_id)
                     return "pdf"
 
                 if "View Instrument" in (await _safe_title()):
@@ -1575,6 +1636,7 @@ class ClerkScraper:
                             if post_body and post_body[:4] == b"%PDF":
                                 rec["_pdf_bytes"] = post_body
                                 log.info(f"  [W{worker_id}] PDF via form POST: {len(post_body):,} bytes")
+                                await _save_pdf_to_storage(doc_num, post_body, worker_id)
                                 return "pdf"
                             log.warning(f"  [W{worker_id}] {doc_num}: form POST returned "
                                         f"{len(post_body)} bytes, not PDF")
@@ -1660,6 +1722,9 @@ class ClerkScraper:
                  f"{counts['failed']} failed, {counts['unavailable']} unavailable, "
                  f"out of {len(candidates)} "
                  f"(concurrency={concurrency}, max_retries={max_retries})")
+        if sb_client:
+            log.info(f"PDF storage: {counts['storage_saved']} saved to Supabase, "
+                     f"{counts['storage_skipped']} skipped (errors)")
 
     async def run(self):
         """Scrape clerk records. Keeps browser open for PDF downloads later."""
