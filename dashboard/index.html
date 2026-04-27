@@ -1308,20 +1308,27 @@ function buildStats() {
     }
   });
 
-  // EstateTrace probates — separate card. Click to switch source filter.
-  // These records are isolated from the main table by default.
+  // EstateTrace probates — separate card. Click navigates to the dedicated
+  // /probate workspace (verification queue + skip-trace UI). Source filter
+  // dropdown is still available in this main dashboard for in-place viewing.
   if (estatetraceCount > 0) {
     html += `
-      <div class="stat-card" onclick="showEstatetraceOnly()" title="EstateTrace probate records — click to view">
+      <div class="stat-card" onclick="goToProbateWorkspace()" title="Open the Probate Workspace — verification queue, skip-trace tools, county filters">
         <div class="value" style="color:#10b981">${estatetraceCount.toLocaleString()}</div>
-        <div class="label">EstateTrace</div>
+        <div class="label">EstateTrace &rarr;</div>
       </div>`;
   }
 
   document.getElementById("stats").innerHTML = html;
 }
 
-// Switches the source filter to EstateTrace and refreshes the table.
+// Navigate to the dedicated probate workspace (separate page).
+function goToProbateWorkspace() {
+  window.location.href = "probate.html";
+}
+
+// Switches the source filter to EstateTrace in this main dashboard
+// (kept for backward compatibility with anyone using the dropdown directly).
 function showEstatetraceOnly() {
   document.getElementById("sourceFilter").value = "estatetrace";
   cardFilter = null;

@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Probate Workspace — Harris County Motivated Sellers</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #23273a;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-muted: #8b8fa3;
+    --accent: #7c5cfc;
+    --accent-light: #9b82fc;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --cyan: #06b6d4;
+    --estatetrace: #10b981;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 1.25rem; font-weight: 700; }
+  .header h1 span { color: var(--estatetrace); }
+  .nav-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.78rem;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .nav-link:hover { color: var(--text); border-color: var(--accent); }
+  .header-meta { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* Queue tabs */
+  .queue-tabs {
+    display: flex;
+    gap: 0;
+    padding: 12px 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .queue-tab {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .queue-tab:hover { color: var(--text); }
+  .queue-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--estatetrace);
+  }
+  .queue-tab .badge {
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--surface2);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .queue-tab.active .badge {
+    background: var(--estatetrace);
+    color: #fff;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 14px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .filter-pill {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+  }
+  .filter-pill:hover { border-color: var(--accent); }
+  .filter-pill.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .filter-pill .count {
+    margin-left: 4px;
+    font-size: 0.7rem;
+    opacity: 0.8;
+  }
+  select.filter-select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    outline: none;
+    cursor: pointer;
+  }
+  select.filter-select:hover { border-color: var(--accent); }
+
+  /* Search */
+  .search-input {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    outline: none;
+    min-width: 220px;
+  }
+  .search-input:focus { border-color: var(--accent); }
+
+  /* Records list */
+  .records {
+    padding: 16px 24px;
+  }
+  .record-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+  }
+  .record-card:hover { border-color: var(--accent); }
+  .record-row {
+    display: grid;
+    grid-template-columns: 140px 1.2fr 1.2fr 1.5fr 130px;
+    gap: 16px;
+    align-items: start;
+  }
+  .record-field { display: flex; flex-direction: column; gap: 2px; }
+  .field-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .field-value { font-size: 0.82rem; }
+  .field-value.muted { color: var(--text-muted); font-style: italic; }
+  .doc-num {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 0.78rem;
+    color: var(--accent-light);
+  }
+  .county-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: var(--surface2);
+    color: var(--text-muted);
+  }
+  .county-pill.harris { background: rgba(124,92,252,0.2); color: var(--accent-light); }
+  .county-pill.fortbend { background: rgba(16,185,129,0.2); color: var(--estatetrace); }
+
+  .case-status-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    margin-left: 4px;
+  }
+  .case-status-pill.active { background: rgba(34,197,94,0.18); color: var(--green); }
+  .case-status-pill.pending { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .case-status-pill.no-prop { background: rgba(239,68,68,0.18); color: var(--red); }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    font-size: 0.82rem;
+  }
+  .pagination button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pagination .page-info { color: var(--text-muted); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state h3 { font-size: 1rem; margin-bottom: 8px; color: var(--text); }
+  .empty-state p { font-size: 0.85rem; }
+
+  /* Login modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 380px;
+    width: 90%;
+    padding: 32px;
+  }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  /* Footer status bar */
+  #userBar {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 6px 24px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    align-items: center;
+    gap: 12px;
+    z-index: 99;
+  }
+  #userBar button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.65rem;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <h1>Probate <span>Workspace</span></h1>
+    <a href="index.html" class="nav-link">&larr; Main Dashboard</a>
+  </div>
+  <div class="header-meta" id="headerMeta">Loading...</div>
+</header>
+
+<!-- Login modal (visible if not signed in) -->
+<div class="modal-overlay" id="loginOverlay" style="display:none">
+  <div class="modal">
+    <h2 style="margin-bottom:4px;font-size:1.25rem;text-align:center">Probate <span style="color:var(--estatetrace)">Workspace</span></h2>
+    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px;text-align:center">Sign in to continue</p>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
+      <button type="submit" id="loginBtn" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Main UI (hidden until authed + data loaded) -->
+<div id="mainUI" style="display:none">
+
+  <!-- Queue tabs -->
+  <div class="queue-tabs">
+    <button class="queue-tab active" data-queue="verify" onclick="setQueue('verify')">
+      Verify <span class="badge" id="verifyCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="active" onclick="setQueue('active')">
+      Active <span class="badge" id="activeCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="archive" onclick="setQueue('archive')">
+      Archive <span class="badge" id="archiveCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="research" onclick="setQueue('research')">
+      Research <span class="badge" id="researchCount">0</span>
+    </button>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <span class="filter-label">County:</span>
+    <button class="filter-pill active" data-county="" onclick="setCounty('')">
+      All <span class="count" id="countyAll">0</span>
+    </button>
+    <button class="filter-pill" data-county="Harris" onclick="setCounty('Harris')">
+      Harris <span class="count" id="countyHarris">0</span>
+    </button>
+    <button class="filter-pill" data-county="Fortbend" onclick="setCounty('Fortbend')">
+      Fortbend <span class="count" id="countyFortbend">0</span>
+    </button>
+
+    <span class="filter-label" style="margin-left:16px">Month:</span>
+    <select class="filter-select" id="monthFilter" onchange="setMonth(this.value)">
+      <option value="">All Months</option>
+    </select>
+
+    <input type="text" class="search-input" id="searchInput" placeholder="Search case#, deceased, PR..." style="margin-left:auto" oninput="setSearch(this.value)">
+  </div>
+
+  <!-- Records list -->
+  <div class="records" id="records"></div>
+
+  <!-- Pagination -->
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<!-- Footer status bar -->
+<div id="userBar">
+  <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
+  <button onclick="handleSignOut()">Sign Out</button>
+  <span style="margin-left:auto" id="syncStatus"></span>
+</div>
+
+<script>
+// ── Supabase Client ────────────────────────────────────────────────
+const SUPABASE_URL = "https://oqkcmysnhgorjkinfamu.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_XfR5NTuo1LYF8p73_cqQ7w_Ug4LDl3_";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+// ── State ─────────────────────────────────────────────────────────
+const PER_PAGE = 50;
+const QUEUE_TO_STATUS = {
+  verify:   "pending",
+  active:   "verified_owns",
+  archive:  "verified_no_owns",
+  research: "needs_research",
+};
+
+let DATA = {
+  records: [],
+  loaded: false,
+};
+let currentSession = null;
+let currentProfile = null;
+let currentQueue = "verify";
+let currentCounty = "";
+let currentMonth = "";
+let currentSearch = "";
+let currentPage = 1;
+
+// ── Auth ──────────────────────────────────────────────────────────
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); return false; }
+  currentSession = session;
+  await loadProfile();
+  return true;
+}
+
+async function loadProfile() {
+  if (!currentSession) return;
+  const { data, error } = await sb.from("profiles").select("*").eq("id", currentSession.user.id).single();
+  if (error || !data) {
+    document.getElementById("loginError").textContent = "Profile lookup failed: " + (error?.message || "no profile");
+    return;
+  }
+  currentProfile = data;
+  document.getElementById("currentUserLabel").textContent = `${currentProfile.display_name} (${currentProfile.role})`;
+  document.getElementById("userBar").style.display = "flex";
+}
+
+function showLogin() {
+  document.getElementById("loginOverlay").style.display = "flex";
+  document.getElementById("mainUI").style.display = "none";
+  document.getElementById("userBar").style.display = "none";
+}
+
+function hideLogin() {
+  document.getElementById("loginOverlay").style.display = "none";
+  document.getElementById("mainUI").style.display = "block";
+}
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.textContent = "";
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { errEl.textContent = error.message; return; }
+  currentSession = data.session;
+  await loadProfile();
+  hideLogin();
+  await loadData();
+  render();
+});
+
+async function handleSignOut() {
+  await sb.auth.signOut();
+  currentSession = null;
+  currentProfile = null;
+  showLogin();
+}
+
+// ── Data Load ─────────────────────────────────────────────────────
+async function loadData() {
+  const meta = document.getElementById("headerMeta");
+  meta.textContent = "Loading EstateTrace records...";
+
+  // Pull all EstateTrace records. 1,692 today; can grow but staying under
+  // 10k for many months. Single fetch is fine; paginated above 1000 due
+  // to Supabase default limit.
+  const all = [];
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from("records")
+      .select("id, doc_num, county, state, filed_date, case_status, sheet_tab_name, " +
+              "owner, grantor_name, prop_address, prop_city, prop_state, prop_zip, " +
+              "mail_address, mail_city, mail_state, mail_zip, " +
+              "verification_status, verified_by, verified_at, additional_applicants")
+      .eq("source", "estatetrace")
+      .order("filed_date", { ascending: false, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (error) {
+      meta.textContent = "Load failed: " + error.message;
+      console.error(error);
+      return;
+    }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  DATA.records = all;
+  DATA.loaded = true;
+
+  populateMonthFilter();
+
+  meta.textContent = `${all.length.toLocaleString()} EstateTrace records — last sync ${formatCT(new Date())}`;
+}
+
+// ── Format helpers ─────────────────────────────────────────────────
+function formatCT(d) {
+  if (!d) return "";
+  const date = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+function formatDate(d) {
+  if (!d) return "";
+  // YYYY-MM-DD → "Apr 15, 2026"
+  const date = new Date(d + "T00:00:00");
+  if (isNaN(date.getTime())) return d;
+  return date.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric", month: "short", day: "numeric"
+  });
+}
+
+function joinAddr(street, city, state, zip) {
+  const parts = [];
+  if (street) parts.push(street);
+  const cz = [city, state, zip].filter(Boolean).join(" ").trim();
+  if (cz) parts.push(cz);
+  return parts.join(", ");
+}
+
+// Extract YYYY-MM from sheet_tab_name like "Fortbend_County_TX_2026-04-LAST_REVISION"
+function extractMonth(tabName) {
+  if (!tabName) return null;
+  const m = tabName.match(/(\d{4})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}` : null;
+}
+
+// ── Filters & Counts ──────────────────────────────────────────────
+function applyFilters(records) {
+  return records.filter(r => {
+    // Queue
+    const wantStatus = QUEUE_TO_STATUS[currentQueue];
+    if (r.verification_status !== wantStatus) return false;
+
+    // County
+    if (currentCounty && r.county !== currentCounty) return false;
+
+    // Month (from sheet_tab_name)
+    if (currentMonth) {
+      const m = extractMonth(r.sheet_tab_name);
+      if (m !== currentMonth) return false;
+    }
+
+    // Search (case-insensitive across doc_num, deceased, PR)
+    if (currentSearch) {
+      const q = currentSearch.toLowerCase();
+      const hay = [
+        r.doc_num, r.grantor_name, r.owner,
+        r.prop_address, r.prop_city
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+
+    return true;
+  });
+}
+
+// Counts shown in queue tabs and county pills.
+// Queue counts are scoped to current county+month+search filters EXCEPT the
+// queue itself (so VAs see how big each queue is given their current slice).
+function recomputeCounts() {
+  const baseScope = (r) => {
+    if (currentCounty && r.county !== currentCounty) return false;
+    if (currentMonth && extractMonth(r.sheet_tab_name) !== currentMonth) return false;
+    if (currentSearch) {
+      const q = currentSearch.toLowerCase();
+      const hay = [r.doc_num, r.grantor_name, r.owner, r.prop_address, r.prop_city].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  };
+
+  const scoped = DATA.records.filter(baseScope);
+  document.getElementById("verifyCount").textContent   = scoped.filter(r => r.verification_status === "pending").length;
+  document.getElementById("activeCount").textContent   = scoped.filter(r => r.verification_status === "verified_owns").length;
+  document.getElementById("archiveCount").textContent  = scoped.filter(r => r.verification_status === "verified_no_owns").length;
+  document.getElementById("researchCount").textContent = scoped.filter(r => r.verification_status === "needs_research").length;
+
+  // County pills are scoped to current queue + month + search (but not county)
+  const byCountyScope = (r) => {
+    if (r.verification_status !== QUEUE_TO_STATUS[currentQueue]) return false;
+    if (currentMonth && extractMonth(r.sheet_tab_name) !== currentMonth) return false;
+    if (currentSearch) {
+      const q = currentSearch.toLowerCase();
+      const hay = [r.doc_num, r.grantor_name, r.owner, r.prop_address, r.prop_city].filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  };
+  const inQueue = DATA.records.filter(byCountyScope);
+  document.getElementById("countyAll").textContent      = inQueue.length;
+  document.getElementById("countyHarris").textContent   = inQueue.filter(r => r.county === "Harris").length;
+  document.getElementById("countyFortbend").textContent = inQueue.filter(r => r.county === "Fortbend").length;
+}
+
+function populateMonthFilter() {
+  // Discover all months from sheet_tab_name across loaded records
+  const months = new Set();
+  DATA.records.forEach(r => {
+    const m = extractMonth(r.sheet_tab_name);
+    if (m) months.add(m);
+  });
+  const sorted = [...months].sort().reverse();   // newest first
+
+  const sel = document.getElementById("monthFilter");
+  // Preserve existing "All Months" option, append the rest
+  while (sel.options.length > 1) sel.remove(1);
+  sorted.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m;
+    // Display "Apr 2026" instead of "2026-04"
+    const [y, mm] = m.split("-");
+    const date = new Date(parseInt(y), parseInt(mm) - 1, 1);
+    o.textContent = date.toLocaleDateString("en-US", { year: "numeric", month: "short" });
+    sel.appendChild(o);
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function render() {
+  if (!DATA.loaded) return;
+  recomputeCounts();
+  const filtered = applyFilters(DATA.records);
+  renderRecordList(filtered);
+  renderPagination(filtered.length);
+}
+
+function renderRecordList(records) {
+  const container = document.getElementById("records");
+  const total = records.length;
+
+  if (total === 0) {
+    const queueLabel = ({verify:"Verify",active:"Active",archive:"Archive",research:"Research"})[currentQueue];
+    container.innerHTML = `
+      <div class="empty-state">
+        <h3>No records in ${queueLabel} queue</h3>
+        <p>Try changing the county, month, or search filter — or switch to a different queue tab above.</p>
+      </div>`;
+    return;
+  }
+
+  const pageStart = (currentPage - 1) * PER_PAGE;
+  const pageEnd = Math.min(pageStart + PER_PAGE, total);
+  const page = records.slice(pageStart, pageEnd);
+
+  const html = page.map(renderRecordCard).join("");
+  container.innerHTML = html;
+}
+
+function renderRecordCard(r) {
+  const decFull = r.grantor_name || "(unknown)";
+  const prFull  = r.owner || "(unknown)";
+  const propAddr = joinAddr(r.prop_address, r.prop_city, r.prop_state, r.prop_zip);
+  const prMail   = joinAddr(r.mail_address, r.mail_city, r.mail_state, r.mail_zip);
+
+  const countyClass = r.county === "Harris" ? "harris" : (r.county === "Fortbend" ? "fortbend" : "");
+  const csClass = r.case_status === "active" ? "active" :
+                  r.case_status === "pending" ? "pending" :
+                  r.case_status === "no_property_found" ? "no-prop" : "";
+  const csLabel = r.case_status === "no_property_found" ? "No Property" :
+                  r.case_status ? r.case_status.charAt(0).toUpperCase() + r.case_status.slice(1) : "";
+
+  return `
+    <div class="record-card" data-record-id="${r.id}">
+      <div class="record-row">
+        <div class="record-field">
+          <div class="field-label">Case</div>
+          <div class="doc-num">${escapeHtml(r.doc_num || "")}</div>
+          <div style="margin-top:4px;">
+            ${r.county ? `<span class="county-pill ${countyClass}">${escapeHtml(r.county)}</span>` : ""}
+            ${csLabel ? `<span class="case-status-pill ${csClass}">${csLabel}</span>` : ""}
+          </div>
+          <div class="field-value muted" style="font-size:0.7rem;margin-top:4px">Filed ${formatDate(r.filed_date) || "—"}</div>
+        </div>
+
+        <div class="record-field">
+          <div class="field-label">Deceased</div>
+          <div class="field-value">${escapeHtml(decFull)}</div>
+          ${propAddr
+            ? `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">Property:<br>${escapeHtml(propAddr)}</div>`
+            : `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">No property on file</div>`}
+        </div>
+
+        <div class="record-field">
+          <div class="field-label">Personal Rep (PR)</div>
+          <div class="field-value">${escapeHtml(prFull)}</div>
+          ${prMail
+            ? `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">Mailing:<br>${escapeHtml(prMail)}</div>`
+            : `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">No mailing address yet</div>`}
+        </div>
+
+        <div class="record-field">
+          <div class="field-label">Verification</div>
+          <div class="field-value muted">
+            ${r.verification_status ? r.verification_status.replace(/_/g, " ") : "—"}
+          </div>
+          ${r.verified_at
+            ? `<div class="field-value muted" style="font-size:0.7rem;margin-top:4px">${formatCT(r.verified_at)}</div>`
+            : ""}
+        </div>
+
+        <div class="record-field" style="text-align:right">
+          <div class="field-label">Actions</div>
+          <div class="field-value muted" style="font-size:0.72rem;font-style:italic;margin-top:4px">
+            (Coming in next commit)
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPagination(total) {
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const showStart = total === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
+  const showEnd = Math.min(currentPage * PER_PAGE, total);
+  const html = `
+    <button onclick="goPage(1)" ${currentPage === 1 ? "disabled" : ""}>First</button>
+    <button onclick="goPage(${currentPage - 1})" ${currentPage === 1 ? "disabled" : ""}>Prev</button>
+    <span class="page-info">${showStart.toLocaleString()}–${showEnd.toLocaleString()} of ${total.toLocaleString()} (page ${currentPage}/${totalPages})</span>
+    <button onclick="goPage(${currentPage + 1})" ${currentPage === totalPages ? "disabled" : ""}>Next</button>
+    <button onclick="goPage(${totalPages})" ${currentPage === totalPages ? "disabled" : ""}>Last</button>
+  `;
+  document.getElementById("pagination").innerHTML = html;
+}
+
+function goPage(n) {
+  currentPage = Math.max(1, n);
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function escapeHtml(s) {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// ── Filter setters ─────────────────────────────────────────────────
+function setQueue(q) {
+  currentQueue = q;
+  currentPage = 1;
+  document.querySelectorAll(".queue-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.queue === q);
+  });
+  render();
+}
+
+function setCounty(c) {
+  currentCounty = c;
+  currentPage = 1;
+  document.querySelectorAll(".filter-pill[data-county]").forEach(b => {
+    b.classList.toggle("active", b.dataset.county === c);
+  });
+  render();
+}
+
+function setMonth(m) {
+  currentMonth = m;
+  currentPage = 1;
+  render();
+}
+
+function setSearch(s) {
+  currentSearch = s.trim();
+  currentPage = 1;
+  render();
+}
+
+// ── Initialize ────────────────────────────────────────────────────
+async function init() {
+  const authed = await checkAuth();
+  if (!authed) return;
+  hideLogin();
+  await loadData();
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
