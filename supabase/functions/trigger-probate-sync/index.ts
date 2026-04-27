@@ -46,10 +46,15 @@ const RATE_LIMIT_WINDOW_MS = 60_000; // 1 trigger / 60s per user
 const lastTriggerByUser = new Map<string, number>();
 
 // CORS — dashboard hits this from nmjr75.github.io
+// IMPORTANT: x-client-info MUST be in Allow-Headers. The supabase-js v2
+// library sends this header (for telemetry) on every fetch. If it's not in
+// the preflight Allow-Headers list, the browser blocks the request with
+// "Request header field x-client-info is not allowed by Access-Control-
+// Allow-Headers in preflight response." This bit us 2026-04-27.
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
