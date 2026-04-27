@@ -348,6 +348,170 @@
   .toast.success { border-color: rgba(34,197,94,0.4); }
   .toast.error { border-color: rgba(239,68,68,0.4); color: var(--red); }
 
+  /* Skip-trace panel ─ inline expandable workspace inside Active records */
+  .skip-trace-toggle-row {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .skip-trace-toggle-btn {
+    background: var(--surface2);
+    color: var(--estatetrace);
+    border: 1px solid rgba(16,185,129,0.4);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .skip-trace-toggle-btn:hover { background: rgba(16,185,129,0.15); }
+  .phone-count-badge {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .phone-count-badge.has-phones { color: var(--estatetrace); font-weight: 600; }
+
+  .skip-trace-panel {
+    margin-top: 12px;
+    padding: 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .skip-trace-panel h4 {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .stp-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .stp-row label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    min-width: 65px;
+  }
+  .stp-input, .stp-select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    outline: none;
+  }
+  .stp-input:focus, .stp-select:focus { border-color: var(--accent); }
+  .stp-input.error { border-color: var(--red); }
+  .stp-input.phone-input { font-family: 'SF Mono', Consolas, monospace; min-width: 160px; }
+  .stp-input.email-input { min-width: 240px; }
+  .stp-input.comment-input { flex: 1; min-width: 200px; }
+  .stp-input.short-date { width: 130px; }
+
+  .phone-slots-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .phone-slot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .phone-slot.is-best { border-color: var(--orange); }
+  .star-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text-muted);
+    transition: color 0.15s;
+    padding: 0 4px;
+  }
+  .star-toggle.active { color: var(--orange); }
+  .star-toggle:hover { color: var(--orange); }
+  .slot-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    min-width: 56px;
+    font-weight: 500;
+  }
+  .last-seen-input {
+    width: 110px;
+    font-size: 0.75rem;
+  }
+
+  .stp-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .stp-btn {
+    padding: 7px 16px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    transition: all 0.15s;
+  }
+  .stp-btn:hover { transform: translateY(-1px); }
+  .stp-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .stp-btn.primary {
+    background: var(--estatetrace);
+    border-color: var(--estatetrace);
+    color: #fff;
+    font-weight: 600;
+  }
+  .stp-btn.primary:hover { background: #0d9b6e; }
+  .stp-btn.danger { color: var(--red); border-color: rgba(239,68,68,0.4); }
+  .stp-btn.danger:hover { background: rgba(239,68,68,0.1); }
+
+  .tps-link-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .tps-link {
+    display: inline-block;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--accent-light);
+    text-decoration: none;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+  }
+  .tps-link:hover { background: var(--surface2); border-color: var(--accent); }
+  .tps-link.disabled { color: var(--text-muted); border-color: var(--border); cursor: not-allowed; pointer-events: none; }
+
+  .stp-error {
+    color: var(--red);
+    font-size: 0.78rem;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+
   /* Footer status bar */
   #userBar {
     display: none;
@@ -571,9 +735,67 @@ async function loadData() {
   DATA.records = all;
   DATA.loaded = true;
 
+  // Load related contact data (phones, emails, skip-trace jobs) so we can
+  // show phone-count badges on every record card and pre-populate the
+  // skip-trace panel form when a VA expands a record. Empty today; grows
+  // as VAs enter data.
+  await loadContactData();
+
   populateMonthFilter();
 
   meta.textContent = `${all.length.toLocaleString()} EstateTrace records — last sync ${formatCT(new Date())}`;
+}
+
+// Indexes for the skip-trace workspace. Maps record_id -> array/object so
+// renderRecordCard and the panel form can look up data instantly without
+// extra round-trips. Refreshed after every save.
+let phonesByRecord = new Map();
+let emailsByRecord = new Map();
+let jobByRecord    = new Map();
+
+async function loadContactData() {
+  // contact_phones — all rows, indexed by record_id
+  const phonesP = sb.from("contact_phones").select("*").limit(50000);
+  // contact_emails — all rows, indexed by record_id
+  const emailsP = sb.from("contact_emails").select("*").limit(50000);
+  // skip_trace_jobs — all rows, indexed by record_id (one row per record per service)
+  const jobsP = sb.from("skip_trace_jobs").select("*").limit(50000);
+
+  const [phonesR, emailsR, jobsR] = await Promise.all([phonesP, emailsP, jobsP]);
+
+  phonesByRecord = new Map();
+  emailsByRecord = new Map();
+  jobByRecord    = new Map();
+
+  if (!phonesR.error && phonesR.data) {
+    phonesR.data.forEach(p => {
+      const arr = phonesByRecord.get(p.record_id) || [];
+      arr.push(p);
+      phonesByRecord.set(p.record_id, arr);
+    });
+  } else if (phonesR.error) {
+    console.warn("contact_phones load failed:", phonesR.error);
+  }
+
+  if (!emailsR.error && emailsR.data) {
+    emailsR.data.forEach(e => {
+      const arr = emailsByRecord.get(e.record_id) || [];
+      arr.push(e);
+      emailsByRecord.set(e.record_id, arr);
+    });
+  } else if (emailsR.error) {
+    console.warn("contact_emails load failed:", emailsR.error);
+  }
+
+  if (!jobsR.error && jobsR.data) {
+    jobsR.data.forEach(j => {
+      // Composite key: record_id|service. We currently only use 'truepeoplesearch'
+      // service but the indexing leaves room for adding paid APIs later.
+      jobByRecord.set(`${j.record_id}|${j.service}`, j);
+    });
+  } else if (jobsR.error) {
+    console.warn("skip_trace_jobs load failed:", jobsR.error);
+  }
 }
 
 // ── Format helpers ─────────────────────────────────────────────────
@@ -798,7 +1020,33 @@ function renderRecordCard(r) {
           </div>
         </div>
       </div>
+      ${renderSkipTraceSection(r)}
     </div>
+  `;
+}
+
+// Returns the skip-trace UI for a record. Only shown for Active queue
+// records (verified_owns) — VAs only do skip-trace on confirmed-real cases.
+// For other queues, returns the empty string (no UI).
+function renderSkipTraceSection(r) {
+  if (r.verification_status !== "verified_owns") return "";
+
+  const id = escapeHtml(r.id);
+  const phones = phonesByRecord.get(r.id) || [];
+  const phoneCount = phones.length;
+  const badgeCls = phoneCount > 0 ? "phone-count-badge has-phones" : "phone-count-badge";
+  const badgeText = phoneCount === 0
+    ? "(no phones yet)"
+    : `(${phoneCount} ${phoneCount === 1 ? "phone" : "phones"})`;
+
+  return `
+    <div class="skip-trace-toggle-row">
+      <button class="skip-trace-toggle-btn" onclick="togglePanel('${id}', this)">
+        &#9660; Open Skip Trace
+      </button>
+      <span class="${badgeCls}">${badgeText}</span>
+    </div>
+    <div class="skip-trace-panel" id="panel-${id}" style="display:none"></div>
   `;
 }
 
@@ -986,6 +1234,385 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// =============================================================================
+// SKIP-TRACE WORKSPACE
+// -----------------------------------------------------------------------------
+// Per-record inline form for entering TPS skip-trace results. Mirrors the
+// VA's existing 'todos los meses' sheet workflow:
+//   - Search Date, Status (Open/Not Found/Pending), Comment
+//   - 3 Wireless slots (Cell 1, Cell 2, Cell 3), 1 Landline (Land 1), 1 Email
+//   - Per-phone "best for SMS" star + last-activity date
+//   - "Open in TruePeopleSearch" pre-fill links for deceased and PR
+//
+// All writes use source='truepeoplesearch_manual'. Future paid-API
+// integrations will use other source values; this UI is scoped to the
+// manual TPS flow only.
+// =============================================================================
+
+// Phone normalization. Accepts any common North American format and returns
+// {e164, display} or null if invalid. Stored as both:
+//   phone_e164    -> "+17139958421"  (queries / dedup)
+//   phone_display -> "(713) 995-8421" (VA UX)
+function normalizePhone(input) {
+  if (!input) return null;
+  const digits = String(input).replace(/\D/g, "");
+  let ten;
+  if (digits.length === 10) {
+    ten = digits;
+  } else if (digits.length === 11 && digits[0] === "1") {
+    ten = digits.slice(1);
+  } else {
+    return null;
+  }
+  return {
+    e164: "+1" + ten,
+    display: `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`,
+  };
+}
+
+// Constructs a TruePeopleSearch search URL with name + city/state pre-filled.
+// VA still has to click search on the TPS page. Used for deceased + PR lookups.
+function buildTPSUrl(firstName, lastName, city, state) {
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (!name) return null;
+  const cityState = [city, state].filter(Boolean).join(" ").trim();
+  const params = new URLSearchParams();
+  params.set("name", name);
+  if (cityState) params.set("citystatezip", cityState);
+  return "https://www.truepeoplesearch.com/results?" + params.toString();
+}
+
+// Toggle the skip-trace panel for a record. First open fetches/renders form;
+// subsequent toggles just hide/show the existing DOM.
+function togglePanel(recordId, btnEl) {
+  const panel = document.getElementById(`panel-${recordId}`);
+  if (!panel) return;
+  const isOpen = panel.style.display !== "none";
+  if (isOpen) {
+    panel.style.display = "none";
+    if (btnEl) btnEl.innerHTML = "&#9660; Open Skip Trace";
+    return;
+  }
+  // First open: render the form
+  if (!panel.dataset.rendered) {
+    renderPanelForm(recordId, panel);
+    panel.dataset.rendered = "1";
+  }
+  panel.style.display = "block";
+  if (btnEl) btnEl.innerHTML = "&#9650; Close Skip Trace";
+}
+
+// Render the form HTML for a record's skip-trace panel. Pre-populates from
+// cached contact data (phonesByRecord / emailsByRecord / jobByRecord).
+function renderPanelForm(recordId, panel) {
+  const r = DATA.records.find(x => x.id === recordId);
+  if (!r) {
+    panel.innerHTML = `<div class="stp-error">Record not found in local cache.</div>`;
+    return;
+  }
+
+  // Existing contact data (from initial load or last save)
+  const phones = phonesByRecord.get(recordId) || [];
+  const emails = emailsByRecord.get(recordId) || [];
+  const job    = jobByRecord.get(`${recordId}|truepeoplesearch`) || {};
+
+  // Index phones by priority slot (1..4). Only TPS-source phones are managed
+  // by this panel; other-source phones (future paid APIs) live in their own
+  // panels later.
+  const tpsPhones = phones.filter(p => p.source === "truepeoplesearch_manual");
+  const phoneBySlot = {};
+  tpsPhones.forEach(p => { if (p.priority >= 1 && p.priority <= 4) phoneBySlot[p.priority] = p; });
+
+  const tpsEmails = emails.filter(e => e.source === "truepeoplesearch_manual");
+  const primaryEmail = tpsEmails[0]?.email || "";
+
+  // Extract the deceased's first/last name (we only have grantor_name as a
+  // single string, so split on whitespace — sufficient for TPS URL)
+  const decFirst = (r.grantor_name || "").trim().split(/\s+/)[0] || "";
+  const decLast  = (r.grantor_name || "").trim().split(/\s+/).slice(1).join(" ") || "";
+  // PR comes from the owner field; same split logic
+  const prFirst  = (r.owner || "").trim().split(/\s+/)[0] || "";
+  const prLast   = (r.owner || "").trim().split(/\s+/).slice(1).join(" ") || "";
+
+  const decTpsUrl = buildTPSUrl(decFirst, decLast, r.prop_city, r.prop_state);
+  const prTpsUrl  = buildTPSUrl(prFirst, prLast, r.mail_city || r.prop_city, r.mail_state || r.prop_state);
+
+  // Default search date = today (CT)
+  const todayCT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+  panel.innerHTML = `
+    <h4>Skip Trace Workspace</h4>
+
+    <div class="tps-link-bar">
+      ${decTpsUrl
+        ? `<a class="tps-link" href="${escapeHtml(decTpsUrl)}" target="_blank" rel="noopener noreferrer" title="Search TruePeopleSearch by deceased name">&#x2197; Search ${escapeHtml(r.grantor_name || "Deceased")} in TPS</a>`
+        : `<span class="tps-link disabled">Deceased name unknown</span>`}
+      ${prTpsUrl
+        ? `<a class="tps-link" href="${escapeHtml(prTpsUrl)}" target="_blank" rel="noopener noreferrer" title="Search TruePeopleSearch by PR (applicant) name">&#x2197; Search ${escapeHtml(r.owner || "PR")} in TPS</a>`
+        : `<span class="tps-link disabled">PR name unknown</span>`}
+    </div>
+
+    <div class="stp-row">
+      <label>Search Date</label>
+      <input type="date" class="stp-input short-date" id="stp-date-${recordId}" value="${escapeHtml(job.search_date || todayCT)}">
+      <label style="margin-left:12px">Status</label>
+      <select class="stp-select" id="stp-status-${recordId}">
+        <option value="pending"   ${job.status === "pending"   || !job.status ? "selected" : ""}>Pending</option>
+        <option value="open"      ${job.status === "open"      ? "selected" : ""}>Open</option>
+        <option value="not_found" ${job.status === "not_found" ? "selected" : ""}>Not Found</option>
+        <option value="needs_research" ${job.status === "needs_research" ? "selected" : ""}>Needs Research</option>
+      </select>
+    </div>
+
+    <div class="stp-row">
+      <label>Comment</label>
+      <input type="text" class="stp-input comment-input" id="stp-comment-${recordId}" placeholder="Optional notes..." value="${escapeHtml(job.comment || "")}">
+    </div>
+
+    <div class="phone-slots-grid" id="stp-phones-${recordId}">
+      ${[1,2,3,4].map(slot => {
+        const p = phoneBySlot[slot] || {};
+        const label = slot === 4 ? "Land 1" : `Cell ${slot}`;
+        const isBest = !!p.is_best;
+        return `
+          <div class="phone-slot ${isBest ? "is-best" : ""}" data-slot="${slot}">
+            <button class="star-toggle ${isBest ? "active" : ""}" onclick="toggleBestPhone('${recordId}', ${slot})" title="Mark as best phone for SMS" type="button">${isBest ? "&#9733;" : "&#9734;"}</button>
+            <span class="slot-label">${label}</span>
+            <input type="text" class="stp-input phone-input" placeholder="(XXX) XXX-XXXX"
+                   data-phone-input="${slot}" value="${escapeHtml(p.phone_display || "")}"
+                   onblur="formatPhoneOnBlur(this)">
+            <label style="font-size:0.7rem;color:var(--text-muted);margin-left:auto">Last seen</label>
+            <input type="date" class="stp-input last-seen-input" data-last-seen="${slot}" value="${escapeHtml(p.last_activity || "")}">
+          </div>
+        `;
+      }).join("")}
+    </div>
+
+    <div class="stp-row" style="margin-top:10px">
+      <label>Email</label>
+      <input type="email" class="stp-input email-input" id="stp-email-${recordId}" placeholder="email@example.com" value="${escapeHtml(primaryEmail)}">
+    </div>
+
+    <div class="stp-error" id="stp-error-${recordId}"></div>
+
+    <div class="stp-buttons">
+      <button class="stp-btn primary" onclick="savePanelData('${recordId}', this)">Save Skip Trace</button>
+      <button class="stp-btn" onclick="togglePanel('${recordId}', this.closest('.record-card').querySelector('.skip-trace-toggle-btn'))">Close</button>
+    </div>
+  `;
+}
+
+// Toggle which phone slot is marked "best for SMS". Visual-only until Save.
+// Only one slot can be active at a time per record.
+function toggleBestPhone(recordId, slot) {
+  const grid = document.getElementById(`stp-phones-${recordId}`);
+  if (!grid) return;
+  const slots = grid.querySelectorAll(".phone-slot");
+  slots.forEach(el => {
+    const s = parseInt(el.dataset.slot, 10);
+    const star = el.querySelector(".star-toggle");
+    if (s === slot) {
+      const wasActive = el.classList.contains("is-best");
+      // Toggle on/off — clicking active star unstars it (no best phone)
+      el.classList.toggle("is-best", !wasActive);
+      star.classList.toggle("active", !wasActive);
+      star.innerHTML = !wasActive ? "&#9733;" : "&#9734;";
+    } else {
+      // Other slots: ensure unstarred
+      el.classList.remove("is-best");
+      star.classList.remove("active");
+      star.innerHTML = "&#9734;";
+    }
+  });
+}
+
+// Auto-format phone input on blur. Helps VAs paste any format and see it
+// normalized immediately. Invalid phones get marked with .error class.
+function formatPhoneOnBlur(input) {
+  const raw = input.value.trim();
+  if (!raw) {
+    input.classList.remove("error");
+    return;
+  }
+  const norm = normalizePhone(raw);
+  if (norm) {
+    input.value = norm.display;
+    input.classList.remove("error");
+  } else {
+    input.classList.add("error");
+  }
+}
+
+// Save the panel form to Supabase. Writes to three tables:
+//   1. skip_trace_jobs (upsert by record_id+service)
+//   2. contact_phones  (delete-then-insert all TPS-source rows)
+//   3. contact_emails  (delete-then-insert TPS-source rows)
+//
+// Why delete-then-insert for phones/emails:
+//   - Far simpler than diffing existing vs form state
+//   - Idempotent: same input -> same output
+//   - The partial unique index on (record_id, role) where is_best=true is
+//     respected because we delete BEFORE re-inserting (no transient violation)
+//
+// On success: refreshes local caches (phonesByRecord etc) and re-renders so
+// the phone-count badge updates immediately.
+async function savePanelData(recordId, btnEl) {
+  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can save skip-trace results", "error");
+    return;
+  }
+
+  const errEl = document.getElementById(`stp-error-${recordId}`);
+  errEl.textContent = "";
+
+  // Read form values
+  const date = document.getElementById(`stp-date-${recordId}`).value || null;
+  const status = document.getElementById(`stp-status-${recordId}`).value;
+  const comment = document.getElementById(`stp-comment-${recordId}`).value.trim() || null;
+  const emailRaw = document.getElementById(`stp-email-${recordId}`).value.trim();
+
+  // Email validation (lenient — Supabase trigger lowercases on insert)
+  if (emailRaw && !emailRaw.includes("@")) {
+    errEl.textContent = "Email looks invalid (no @ sign).";
+    return;
+  }
+
+  // Read phone slots and validate
+  const grid = document.getElementById(`stp-phones-${recordId}`);
+  const slots = grid.querySelectorAll(".phone-slot");
+  const phoneRows = [];
+  let hasInvalid = false;
+  slots.forEach(el => {
+    const slot = parseInt(el.dataset.slot, 10);
+    const phoneInput = el.querySelector(".phone-input");
+    const lastSeenInput = el.querySelector(".last-seen-input");
+    const raw = phoneInput.value.trim();
+    if (!raw) return;   // empty slot, skip
+    const norm = normalizePhone(raw);
+    if (!norm) {
+      phoneInput.classList.add("error");
+      hasInvalid = true;
+      return;
+    }
+    phoneInput.classList.remove("error");
+    phoneRows.push({
+      record_id: recordId,
+      role: "pr",
+      phone_e164: norm.e164,
+      phone_display: norm.display,
+      phone_type: slot === 4 ? "landline" : "wireless",
+      priority: slot,
+      is_best: el.classList.contains("is-best"),
+      source: "truepeoplesearch_manual",
+      last_activity: lastSeenInput.value || null,
+      added_by: currentSession.user.id,
+      updated_by: currentSession.user.id,
+    });
+  });
+
+  if (hasInvalid) {
+    errEl.textContent = "One or more phones are invalid (need 10 digits). Fix highlighted fields.";
+    return;
+  }
+
+  // Defensive: ensure at most one is_best=true (UI should already enforce)
+  const bestCount = phoneRows.filter(p => p.is_best).length;
+  if (bestCount > 1) {
+    errEl.textContent = "Only one phone can be marked best. Please unstar the extras.";
+    return;
+  }
+
+  btnEl.disabled = true;
+  btnEl.textContent = "Saving...";
+
+  try {
+    // 1. Upsert skip_trace_jobs row
+    const { error: jobErr } = await sb
+      .from("skip_trace_jobs")
+      .upsert({
+        record_id: recordId,
+        service: "truepeoplesearch",
+        status: status,
+        search_date: date,
+        comment: comment,
+        searched_by: currentSession.user.id,
+      }, { onConflict: "record_id,service" });
+    if (jobErr) throw jobErr;
+
+    // 2. Delete all existing TPS-source phones for this record, then insert new
+    const { error: delPhErr } = await sb
+      .from("contact_phones")
+      .delete()
+      .eq("record_id", recordId)
+      .eq("source", "truepeoplesearch_manual");
+    if (delPhErr) throw delPhErr;
+
+    if (phoneRows.length > 0) {
+      const { error: insPhErr } = await sb
+        .from("contact_phones")
+        .insert(phoneRows);
+      if (insPhErr) throw insPhErr;
+    }
+
+    // 3. Same for emails (single email for now)
+    const { error: delEmErr } = await sb
+      .from("contact_emails")
+      .delete()
+      .eq("record_id", recordId)
+      .eq("source", "truepeoplesearch_manual");
+    if (delEmErr) throw delEmErr;
+
+    if (emailRaw) {
+      const { error: insEmErr } = await sb
+        .from("contact_emails")
+        .insert({
+          record_id: recordId,
+          role: "pr",
+          email: emailRaw.toLowerCase(),
+          source: "truepeoplesearch_manual",
+          added_by: currentSession.user.id,
+          updated_by: currentSession.user.id,
+        });
+      if (insEmErr) throw insEmErr;
+    }
+
+    // 4. Refresh local caches by re-reading just this record's contact data
+    await refreshContactDataForRecord(recordId);
+
+    // 5. Re-render so the phone-count badge updates
+    render();
+
+    toast("Skip-trace saved", "success");
+  } catch (e) {
+    console.error("savePanelData error:", e);
+    const msg = e.message || (e.error ? e.error.message : null) || String(e);
+    errEl.textContent = `Save failed: ${msg}`;
+    toast(`Save failed: ${msg}`, "error");
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = "Save Skip Trace";
+  }
+}
+
+// Refresh local cache for ONE record after save. Rebuilds index entries.
+async function refreshContactDataForRecord(recordId) {
+  const [phonesR, emailsR, jobsR] = await Promise.all([
+    sb.from("contact_phones").select("*").eq("record_id", recordId),
+    sb.from("contact_emails").select("*").eq("record_id", recordId),
+    sb.from("skip_trace_jobs").select("*").eq("record_id", recordId),
+  ]);
+
+  if (!phonesR.error) phonesByRecord.set(recordId, phonesR.data || []);
+  if (!emailsR.error) emailsByRecord.set(recordId, emailsR.data || []);
+  if (!jobsR.error && jobsR.data) {
+    jobsR.data.forEach(j => {
+      jobByRecord.set(`${recordId}|${j.service}`, j);
+    });
+  }
 }
 
 // ── Filter setters ─────────────────────────────────────────────────
