@@ -182,8 +182,12 @@ def _row_to_record(
     return {
         "doc_num":                case_number,
         "doc_type":               "PROB",
-        "cat":                    "PROBATE",
-        "cat_label":              "Probate (EstateTrace)",
+        # cat / cat_label intentionally NOT set — those drive the dashboard's
+        # main-table category stat cards which group clerk records. EstateTrace
+        # records are identified by source='estatetrace' alone and live in the
+        # /probate route, not in the main category bucketing.
+        "cat":                    None,
+        "cat_label":              None,
         "source":                 "estatetrace",
         "county":                 county,
         "state":                  "TX",

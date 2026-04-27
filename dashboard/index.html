@@ -1248,15 +1248,22 @@ function subscribeRealtime() {
 
 // ── Stat Cards ─────────────────────────────────────────────────────
 function buildStats() {
+  // Stat cards represent the MAIN view (clerk + foreclosure). EstateTrace
+  // probates live in the /probate route and are excluded from these counts
+  // so the stat-card numbers always match what the main table actually shows.
+  const mainRecords = DATA.records.filter(r => r._source !== "estatetrace");
+  const mainTotal = mainRecords.length;
+  const estatetraceCount = DATA.records.length - mainTotal;
+
   const cats = {};
-  DATA.records.forEach(r => { cats[r.cat] = (cats[r.cat] || 0) + 1; });
+  mainRecords.forEach(r => { cats[r.cat] = (cats[r.cat] || 0) + 1; });
 
-  const withAddr = DATA.records.filter(r => r.prop_address && r.prop_address.trim()).length;
-  const pct = DATA.total ? Math.round(withAddr / DATA.total * 100) : 0;
+  const withAddr = mainRecords.filter(r => r.prop_address && r.prop_address.trim()).length;
+  const pct = mainTotal ? Math.round(withAddr / mainTotal * 100) : 0;
 
-  const ssCompleted = DATA.records.filter(r => r.siftstack_status === "completed").length;
-  const ssQueued    = DATA.records.filter(r => r.siftstack_status === "queued").length;
-  const ssManual    = DATA.records.filter(r => {
+  const ssCompleted = mainRecords.filter(r => r.siftstack_status === "completed").length;
+  const ssQueued    = mainRecords.filter(r => r.siftstack_status === "queued").length;
+  const ssManual    = mainRecords.filter(r => {
     if (r.siftstack_status) return false; // already submitted or in flight
     const hasAddr = !!(r.prop_address && r.prop_address.trim());
     const hasName = !!((r.owner || r.grantor_name || "").trim());
@@ -1265,7 +1272,7 @@ function buildStats() {
 
   let html = `
     <div class="stat-card total" data-filter="all" onclick="toggleCardFilter('all')">
-      <div class="value">${DATA.total.toLocaleString()}</div>
+      <div class="value">${mainTotal.toLocaleString()}</div>
       <div class="label">Total Leads</div>
     </div>
     <div class="stat-card addr" data-filter="addr" onclick="toggleCardFilter('addr')">
@@ -1301,7 +1308,25 @@ function buildStats() {
     }
   });
 
+  // EstateTrace probates — separate card. Click to switch source filter.
+  // These records are isolated from the main table by default.
+  if (estatetraceCount > 0) {
+    html += `
+      <div class="stat-card" onclick="showEstatetraceOnly()" title="EstateTrace probate records — click to view">
+        <div class="value" style="color:#10b981">${estatetraceCount.toLocaleString()}</div>
+        <div class="label">EstateTrace</div>
+      </div>`;
+  }
+
   document.getElementById("stats").innerHTML = html;
+}
+
+// Switches the source filter to EstateTrace and refreshes the table.
+function showEstatetraceOnly() {
+  document.getElementById("sourceFilter").value = "estatetrace";
+  cardFilter = null;
+  currentPage = 1;
+  applyFilters();
 }
 
 function toggleCardFilter(filter) {
@@ -1471,6 +1496,10 @@ function getFiltered() {
   const filedTo   = document.getElementById("filedTo").value;
 
   return DATA.records.filter(r => {
+    // EstateTrace records are isolated from the main table by default.
+    // They live in the /probate route. Only surface them in the main view
+    // when the source filter is explicitly set to 'estatetrace'.
+    if (r._source === "estatetrace" && src !== "estatetrace") return false;
     if (src && (r._source || "clerk") !== src) return false;
     if (batch && (r.batch_id || "") !== batch) return false;
     // Run-picker filter: SELECTED_RUN_RECORD_IDS is a Map(record_id -> action)
