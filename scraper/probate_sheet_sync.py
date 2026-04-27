@@ -398,21 +398,43 @@ def sync(dry_run: bool = False, tab_filter: Optional[str] = None) -> dict:
         log.info("No valid rows to upsert")
         return counts
 
-    log.info(f"Total normalized records ready to upsert: {len(all_records)}")
+    # ── Dedupe by doc_num (last occurrence wins) ────────────────────────────
+    # Postgres upsert with on_conflict cannot handle the same doc_num twice
+    # in a single INSERT batch (error 21000: "ON CONFLICT DO UPDATE command
+    # cannot affect row a second time"). The same case_number routinely
+    # appears in both the un-suffixed tab AND its -LAST_REVISION twin for the
+    # same county+month, so we MUST dedupe before sending to Postgres.
+    #
+    # Dict comprehension via explicit loop keeps insertion order (Python 3.7+)
+    # and overwrites the value on collision. Since _list_target_tabs sorted
+    # so LAST_REVISION tabs come last, the LAST_REVISION row wins per doc_num.
+    # This also defends against EstateTrace's scraper accidentally writing
+    # the same case_number twice within a single tab.
+    by_doc: dict[str, dict] = {}
+    for rec in all_records:
+        by_doc[rec["doc_num"]] = rec
+    deduped = list(by_doc.values())
+    duplicates_collapsed = len(all_records) - len(deduped)
+
+    log.info(f"Normalized {len(all_records)} rows from sheet; "
+             f"collapsed {duplicates_collapsed} cross-tab/intra-tab duplicates "
+             f"by doc_num — {len(deduped)} unique records to upsert")
 
     # Dry-run preview: print first 3, return
     if dry_run:
         log.info("DRY RUN — preview (first 3 records):")
-        for r in all_records[:3]:
+        for r in deduped[:3]:
             log.info(json.dumps(r, indent=2, default=str))
-        log.info(f"DRY RUN — would upsert {len(all_records)} records "
+        log.info(f"DRY RUN — would upsert {len(deduped)} records "
                  "(skipping DB write)")
         return counts
 
-    # Upsert in batches. on_conflict='doc_num' means LAST_REVISION wins on duplicate
-    # (since we sorted tabs so LAST_REVISION processes last).
-    for i in range(0, len(all_records), BATCH_SIZE):
-        batch = all_records[i:i + BATCH_SIZE]
+    # Upsert in batches. on_conflict='doc_num' against the DB handles the case
+    # where a record already exists from a previous sync run; the in-memory
+    # dedup above handles the case where the same doc_num appears in multiple
+    # tabs of the current run.
+    for i in range(0, len(deduped), BATCH_SIZE):
+        batch = deduped[i:i + BATCH_SIZE]
         try:
             client.table("records").upsert(batch, on_conflict="doc_num").execute()
             counts["rows_upserted"] += len(batch)
