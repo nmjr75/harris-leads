@@ -8,4 +8,6 @@ pytesseract>=0.3.10
 Pillow>=10.0.0
 pypdfium2>=4.0.0
 google-genai>=1.0.0
+google-api-python-client>=2.110.0
+google-auth>=2.27.0
 supabase>=2.10.0

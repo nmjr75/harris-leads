@@ -635,6 +635,7 @@
     <option value="">All Sources</option>
     <option value="clerk">Clerk Records</option>
     <option value="foreclosure">Foreclosures</option>
+    <option value="estatetrace">EstateTrace Probates</option>
   </select>
   <select id="runPicker" title="Pick a scraper run to see only the records it touched">
     <option value="">All Runs</option>
@@ -653,6 +654,7 @@
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
     <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
     <button class="btn btn-siftstack" id="siftstackBtn" onclick="handleSiftstackButton()" disabled title="Queue selected records for SIFTstack enrichment">SIFTstack <span class="selected-count" id="siftstackCount"></span></button>
+    <button class="btn" id="syncProbatesBtn" onclick="handleSyncProbates()" title="Pull latest probate data from the EstateTrace Google Sheet (read-only)">&#x21bb; Sync Probates</button>
     <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
@@ -1076,7 +1078,9 @@ const DISTRESS_FLAGS = new Set([
 function normalizeFromDb(r) {
   r.filed = r.filed_date || "";
   r.legal = r.legal_description || "";
-  r._source = r.doc_type === "FRCL" ? "foreclosure" : "clerk";
+  r._source = r.source === "estatetrace" ? "estatetrace"
+            : r.doc_type === "FRCL" ? "foreclosure"
+            : "clerk";
   // Foreclosure stat card + filter lookups use short code "FRCL"
   if (r.doc_type === "FRCL") r.cat = "FRCL";
   if (!r.flags) r.flags = [];
@@ -1716,6 +1720,60 @@ function renderSiftstackPill(r) {
   // Escape quotes for safe HTML attribute
   const safeTitle = String(title).replace(/"/g, "&quot;");
   return `<span class="siftstack-pill ss-${status}" title="${safeTitle}">${label}</span>`;
+}
+
+// ── Sync Probates (manual trigger, server-side via Edge Function) ──
+// Calls supabase/functions/trigger-probate-sync which:
+//   1. Verifies the caller is admin or editor
+//   2. Calls GitHub workflow_dispatch via a server-side PAT
+//   3. Returns the run URL so the user can watch progress
+// VAs never see GitHub or the PAT — everything happens server-side.
+async function handleSyncProbates() {
+  if (!currentSession?.user?.id) { alert("Not signed in."); return; }
+  const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+  if (!editable) { alert("Only editors can sync probates."); return; }
+
+  const btn = document.getElementById("syncProbatesBtn");
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = "&#x21bb; Syncing...";
+
+  try {
+    const { data, error } = await sb.functions.invoke("trigger-probate-sync", {
+      body: { dry_run: false },
+    });
+
+    if (error) {
+      // sb.functions.invoke surfaces non-2xx as an error with the response in context
+      const detail = (error.context && typeof error.context.json === "function")
+        ? await error.context.json().catch(() => null)
+        : null;
+      const msg = (detail && detail.error) || error.message || "Sync trigger failed";
+      alert(`Sync failed: ${msg}`);
+      return;
+    }
+
+    if (!data || !data.ok) {
+      alert(`Sync failed: ${(data && data.error) || "Unknown error"}`);
+      return;
+    }
+
+    // Success — show a toast-like alert with the run link
+    const runUrl = data.run_url || "";
+    const proceed = confirm(
+      `${data.message || "Sync started."}\n\n` +
+      `New probates will appear in this dashboard within ~30-60 seconds.\n\n` +
+      `Click OK to open the live workflow status, or Cancel to stay here.`
+    );
+    if (proceed && runUrl) {
+      window.open(runUrl, "_blank", "noopener");
+    }
+  } catch (e) {
+    alert(`Sync failed: ${e.message || e}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
 }
 
 async function handleSiftstackButton() {

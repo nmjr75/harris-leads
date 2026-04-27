@@ -1,0 +1,74 @@
+name: Probate Sheet Sync
+
+# Pulls EstateTrace probate data from Google Sheets into Supabase.
+#
+# Schedule: 6:30 AM CT (before VA morning shift) and 12:30 PM CT (before
+# afternoon shift). Cron is in UTC, so:
+#   CDT (UTC-5): 11:30 / 17:30 UTC
+#   CST (UTC-6): 12:30 / 18:30 UTC
+# We hardcode CDT for now (April-November). Adjust twice a year, or accept
+# a 1-hour shift during CST window.
+#
+# Manual runs: Actions tab → "Probate Sheet Sync" → Run workflow.
+# Optional inputs let you dry-run or filter to one county for safer testing.
+
+on:
+  schedule:
+    - cron: "30 11 * * *"   # 6:30 AM CT (CDT)
+    - cron: "30 17 * * *"   # 12:30 PM CT (CDT)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only — list what would be upserted, no DB writes"
+        required: false
+        default: "false"
+        type: boolean
+      tab_filter:
+        description: "Only sync tabs whose name contains this string (e.g., 'Fortbend' or '2026-04')"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probate-sync
+  cancel-in-progress: false   # never cancel mid-sync; let runs serialize
+
+jobs:
+  sync:
+    name: Sync Google Sheet → Supabase
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    env:
+      # Supabase (existing secrets)
+      SUPABASE_URL:                       ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY:                ${{ secrets.SUPABASE_SECRET_KEY }}
+      # New probate-specific secrets — see docs/probate-sync-setup.md for setup
+      PROBATE_SHEET_ID:                   ${{ secrets.PROBATE_SHEET_ID }}
+      GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON }}
+      # Workflow inputs
+      PROBATE_SYNC_DRY_RUN:               ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+      PROBATE_SYNC_TAB_FILTER:            ${{ github.event.inputs.tab_filter || '' }}
+      TZ:                                 America/Chicago
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install \
+            "supabase>=2.10.0" \
+            "google-api-python-client>=2.110.0" \
+            "google-auth>=2.27.0"
+
+      - name: Run probate sheet sync
+        run: python scraper/probate_sheet_sync.py
