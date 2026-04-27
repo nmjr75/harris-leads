@@ -261,6 +261,49 @@
     padding: 32px;
   }
 
+  /* Action buttons inside record cards */
+  .btn-action {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-action:hover { transform: translateY(-1px); }
+  .btn-action:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-action.btn-confirm {
+    background: rgba(34,197,94,0.15);
+    border-color: rgba(34,197,94,0.4);
+    color: var(--green);
+  }
+  .btn-action.btn-confirm:hover { background: rgba(34,197,94,0.25); }
+  .btn-action.btn-no-prop {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.4);
+    color: var(--red);
+  }
+  .btn-action.btn-no-prop:hover { background: rgba(239,68,68,0.25); }
+  .btn-action.btn-research {
+    background: rgba(245,158,11,0.15);
+    border-color: rgba(245,158,11,0.4);
+    color: var(--orange);
+  }
+  .btn-action.btn-research:hover { background: rgba(245,158,11,0.25); }
+  .btn-action.btn-revert {
+    background: var(--surface2);
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+  .btn-action.btn-revert:hover { color: var(--text); }
+
   /* Loading */
   .loading {
     text-align: center;
@@ -268,6 +311,28 @@
     color: var(--text-muted);
     font-size: 0.85rem;
   }
+
+  /* Toast for action feedback */
+  .toast {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    color: var(--text);
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .toast.show { opacity: 1; }
+  .toast.success { border-color: rgba(34,197,94,0.4); }
+  .toast.error { border-color: rgba(239,68,68,0.4); color: var(--red); }
 
   /* Footer status bar */
   #userBar {
@@ -712,13 +777,131 @@ function renderRecordCard(r) {
 
         <div class="record-field" style="text-align:right">
           <div class="field-label">Actions</div>
-          <div class="field-value muted" style="font-size:0.72rem;font-style:italic;margin-top:4px">
-            (Coming in next commit)
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+            ${renderActionsForRecord(r)}
           </div>
         </div>
       </div>
     </div>
   `;
+}
+
+// Returns a context-appropriate set of action buttons for a record.
+// Buttons differ by current verification status so a record can always
+// move to a different queue but never to its own queue.
+function renderActionsForRecord(r) {
+  const status = r.verification_status;
+  const id = escapeHtml(r.id);
+  const buttons = [];
+
+  if (status === "pending") {
+    buttons.push({label:"&#10003; Confirm Owns",       cls:"btn-confirm",  target:"verified_owns"});
+    buttons.push({label:"&#10007; No Property",        cls:"btn-no-prop",  target:"verified_no_owns"});
+    buttons.push({label:"? Research",                  cls:"btn-research", target:"needs_research"});
+  } else if (status === "verified_owns") {
+    buttons.push({label:"&#8617; Re-Verify",           cls:"btn-revert",   target:"pending"});
+    buttons.push({label:"&#10007; Mark No Property",   cls:"btn-no-prop",  target:"verified_no_owns"});
+    buttons.push({label:"? Research",                  cls:"btn-research", target:"needs_research"});
+  } else if (status === "verified_no_owns") {
+    buttons.push({label:"&#8617; Re-Verify",           cls:"btn-revert",   target:"pending"});
+    buttons.push({label:"&#10003; Restore to Active",  cls:"btn-confirm",  target:"verified_owns"});
+  } else if (status === "needs_research") {
+    buttons.push({label:"&#10003; Confirm Owns",       cls:"btn-confirm",  target:"verified_owns"});
+    buttons.push({label:"&#10007; No Property",        cls:"btn-no-prop",  target:"verified_no_owns"});
+    buttons.push({label:"&#8617; Re-Verify",           cls:"btn-revert",   target:"pending"});
+  }
+
+  return buttons.map(b =>
+    `<button class="btn-action ${b.cls}" onclick="flipStatus('${id}','${b.target}', this)">${b.label}</button>`
+  ).join("");
+}
+
+// ── Toast helper ──────────────────────────────────────────────────
+let toastEl = null;
+let toastTimer = null;
+function toast(msg, kind = "success") {
+  if (!toastEl) {
+    toastEl = document.createElement("div");
+    toastEl.className = "toast";
+    document.body.appendChild(toastEl);
+  }
+  toastEl.textContent = msg;
+  toastEl.className = `toast ${kind} show`;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.className = `toast ${kind}`;
+  }, 2500);
+}
+
+// ── Status flip action ────────────────────────────────────────────
+// Updates verification_status in records. The trg_handle_verification_change
+// trigger fires server-side and:
+//   1. Stamps verified_by + verified_at automatically
+//   2. Adds 'verification_status' to manual_overrides (so future syncs can't reset it)
+//   3. Logs the change to record_history with old/new/who/when
+// We pull the updated row back via .select().single() so the UI reflects
+// the trigger-set fields without a second round trip.
+async function flipStatus(recordId, newStatus, btnEl) {
+  if (!currentSession?.user?.id) {
+    toast("Sign in required", "error");
+    return;
+  }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can verify records", "error");
+    return;
+  }
+
+  // Disable the entire card during the request to prevent double-clicks
+  const card = btnEl?.closest(".record-card");
+  if (card) {
+    card.style.opacity = "0.5";
+    card.style.pointerEvents = "none";
+  }
+
+  try {
+    const { data, error } = await sb
+      .from("records")
+      .update({ verification_status: newStatus })
+      .eq("id", recordId)
+      .select("verification_status, verified_by, verified_at, manual_overrides")
+      .single();
+
+    if (error) {
+      console.error("flipStatus error:", error);
+      toast(`Update failed: ${error.message}`, "error");
+      return;
+    }
+
+    // Patch local state with the canonical server values (trigger-set fields included)
+    const rec = DATA.records.find(r => r.id === recordId);
+    if (rec && data) {
+      rec.verification_status = data.verification_status;
+      rec.verified_by         = data.verified_by;
+      rec.verified_at         = data.verified_at;
+      rec.manual_overrides    = data.manual_overrides;
+    }
+
+    // Re-render — record will move to its new queue, counts auto-update
+    render();
+
+    // User-friendly message based on transition
+    const msg = ({
+      verified_owns:    "Marked Confirmed Owns",
+      verified_no_owns: "Marked No Property",
+      needs_research:   "Flagged for Research",
+      pending:          "Sent back to Verify",
+    })[newStatus] || "Updated";
+    toast(msg, "success");
+  } catch (e) {
+    console.error("flipStatus exception:", e);
+    toast(`Unexpected error: ${e.message || e}`, "error");
+  } finally {
+    if (card) {
+      card.style.opacity = "";
+      card.style.pointerEvents = "";
+    }
+  }
 }
 
 function renderPagination(total) {
