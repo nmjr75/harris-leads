@@ -188,6 +188,20 @@
     font-family: 'SF Mono', Consolas, monospace;
     font-size: 0.78rem;
     color: var(--accent-light);
+    cursor: pointer;
+    border-bottom: 1px dashed transparent;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .doc-num:hover {
+    color: #fff;
+    border-bottom-color: var(--accent-light);
+  }
+  .doc-num .ext-icon {
+    font-size: 0.7rem;
+    opacity: 0.7;
   }
   .county-pill {
     display: inline-block;
@@ -741,7 +755,9 @@ function renderRecordCard(r) {
       <div class="record-row">
         <div class="record-field">
           <div class="field-label">Case</div>
-          <div class="doc-num">${escapeHtml(r.doc_num || "")}</div>
+          <div class="doc-num" onclick="openInClerk('${escapeHtml(r.doc_num || "")}')" title="Click to look up in Harris County Clerk Probate Search (case# auto-copied to clipboard)">
+            ${escapeHtml(r.doc_num || "")}<span class="ext-icon">&#8599;</span>
+          </div>
           <div style="margin-top:4px;">
             ${r.county ? `<span class="county-pill ${countyClass}">${escapeHtml(r.county)}</span>` : ""}
             ${csLabel ? `<span class="case-status-pill ${csClass}">${csLabel}</span>` : ""}
@@ -831,6 +847,43 @@ function toast(msg, kind = "success") {
   toastTimer = setTimeout(() => {
     toastEl.className = `toast ${kind}`;
   }, 2500);
+}
+
+// ── Clerk lookup (PROBATE WORKSPACE ONLY) ─────────────────────────
+// HARD RULE: this function is for the EstateTrace probate workspace.
+// It opens ONLY the probate-specific clerk search page. Foreclosure and
+// lead records use entirely different clerk URLs and are handled in
+// the main dashboard, never here. See memory:
+// reference_clerk_urls_per_scraper.md for the full mapping.
+const PROBATE_CLERK_SEARCH_URL =
+  "https://www.cclerk.hctx.net/applications/websearch/CourtSearch.aspx?CaseType=Probate";
+
+async function openInClerk(caseNum) {
+  if (!caseNum) return;
+
+  // Try to copy to clipboard so VA only needs to paste once on the clerk page.
+  // Some browsers (or non-HTTPS contexts) block clipboard writes; we still
+  // open the search page either way so the VA can type the case number manually.
+  let copied = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(caseNum);
+      copied = true;
+    }
+  } catch (e) {
+    // Permission denied or unsupported — silent fall-through. Page still opens.
+  }
+
+  // Open the probate clerk search page. Always the same URL — never use any
+  // other clerk URL here.
+  window.open(PROBATE_CLERK_SEARCH_URL, "_blank", "noopener,noreferrer");
+
+  toast(
+    copied
+      ? `Case# ${caseNum} copied — paste in the clerk search box`
+      : `Search the clerk site for case# ${caseNum}`,
+    "success"
+  );
 }
 
 // ── Status flip action ────────────────────────────────────────────
