@@ -184,6 +184,66 @@
   }
   .field-value { font-size: 0.82rem; }
   .field-value.muted { color: var(--text-muted); font-style: italic; }
+
+  /* Inline address editing — Property and Mailing on each record card */
+  .addr-block { margin-top: 4px; }
+  .addr-edit-link {
+    margin-left: 6px;
+    color: var(--accent-light);
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-style: normal;
+    text-decoration: underline dotted;
+    user-select: none;
+  }
+  .addr-edit-link:hover { color: var(--accent); }
+
+  .addr-edit-form { font-size: 0.72rem; }
+  .addr-edit-form .addr-edit-label {
+    font-size: 0.65rem;
+    color: var(--orange);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .addr-edit-input {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 0.74rem;
+    outline: none;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  .addr-edit-input:focus { border-color: var(--accent); }
+  .addr-edit-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .addr-edit-row .addr-edit-input { margin-bottom: 0; }
+  .addr-edit-buttons { display: flex; gap: 4px; }
+  .addr-edit-btn {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .addr-edit-btn:hover { transform: translateY(-1px); }
+  .addr-edit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .addr-edit-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .addr-edit-btn.primary:hover { background: var(--accent-light); }
   .doc-num {
     font-family: 'SF Mono', Consolas, monospace;
     font-size: 0.78rem;
@@ -990,17 +1050,13 @@ function renderRecordCard(r) {
         <div class="record-field">
           <div class="field-label">Deceased</div>
           <div class="field-value">${escapeHtml(decFull)}</div>
-          ${propAddr
-            ? `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">Property:<br>${escapeHtml(propAddr)}</div>`
-            : `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">No property on file</div>`}
+          ${renderAddressBlock(r, "prop")}
         </div>
 
         <div class="record-field">
           <div class="field-label">Personal Rep (PR)</div>
           <div class="field-value">${escapeHtml(prFull)}</div>
-          ${prMail
-            ? `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">Mailing:<br>${escapeHtml(prMail)}</div>`
-            : `<div class="field-value muted" style="font-size:0.72rem;margin-top:4px">No mailing address yet</div>`}
+          ${renderAddressBlock(r, "mail")}
         </div>
 
         <div class="record-field">
@@ -1048,6 +1104,186 @@ function renderSkipTraceSection(r) {
     </div>
     <div class="skip-trace-panel" id="panel-${id}" style="display:none"></div>
   `;
+}
+
+// =============================================================================
+// ADDRESS EDITING (property + mailing, inline per record card)
+// -----------------------------------------------------------------------------
+// EstateTrace's scraper is ~10% inaccurate on property address — VAs MUST be
+// able to correct. Fortbend cases also lack street altogether, so the VA
+// looks up via HCAD and enters it manually.
+//
+// Both prop_* and mail_* fields are protected by manual_overrides (the
+// existing log_record_changes trigger): once a VA edits any of them, future
+// EstateTrace syncs cannot overwrite the VA's value. Edits are also written
+// to record_history with full audit (who/when/old/new).
+// =============================================================================
+
+function addrBlockId(recordId, addrType) {
+  return `addr-${addrType}-${recordId}`;
+}
+
+// Renders the address block (display mode by default). Replaces the static
+// "Property:..." / "Mailing:..." text we used to inline in renderRecordCard.
+function renderAddressBlock(r, addrType) {
+  const id = addrBlockId(r.id, addrType);
+  return `<div class="addr-block" id="${id}">${renderAddressDisplay(r, addrType)}</div>`;
+}
+
+// Display mode: shows the address as text + a small "edit" link. If the
+// address is empty, shows a placeholder + "+ add" affordance.
+function renderAddressDisplay(r, addrType) {
+  const isProp = addrType === "prop";
+  const street = isProp ? r.prop_address : r.mail_address;
+  const city   = isProp ? r.prop_city    : r.mail_city;
+  const state  = isProp ? r.prop_state   : r.mail_state;
+  const zip    = isProp ? r.prop_zip     : r.mail_zip;
+  const fullAddr = joinAddr(street, city, state, zip);
+  const labelText = isProp ? "Property" : "Mailing";
+  const emptyText = isProp ? "No property on file" : "No mailing address yet";
+  const recId = escapeHtml(r.id);
+
+  if (fullAddr) {
+    return `
+      <div class="field-value muted" style="font-size:0.72rem;margin-top:4px">
+        ${labelText}:<br>${escapeHtml(fullAddr)}
+        <a class="addr-edit-link" onclick="editAddress('${recId}', '${addrType}')">edit</a>
+      </div>
+    `;
+  }
+  return `
+    <div class="field-value muted" style="font-size:0.72rem;margin-top:4px">
+      ${emptyText}
+      <a class="addr-edit-link" onclick="editAddress('${recId}', '${addrType}')">+ add</a>
+    </div>
+  `;
+}
+
+// Switch the address block to edit mode. 4 inputs (street / city / state /
+// zip) with Save + Cancel. Only the affected block is re-rendered — the
+// rest of the card stays untouched.
+function editAddress(recordId, addrType) {
+  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can edit addresses", "error");
+    return;
+  }
+
+  const r = DATA.records.find(x => x.id === recordId);
+  if (!r) return;
+  const block = document.getElementById(addrBlockId(recordId, addrType));
+  if (!block) return;
+
+  const isProp = addrType === "prop";
+  const street = isProp ? r.prop_address : r.mail_address;
+  const city   = isProp ? r.prop_city    : r.mail_city;
+  const state  = isProp ? r.prop_state   : r.mail_state;
+  const zip    = isProp ? r.prop_zip     : r.mail_zip;
+  const labelText = isProp ? "Property (editing)" : "Mailing (editing)";
+  const recId = escapeHtml(recordId);
+
+  block.innerHTML = `
+    <div class="addr-edit-form">
+      <div class="addr-edit-label">${labelText}</div>
+      <input type="text" class="addr-edit-input"
+             data-field="street" placeholder="Street address"
+             value="${escapeHtml(street || "")}">
+      <div class="addr-edit-row">
+        <input type="text" class="addr-edit-input"
+               data-field="city" placeholder="City"
+               value="${escapeHtml(city || "")}"
+               style="flex:1">
+        <input type="text" class="addr-edit-input"
+               data-field="state" placeholder="ST" maxlength="2"
+               value="${escapeHtml(state || "TX")}"
+               style="width:42px;text-transform:uppercase">
+        <input type="text" class="addr-edit-input"
+               data-field="zip" placeholder="ZIP" maxlength="10"
+               value="${escapeHtml(zip || "")}"
+               style="width:75px">
+      </div>
+      <div class="addr-edit-buttons">
+        <button class="addr-edit-btn primary"
+                onclick="saveAddress('${recId}', '${addrType}', this)">Save</button>
+        <button class="addr-edit-btn"
+                onclick="cancelEditAddress('${recId}', '${addrType}')">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  // Auto-focus the street field for fast entry
+  const streetInput = block.querySelector('[data-field="street"]');
+  if (streetInput) streetInput.focus();
+}
+
+// Discard changes and swap back to display mode.
+function cancelEditAddress(recordId, addrType) {
+  const r = DATA.records.find(x => x.id === recordId);
+  if (!r) return;
+  const block = document.getElementById(addrBlockId(recordId, addrType));
+  if (!block) return;
+  block.innerHTML = renderAddressDisplay(r, addrType);
+}
+
+// Save edit to Supabase. The log_record_changes trigger fires server-side and:
+//   - Adds the changed field names to manual_overrides (sync-safe forever)
+//   - Writes one row per changed field to record_history
+//   - Stamps updated_at + updated_by
+// On success: refresh local cache, swap block back to display mode.
+async function saveAddress(recordId, addrType, btnEl) {
+  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can edit addresses", "error");
+    return;
+  }
+
+  const block = document.getElementById(addrBlockId(recordId, addrType));
+  if (!block) return;
+
+  const street = block.querySelector('[data-field="street"]').value.trim();
+  const city   = block.querySelector('[data-field="city"]').value.trim();
+  const stateRaw = block.querySelector('[data-field="state"]').value.trim().toUpperCase();
+  const zip    = block.querySelector('[data-field="zip"]').value.trim();
+
+  // For Texas-only operation, default empty state to TX so we never write null
+  const state = stateRaw || "TX";
+
+  const update = {};
+  update[`${addrType}_address`] = street || null;
+  update[`${addrType}_city`]    = city   || null;
+  update[`${addrType}_state`]   = state;
+  update[`${addrType}_zip`]     = zip    || null;
+
+  btnEl.disabled = true;
+  btnEl.textContent = "Saving...";
+
+  try {
+    const { data, error } = await sb
+      .from("records")
+      .update(update)
+      .eq("id", recordId)
+      .select(`${addrType}_address, ${addrType}_city, ${addrType}_state, ${addrType}_zip, manual_overrides, updated_at, updated_by`)
+      .single();
+    if (error) throw error;
+
+    // Patch local cache with server-confirmed values
+    const r = DATA.records.find(x => x.id === recordId);
+    if (r && data) Object.assign(r, data);
+
+    // Swap block back to display mode (no full render — keeps rest of UI stable
+    // so the user's place in the list is preserved)
+    block.innerHTML = renderAddressDisplay(r, addrType);
+
+    toast(`${addrType === "prop" ? "Property" : "Mailing"} address updated`, "success");
+  } catch (e) {
+    console.error("saveAddress error:", e);
+    const msg = e.message || (e.error ? e.error.message : null) || String(e);
+    toast(`Update failed: ${msg}`, "error");
+    btnEl.disabled = false;
+    btnEl.textContent = "Save";
+  }
 }
 
 // Returns a context-appropriate set of action buttons for a record.
