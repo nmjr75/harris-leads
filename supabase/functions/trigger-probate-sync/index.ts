@@ -38,6 +38,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Project-level public key — required as the apikey for /auth/v1/user lookups
+// even when we override the Authorization header with the caller's JWT below.
+// SUPABASE_ANON_KEY is the env var name for legacy eyJ-style anon keys;
+// SUPABASE_PUBLISHABLE_KEY is the new sb_publishable_ format. Try both.
+const SUPABASE_ANON_KEY =
+  Deno.env.get("SUPABASE_ANON_KEY") ??
+  Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
+  "";
 const GITHUB_DISPATCH_PAT = Deno.env.get("GITHUB_DISPATCH_PAT")!;
 const GITHUB_REPO = Deno.env.get("GITHUB_REPO") ?? "nmjr75/harris-leads";
 const GITHUB_WORKFLOW_FILE = Deno.env.get("GITHUB_WORKFLOW_FILE") ?? "probate-sync.yml";
@@ -80,8 +88,13 @@ serve(async (req: Request) => {
   }
   const jwt = authHeader.slice("Bearer ".length);
 
-  // Use the caller's JWT to identify them (NOT the service role)
-  const userClient = createClient(SUPABASE_URL, jwt, {
+  // Use the caller's JWT to identify them. The 2nd arg to createClient is
+  // the project-level apikey (anon/publishable) — it identifies the project,
+  // not the user. The user identity comes from the Authorization header below.
+  // We previously passed jwt as the 2nd arg by mistake, which caused
+  // /auth/v1/user to reject the request because a user JWT isn't a valid
+  // project apikey. Bug surfaced 2026-04-27 as 'Invalid or expired session'.
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: authHeader } },
   });
