@@ -169,12 +169,77 @@
     transition: border-color 0.15s;
   }
   .record-card:hover { border-color: var(--accent); }
+  .record-card.selected {
+    background: rgba(124,92,252,0.10);
+    border-color: var(--accent);
+  }
   .record-row {
     display: grid;
-    grid-template-columns: 140px 1.2fr 1.2fr 1.5fr 130px;
+    grid-template-columns: 28px 140px 1.2fr 1.2fr 1.5fr 130px;
     gap: 16px;
     align-items: start;
   }
+  .record-cb-cell {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 2px;
+  }
+  .record-cb, .hdr-cb {
+    width: 18px; height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Selection toolbar */
+  .select-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 10px 24px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+  }
+  .select-bar label.cb-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text);
+    user-select: none;
+  }
+  .select-bar .sel-count {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .select-bar button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+  }
+  .select-bar button:hover:not(:disabled) { border-color: var(--accent); }
+  .select-bar button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .select-bar button.btn-export {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .select-bar button.btn-export:hover:not(:disabled) {
+    background: var(--accent-light, #9d7eff);
+    border-color: var(--accent-light, #9d7eff);
+  }
+  .select-bar .sel-spacer { flex: 1; }
   .record-field { display: flex; flex-direction: column; gap: 2px; }
   .field-label {
     font-size: 0.65rem;
@@ -663,6 +728,27 @@
     <input type="text" class="search-input" id="searchInput" placeholder="Search case#, deceased, PR..." style="margin-left:auto" oninput="setSearch(this.value)">
   </div>
 
+  <!-- Selection toolbar (bulk export to skip-trace vendors) -->
+  <div class="select-bar">
+    <label class="cb-label" title="Select/deselect every record visible on the current page only">
+      <input type="checkbox" class="hdr-cb" id="pageSelectAll" onchange="togglePageAll(this.checked)">
+      <span>Select page</span>
+    </label>
+    <button id="selectAllFiltered" onclick="selectAllFiltered()" title="Select every record across all pages matching the current queue + county + month + search filters">Select all (all pages)</button>
+    <button id="clearSelectionBtn" onclick="clearSelection()" disabled>Clear</button>
+    <span class="sel-count" id="selCountLabel">0 selected</span>
+    <span class="sel-spacer"></span>
+    <span class="filter-label" style="margin-right:-4px">Show:</span>
+    <select class="filter-select" id="perPageSelect" onchange="setPerPage(this.value)" title="How many records per page">
+      <option value="20">20</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+      <option value="150">150</option>
+      <option value="all">All</option>
+    </select>
+    <button class="btn-export" id="exportSelectedBtn" onclick="exportProbateCSV()" disabled title="Download selected records as CSV — formatted for skip-trace vendors (xLeads, Deal Machine, Smart Skip, DataSift)">Export Selected to CSV</button>
+  </div>
+
   <!-- Records list -->
   <div class="records" id="records"></div>
 
@@ -686,7 +772,12 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, 
 });
 
 // ── State ─────────────────────────────────────────────────────────
-const PER_PAGE = 50;
+let PER_PAGE = 50;
+// "All" mode -> PER_PAGE === Infinity. effPP() collapses that to total
+// so arithmetic stays well-defined.
+function effPP(total) {
+  return PER_PAGE === Infinity ? Math.max(total, 1) : PER_PAGE;
+}
 const QUEUE_TO_STATUS = {
   verify:   "pending",
   active:   "verified_owns",
@@ -705,6 +796,10 @@ let currentCounty = "";
 let currentMonth = "";
 let currentSearch = "";
 let currentPage = 1;
+
+// Selection state for CSV export. Keys are record.id (UUID). Persists
+// across queue/county/month changes — Clear button is the explicit reset.
+const selectedRecords = new Set();
 
 // ── Auth ──────────────────────────────────────────────────────────
 async function checkAuth() {
@@ -995,6 +1090,7 @@ function render() {
   const filtered = applyFilters(DATA.records);
   renderRecordList(filtered);
   renderPagination(filtered.length);
+  updateBulkUI();
 }
 
 function renderRecordList(records) {
@@ -1011,8 +1107,9 @@ function renderRecordList(records) {
     return;
   }
 
-  const pageStart = (currentPage - 1) * PER_PAGE;
-  const pageEnd = Math.min(pageStart + PER_PAGE, total);
+  const pp = effPP(total);
+  const pageStart = (currentPage - 1) * pp;
+  const pageEnd = Math.min(pageStart + pp, total);
   const page = records.slice(pageStart, pageEnd);
 
   const html = page.map(renderRecordCard).join("");
@@ -1032,9 +1129,15 @@ function renderRecordCard(r) {
   const csLabel = r.case_status === "no_property_found" ? "No Property" :
                   r.case_status ? r.case_status.charAt(0).toUpperCase() + r.case_status.slice(1) : "";
 
+  const isSelected = selectedRecords.has(r.id);
+  const selectedCls = isSelected ? " selected" : "";
+
   return `
-    <div class="record-card" data-record-id="${r.id}">
+    <div class="record-card${selectedCls}" data-record-id="${r.id}">
       <div class="record-row">
+        <div class="record-cb-cell">
+          <input type="checkbox" class="record-cb" ${isSelected ? "checked" : ""} onchange="toggleRecord('${escapeHtml(r.id)}', this.checked)" title="Select this record for CSV export">
+        </div>
         <div class="record-field">
           <div class="field-label">Case</div>
           <div class="doc-num" onclick="openInClerk('${escapeHtml(r.doc_num || "")}')" title="Click to look up in Harris County Clerk Probate Search (case# auto-copied to clipboard)">
@@ -1442,10 +1545,11 @@ async function flipStatus(recordId, newStatus, btnEl) {
 }
 
 function renderPagination(total) {
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const pp = effPP(total);
+  const totalPages = Math.max(1, Math.ceil(total / pp));
   if (currentPage > totalPages) currentPage = totalPages;
-  const showStart = total === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1;
-  const showEnd = Math.min(currentPage * PER_PAGE, total);
+  const showStart = total === 0 ? 0 : (currentPage - 1) * pp + 1;
+  const showEnd = Math.min(currentPage * pp, total);
   const html = `
     <button onclick="goPage(1)" ${currentPage === 1 ? "disabled" : ""}>First</button>
     <button onclick="goPage(${currentPage - 1})" ${currentPage === 1 ? "disabled" : ""}>Prev</button>
@@ -1880,6 +1984,188 @@ function setSearch(s) {
   currentSearch = s.trim();
   currentPage = 1;
   render();
+}
+
+function setPerPage(v) {
+  PER_PAGE = (v === "all") ? Infinity : parseInt(v, 10);
+  currentPage = 1;
+  render();
+}
+
+// ── Bulk Selection (CSV export to skip-trace vendors) ──────────────
+// Selection persists across queue/county/month/page changes; explicit
+// Clear button is the only reset. Keys are record.id (UUID).
+
+function toggleRecord(recordId, checked) {
+  if (checked) selectedRecords.add(recordId);
+  else selectedRecords.delete(recordId);
+  // Update just this card's selected styling, no full re-render needed
+  const card = document.querySelector(`.record-card[data-record-id="${recordId}"]`);
+  if (card) card.classList.toggle("selected", checked);
+  updateBulkUI();
+}
+
+function togglePageAll(checked) {
+  const filtered = applyFilters(DATA.records);
+  const pp = effPP(filtered.length);
+  const pageStart = (currentPage - 1) * pp;
+  const pageEnd = Math.min(pageStart + pp, filtered.length);
+  for (let i = pageStart; i < pageEnd; i++) {
+    if (checked) selectedRecords.add(filtered[i].id);
+    else selectedRecords.delete(filtered[i].id);
+  }
+  // Re-render so individual checkboxes + selected styling update
+  render();
+}
+
+function selectAllFiltered() {
+  const filtered = applyFilters(DATA.records);
+  if (filtered.length === 0) return;
+  if (filtered.length > 500) {
+    if (!confirm(`Select all ${filtered.length.toLocaleString()} filtered records?`)) return;
+  }
+  filtered.forEach(r => selectedRecords.add(r.id));
+  render();
+}
+
+function clearSelection() {
+  if (selectedRecords.size === 0) return;
+  selectedRecords.clear();
+  render();
+}
+
+function updateBulkUI() {
+  const count = selectedRecords.size;
+  const exportBtn = document.getElementById("exportSelectedBtn");
+  const clearBtn = document.getElementById("clearSelectionBtn");
+  const label = document.getElementById("selCountLabel");
+  const pageCb = document.getElementById("pageSelectAll");
+
+  if (label) label.textContent = `${count.toLocaleString()} selected`;
+  if (exportBtn) {
+    exportBtn.disabled = count === 0;
+    exportBtn.textContent = count === 0
+      ? "Export Selected to CSV"
+      : `Export Selected to CSV (${count.toLocaleString()})`;
+  }
+  if (clearBtn) clearBtn.disabled = count === 0;
+
+  // Update header "select all on page" reflecting current page state
+  if (pageCb) {
+    const filtered = applyFilters(DATA.records);
+    const pp = effPP(filtered.length);
+    const pageStart = (currentPage - 1) * pp;
+    const pageEnd = Math.min(pageStart + pp, filtered.length);
+    const pageRows = filtered.slice(pageStart, pageEnd);
+    pageCb.checked = pageRows.length > 0 && pageRows.every(r => selectedRecords.has(r.id));
+    pageCb.indeterminate = !pageCb.checked && pageRows.some(r => selectedRecords.has(r.id));
+  }
+}
+
+// Split "FIRST MIDDLE LAST" or "LAST, FIRST MIDDLE" into parts. Skip-trace
+// vendors (xLeads, Deal Machine, Smart Skip, DataSift) all want first/last
+// in separate columns. Returns {first, middle, last}.
+function splitProbateName(full) {
+  if (!full) return { first: "", middle: "", last: "" };
+  const clean = full.trim().replace(/\s+/g, " ");
+  if (!clean) return { first: "", middle: "", last: "" };
+
+  // "LAST, FIRST MIDDLE" form
+  if (clean.includes(",")) {
+    const [last, rest = ""] = clean.split(",").map(s => s.trim());
+    const restParts = rest.split(" ");
+    return {
+      first: restParts[0] || "",
+      middle: restParts.slice(1).join(" "),
+      last: last
+    };
+  }
+
+  // "FIRST [MIDDLE...] LAST" form
+  const parts = clean.split(" ");
+  if (parts.length === 1) return { first: "", middle: "", last: parts[0] };
+  if (parts.length === 2) return { first: parts[0], middle: "", last: parts[1] };
+  return {
+    first: parts[0],
+    middle: parts.slice(1, -1).join(" "),
+    last: parts[parts.length - 1]
+  };
+}
+
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function exportProbateCSV() {
+  if (selectedRecords.size === 0) return;
+
+  // Pull the selected records — apply current filters first so the export
+  // respects any in-flight filter narrowing, then intersect with selection.
+  // Falls back to the full DATA.records set so previously-selected items
+  // hidden by current filters are still included (selection is persistent).
+  const byId = new Map();
+  DATA.records.forEach(r => byId.set(r.id, r));
+  const rows = [];
+  selectedRecords.forEach(id => {
+    const r = byId.get(id);
+    if (r) rows.push(r);
+  });
+
+  if (rows.length === 0) {
+    alert("Selected records are no longer in the dataset. Clear and re-select.");
+    return;
+  }
+
+  // Sort by filed_date desc to match dashboard ordering
+  rows.sort((a, b) => (b.filed_date || "").localeCompare(a.filed_date || ""));
+
+  const headers = [
+    "Case Number", "County", "Filed Date", "Verification Status",
+    "Deceased First", "Deceased Middle", "Deceased Last",
+    "Property Address", "Property City", "Property State", "Property Zip",
+    "PR First", "PR Middle", "PR Last",
+    "Mailing Address", "Mailing City", "Mailing State", "Mailing Zip",
+    "Additional Applicants", "Sheet Tab", "Source", "Record ID"
+  ];
+
+  let csv = headers.join(",") + "\n";
+  rows.forEach(r => {
+    const dec = splitProbateName(r.grantor_name);
+    const pr = splitProbateName(r.owner);
+    csv += [
+      csvCell(r.doc_num),
+      csvCell(r.county),
+      csvCell(r.filed_date),
+      csvCell((r.verification_status || "").replace(/_/g, " ")),
+      csvCell(dec.first), csvCell(dec.middle), csvCell(dec.last),
+      csvCell(r.prop_address), csvCell(r.prop_city), csvCell(r.prop_state), csvCell(r.prop_zip),
+      csvCell(pr.first), csvCell(pr.middle), csvCell(pr.last),
+      csvCell(r.mail_address), csvCell(r.mail_city), csvCell(r.mail_state), csvCell(r.mail_zip),
+      csvCell(r.additional_applicants),
+      csvCell(r.sheet_tab_name),
+      "estatetrace",
+      csvCell(r.id)
+    ].join(",") + "\n";
+  });
+
+  // Filename includes queue + count + date for easy archiving
+  const queueLabel = ({verify:"verify",active:"active",archive:"archive",research:"research"})[currentQueue] || "all";
+  const datePart = new Date().toISOString().slice(0,10);
+  const countyPart = currentCounty ? `_${currentCounty.toLowerCase()}` : "";
+  const filename = `probate_${queueLabel}${countyPart}_selected-${rows.length}_${datePart}.csv`
+    .replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+
+  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 // ── Initialize ────────────────────────────────────────────────────
