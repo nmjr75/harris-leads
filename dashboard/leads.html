@@ -1002,6 +1002,17 @@ function setQueue(q) {
   applyFilters();
 }
 
+// HTML-escape helper used by card render. Mirrors probate.html.
+function escapeHtml(s) {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 let currentSession = null;
 let currentProfile = null;
 let realtimeChannel = null;
