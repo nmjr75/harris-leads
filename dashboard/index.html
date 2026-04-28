@@ -641,7 +641,6 @@
     <option value="">All Runs</option>
   </select>
   <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
-  <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
     <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
     <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
@@ -671,6 +670,7 @@
     <span style="font-size:0.72rem;color:var(--text-muted);">to</span>
     <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
   </span>
+  <button class="btn" onclick="resetFilters()">Reset</button>
 </div>
 
 <div class="table-wrap">
