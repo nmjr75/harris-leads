@@ -278,8 +278,19 @@ def upsert_and_autoqueue(
             log.info(f"Legal-fallback resolved {legal_resolved} records "
                      "(address filled from HCAD via legal description)")
 
-    # Auto-queue: only records with both address and owner/grantor name
-    # AND not yet submitted to SIFTstack (status is null or 'failed').
+    # ── Auto-queue DISABLED 2026-04-28 ────────────────────────────────────
+    # The dashboard now requires explicit VA verification before any record
+    # is submitted to SIFTstack. New records land with verification_status
+    # 'pending' (mig 015) and sit in the Verify queue until a VA confirms.
+    # The "Submit to SIFTstack" button on the dashboard is the ONLY path
+    # into siftstack_queue for clerk records going forward.
+    #
+    # Re-enable by uncommenting the block below.
+    log.info("Auto-queue: DISABLED — records require VA verification "
+             "before submission via dashboard")
+    return summary
+
+    # ── Legacy auto-queue (kept for reference, never executes) ────────────
     qualifying = [r for r in normalized if _qualifies_for_autoqueue(r)]
     if not qualifying:
         log.info("Auto-queue: 0 qualifying records")

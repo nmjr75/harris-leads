@@ -281,7 +281,133 @@ def build_notice(queue_row: dict) -> tuple[NoticeData, int, str]:
         if prop.get("situs_zip") and not n.zip:
             n.zip = prop["situs_zip"]
 
+    # ── Pull VA-entered phones from contact_phones (clerk + probate) ───
+    # If a VA used the dashboard skip-trace panel before submitting,
+    # those phones live in contact_phones. Map them onto NoticeData
+    # phone slots so they reach the DataSift CSV.
+    _attach_contact_phones(n, rec_id)
+    _attach_contact_emails(n, rec_id)
+
     return n, qid, rec_id
+
+
+def _attach_contact_phones(notice: NoticeData, record_id: str) -> int:
+    """Pull non-DNC, non-litigator phones for this record, map to NoticeData
+    phone slots in priority order. Returns count assigned (0-9)."""
+    try:
+        resp = (
+            client.table("contact_phones")
+            .select("phone_e164, phone_display, phone_type, role, priority, is_best")
+            .eq("record_id", record_id)
+            .eq("is_dnc", False)
+            .eq("is_litigator", False)
+            .execute()
+        )
+    except Exception as e:
+        log.debug("contact_phones lookup failed for %s: %s", record_id, e)
+        return 0
+
+    phones = resp.data or []
+    if not phones:
+        return 0
+
+    # Role priority for clerk + probate: contact targets first.
+    role_rank = {"owner": 0, "pr": 0, "co_borrower": 1, "heir": 2, "other": 3}
+    relevant = [p for p in phones if p.get("role") in role_rank]
+    if not relevant:
+        return 0
+
+    def sort_key(p):
+        return (
+            0 if p.get("is_best") else 1,
+            role_rank.get(p.get("role"), 99),
+            p.get("priority") if p.get("priority") is not None else 999,
+        )
+    sorted_phones = sorted(relevant, key=sort_key)
+
+    seen_e164 = set()
+    deduped = []
+    for p in sorted_phones:
+        e164 = p.get("phone_e164")
+        if not e164 or e164 in seen_e164:
+            continue
+        seen_e164.add(e164)
+        deduped.append(p)
+
+    mobile_slots = ["mobile_1", "mobile_2", "mobile_3", "mobile_4", "mobile_5"]
+    landline_slots = ["landline_1", "landline_2", "landline_3"]
+    mobile_idx = 0
+    landline_idx = 0
+    assigned = 0
+
+    if deduped:
+        notice.primary_phone = deduped[0].get("phone_display") or deduped[0].get("phone_e164", "")
+        assigned += 1
+
+    for p in deduped[1:]:
+        phone_str = p.get("phone_display") or p.get("phone_e164", "")
+        if not phone_str:
+            continue
+        ptype = p.get("phone_type", "unknown")
+        if ptype in ("wireless", "voip", "unknown") and mobile_idx < len(mobile_slots):
+            setattr(notice, mobile_slots[mobile_idx], phone_str)
+            mobile_idx += 1
+            assigned += 1
+        elif ptype == "landline" and landline_idx < len(landline_slots):
+            setattr(notice, landline_slots[landline_idx], phone_str)
+            landline_idx += 1
+            assigned += 1
+        else:
+            if mobile_idx < len(mobile_slots):
+                setattr(notice, mobile_slots[mobile_idx], phone_str)
+                mobile_idx += 1
+                assigned += 1
+            elif landline_idx < len(landline_slots):
+                setattr(notice, landline_slots[landline_idx], phone_str)
+                landline_idx += 1
+                assigned += 1
+            else:
+                break
+    return assigned
+
+
+def _attach_contact_emails(notice: NoticeData, record_id: str) -> int:
+    """Pull non-bounced emails for this record, map to email_1..5 slots."""
+    try:
+        resp = (
+            client.table("contact_emails")
+            .select("email, role")
+            .eq("record_id", record_id)
+            .eq("is_bounced", False)
+            .execute()
+        )
+    except Exception as e:
+        log.debug("contact_emails lookup failed for %s: %s", record_id, e)
+        return 0
+
+    emails = resp.data or []
+    if not emails:
+        return 0
+
+    role_rank = {"owner": 0, "pr": 0, "co_borrower": 1, "heir": 2, "other": 3}
+    relevant = [e for e in emails if e.get("role") in role_rank]
+    if not relevant:
+        return 0
+
+    sorted_emails = sorted(relevant, key=lambda e: role_rank.get(e.get("role"), 99))
+    seen = set()
+    slots = ["email_1", "email_2", "email_3", "email_4", "email_5"]
+    idx = 0
+    for e in sorted_emails:
+        addr = (e.get("email") or "").strip().lower()
+        if not addr or addr in seen:
+            continue
+        seen.add(addr)
+        if idx >= len(slots):
+            break
+        setattr(notice, slots[idx], addr)
+        idx += 1
+    return idx
 
 
 # ── Dropbox upload helpers ────────────────────────────────────────────
