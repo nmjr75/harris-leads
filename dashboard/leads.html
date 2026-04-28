@@ -1067,9 +1067,6 @@
   <select id="runPicker" title="Pick a scraper run to see only the records it touched">
     <option value="">All Runs</option>
   </select>
-  <select id="batchFilter">
-    <option value="">All Batches</option>
-  </select>
   <select id="saleMonthFilter"><option value="">All Sale Months</option></select>
   <span style="font-size:0.72rem;color:var(--text-muted);">Filed:</span>
   <input type="date" id="filedFrom" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed from date">
@@ -2011,7 +2008,6 @@ function populateFilters() {
   document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
-  document.getElementById("batchFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("runPicker").addEventListener("change", async (e) => {
     currentPage = 1;
     await applyRunPickerSelection(e.target.value);
@@ -2020,30 +2016,6 @@ function populateFilters() {
   document.getElementById("saleMonthFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("filedFrom").addEventListener("change", () => { currentPage = 1; applyFilters(); });
   document.getElementById("filedTo").addEventListener("change", () => { currentPage = 1; applyFilters(); });
-
-  // Populate batch filter dropdown from foreclosure records
-  const batchMap = new Map();  // batch_id → { label, count }
-  DATA.records.forEach(r => {
-    if (r.batch_id) {
-      if (!batchMap.has(r.batch_id)) {
-        batchMap.set(r.batch_id, { label: r.batch_label || r.batch_id, count: 0 });
-      }
-      batchMap.get(r.batch_id).count++;
-    }
-  });
-  const bsel = document.getElementById("batchFilter");
-  // Sort batches by batch number (B1, B2, B3...)
-  const sortedBatches = [...batchMap.entries()].sort((a, b) => {
-    const numA = parseInt(a[0].replace("B", "")) || 0;
-    const numB = parseInt(b[0].replace("B", "")) || 0;
-    return numB - numA;  // newest first
-  });
-  sortedBatches.forEach(([bid, info]) => {
-    const opt = document.createElement("option");
-    opt.value = bid;
-    opt.textContent = `${info.label} (${info.count})`;
-    bsel.appendChild(opt);
-  });
 }
 
 function getFiltered() {
@@ -2057,7 +2029,6 @@ function getFiltered() {
   const addr  = document.getElementById("addrFilter").value;
   const conf  = document.getElementById("confFilter").value;
   const src   = document.getElementById("sourceFilter").value;
-  const batch = document.getElementById("batchFilter").value;
   const saleMonth = document.getElementById("saleMonthFilter").value;
   const filedFrom = document.getElementById("filedFrom").value;
   const filedTo   = document.getElementById("filedTo").value;
@@ -2070,7 +2041,6 @@ function getFiltered() {
     // when the source filter is explicitly set to 'estatetrace'.
     if (r._source === "estatetrace" && src !== "estatetrace") return false;
     if (src && (r._source || "clerk") !== src) return false;
-    if (batch && (r.batch_id || "") !== batch) return false;
     // Run-picker filter: SELECTED_RUN_RECORD_IDS is a Map(record_id -> action)
     // populated when the user picks a run. Records not in the Map are excluded.
     if (SELECTED_RUN_RECORD_IDS && !SELECTED_RUN_RECORD_IDS.has(r.id)) return false;
@@ -2136,7 +2106,6 @@ function recomputeQueueCounts() {
   const flag  = document.getElementById("flagFilter").value;
   const addr  = document.getElementById("addrFilter").value;
   const conf  = document.getElementById("confFilter").value;
-  const batch = document.getElementById("batchFilter").value;
   const saleMonth = document.getElementById("saleMonthFilter").value;
   const filedFrom = document.getElementById("filedFrom").value;
   const filedTo   = document.getElementById("filedTo").value;
@@ -2145,7 +2114,6 @@ function recomputeQueueCounts() {
   const baseScope = (r) => {
     if (r._source === "estatetrace" && src !== "estatetrace") return false;
     if (src && (r._source || "clerk") !== src) return false;
-    if (batch && (r.batch_id || "") !== batch) return false;
     if (SELECTED_RUN_RECORD_IDS && !SELECTED_RUN_RECORD_IDS.has(r.id)) return false;
     if (saleMonth) {
       if (!r.sale_date) return false;
@@ -2786,7 +2754,6 @@ function resetFilters() {
   document.getElementById("addrFilter").value = "";
   document.getElementById("confFilter").value = "";
   document.getElementById("sourceFilter").value = "";
-  document.getElementById("batchFilter").value = "";
   document.getElementById("runPicker").value = "";
   SELECTED_RUN_RECORD_IDS = null;
   document.getElementById("saleMonthFilter").value = "";
@@ -3251,13 +3218,11 @@ function exportCSV(mode) {
   const fParts = [];
   const _src = document.getElementById("sourceFilter").value;
   const _sm = document.getElementById("saleMonthFilter").value;
-  const _batch = document.getElementById("batchFilter").value;
   const _type = document.getElementById("typeFilter").value;
   const _ff = document.getElementById("filedFrom").value;
   const _ft = document.getElementById("filedTo").value;
   if (_src) fParts.push(_src);
   if (_sm) fParts.push("sale-" + _sm);
-  if (_batch) fParts.push(_batch);
   if (_type) fParts.push(_type.toLowerCase());
   if (_ff || _ft) fParts.push("filed-" + (_ff||"start") + "-to-" + (_ft||"end"));
   if (cardFilter && cardFilter !== "all") fParts.push(cardFilter === "addr" ? "with-addr" : cardFilter.replace("cat:","").toLowerCase());
