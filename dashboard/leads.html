@@ -734,6 +734,50 @@
   .siftstack-pill-card.failed    { background: rgba(239,68,68,0.18); color: var(--red); }
   .siftstack-pill-card.manual    { background: rgba(124,92,252,0.18); color: var(--accent-light); }
 
+  /* Actions column inside the table — vertical stack of small buttons */
+  td.actions-cell { padding: 4px 6px; vertical-align: middle; }
+  .actions-cell-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .actions-cell-inner .action-btn {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 6px;
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.12s;
+    width: 100%;
+    line-height: 1.2;
+  }
+  .actions-cell-inner .action-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .actions-cell-inner .action-btn.confirm  { color: var(--green); border-color: rgba(34,197,94,0.4); }
+  .actions-cell-inner .action-btn.confirm:hover  { background: rgba(34,197,94,0.15); border-color: var(--green); }
+  .actions-cell-inner .action-btn.archive  { color: var(--text-muted); }
+  .actions-cell-inner .action-btn.archive:hover  { background: rgba(139,143,163,0.15); border-color: var(--text-muted); }
+  .actions-cell-inner .action-btn.research { color: var(--orange); border-color: rgba(245,158,11,0.4); }
+  .actions-cell-inner .action-btn.research:hover { background: rgba(245,158,11,0.15); border-color: var(--orange); }
+  .actions-cell-inner .action-btn.reverify { color: var(--accent-light); border-color: rgba(124,92,252,0.4); }
+  .actions-cell-inner .action-btn.reverify:hover { background: rgba(124,92,252,0.15); border-color: var(--accent); }
+  .actions-cell-inner .action-btn.skiptrace {
+    color: #fff; background: var(--estatetrace); border-color: var(--estatetrace);
+    margin-top: 2px;
+  }
+  .actions-cell-inner .action-btn.skiptrace:hover { background: #0ea372; border-color: #0ea372; }
+  .actions-cell-inner .action-btn.skiptrace.active { background: #0ea372; border-color: #0ea372; }
+
+  /* Skip-trace expansion panel inside the table row */
+  .skip-trace-panel-table {
+    padding: 14px 24px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
   .ext-link-card {
     color: var(--accent-light);
     text-decoration: none;
@@ -950,7 +994,12 @@
   </button>
 </div>
 
-<div class="records" id="records"></div>
+<div class="table-wrap">
+  <table>
+    <thead id="thead"></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
 
 <div class="pagination" id="pagination"></div>
 
@@ -1381,6 +1430,7 @@ const COLS = [
   {key: "siftstack", label: "SIFTstack", w: "110px"},
   {key: "doc_num", label: "Doc #", w: "100px"},
   {key: "link", label: "Links", w: "80px"},
+  {key: "actions", label: "Actions", w: "150px"},
 ];
 
 const CAT_COLORS = {
@@ -2051,62 +2101,54 @@ function renderRecordCard(r) {
 function renderActionsForRecord(r) {
   const role = currentProfile?.role;
   const canEdit = role === "admin" || role === "editor";
-  if (!canEdit) return `<span class="record-field dim">read-only</span>`;
+  if (!canEdit) return `<span style="font-size:0.7rem;color:var(--text-muted)">read-only</span>`;
   const status = r.verification_status;
   const id = escapeHtml(r.id);
-  // Compact icon-style buttons. Letter labels with tooltip for full intent.
-  const btn = (cls, status, char, title) =>
-    `<button class="action-btn ${cls}" title="${title}" onclick="flipStatusCard('${id}','${status}', this)">${char}</button>`;
+  // Compact text buttons sized for a table cell. Stack vertically with
+  // small font; user reads what each button does. No more cryptic icons.
+  const btn = (cls, newStatus, label, title) =>
+    `<button class="action-btn ${cls}" title="${title}" onclick="flipStatusCard('${id}','${newStatus}', this)">${label}</button>`;
 
+  let actions;
   if (status === "pending" || status == null) {
-    return btn("confirm", "verified_owns", "✓", "Confirm Owns") +
-           btn("archive", "verified_no_owns", "✗", "No Property") +
-           btn("research", "needs_research", "?", "Needs Research");
-  }
-  if (status === "verified_owns") {
-    return btn("reverify", "pending", "↶", "Re-verify (back to Verify queue)") +
-           btn("archive", "verified_no_owns", "✗", "No Property") +
-           btn("research", "needs_research", "?", "Needs Research");
-  }
-  if (status === "verified_no_owns") {
-    return btn("reverify", "pending", "↶", "Re-verify") +
-           btn("confirm", "verified_owns", "✓", "Confirm Owns");
-  }
-  if (status === "needs_research") {
-    return btn("confirm", "verified_owns", "✓", "Confirm Owns") +
-           btn("archive", "verified_no_owns", "✗", "No Property") +
-           btn("reverify", "pending", "↶", "Re-verify");
-  }
-  return `<span class="record-field dim">—</span>`;
-}
-
-function renderSkipTraceSection(r) {
-  // Skip-trace UI only on Active queue (verified records ready for outreach)
-  if (!recordInQueue(r, "active")) return "";
-  const id = escapeHtml(r.id);
-  const phones = phonesByRecord.get(r.id) || [];
-  const phoneCount = phones.length;
-  const badgeCls = phoneCount > 0 ? "phone-count-badge has-phones" : "phone-count-badge";
-  const badgeText = phoneCount === 0 ? "(no phones yet)" : `(${phoneCount} ${phoneCount === 1 ? "phone" : "phones"})`;
-  return `
-    <div class="skip-trace-toggle-row">
-      <button class="skip-trace-toggle-btn" onclick="togglePanel('${id}', this)">&#9660; Open Skip Trace</button>
-      <span class="${badgeCls}">${badgeText}</span>
-    </div>
-    <div class="skip-trace-panel" id="panel-${id}" style="display:none"></div>`;
-}
-
-function togglePanel(recordId, btnEl) {
-  const panel = document.getElementById(`panel-${recordId}`);
-  if (!panel) return;
-  if (panel.style.display === "none" || !panel.style.display) {
-    panel.innerHTML = renderPanelForm(recordId);
-    panel.style.display = "block";
-    btnEl.innerHTML = "&#9650; Close Skip Trace";
+    actions = btn("confirm", "verified_owns", "Confirm", "Confirm owner owns the property → moves to Active") +
+              btn("archive", "verified_no_owns", "Archive", "No property / not a real lead → moves to Archive") +
+              btn("research", "needs_research", "Research", "Cannot find the address → moves to Research");
+  } else if (status === "verified_owns") {
+    actions = btn("reverify", "pending", "Re-verify", "Send back to Verify queue") +
+              btn("archive", "verified_no_owns", "Archive", "No property") +
+              btn("research", "needs_research", "Research", "Needs research");
+  } else if (status === "verified_no_owns") {
+    actions = btn("reverify", "pending", "Re-verify", "Send back to Verify queue") +
+              btn("confirm", "verified_owns", "Confirm", "Actually owns property");
+  } else if (status === "needs_research") {
+    actions = btn("confirm", "verified_owns", "Confirm", "Confirm Owns") +
+              btn("archive", "verified_no_owns", "Archive", "No Property") +
+              btn("reverify", "pending", "Re-verify", "Re-verify");
   } else {
-    panel.style.display = "none";
+    actions = "—";
+  }
+  // Skip-trace toggle button only shown on Active queue records
+  if (recordInQueue(r, "active")) {
+    const phones = phonesByRecord.get(r.id) || [];
+    const phoneCount = phones.length;
+    actions += `<button class="action-btn skiptrace" title="Open skip-trace panel for owner + co-borrower" onclick="toggleStpRow('${id}', this)">Skip Trace${phoneCount > 0 ? ` (${phoneCount})` : ""}</button>`;
+  }
+  return `<div class="actions-cell-inner">${actions}</div>`;
+}
+
+function toggleStpRow(recordId, btnEl) {
+  const row = document.getElementById(`stp-row-${recordId}`);
+  const panel = document.getElementById(`stp-panel-${recordId}`);
+  if (!row || !panel) return;
+  if (row.style.display === "none" || !row.style.display) {
+    panel.innerHTML = renderPanelForm(recordId);
+    row.style.display = "";
+    if (btnEl) btnEl.classList.add("active");
+  } else {
+    row.style.display = "none";
     panel.innerHTML = "";
-    btnEl.innerHTML = "&#9660; Open Skip Trace";
+    if (btnEl) btnEl.classList.remove("active");
   }
 }
 
@@ -2284,7 +2326,7 @@ function applyFilters() {
   recomputeQueueCounts();
   filtered = getFiltered();
   sortData();
-  renderRecordList();
+  renderTable();
   renderPagination();
 
   // Active filter tag
@@ -2347,13 +2389,6 @@ function sortData() {
 
 // ── Table Render ───────────────────────────────────────────────────
 function renderTable() {
-  // /leads workspace: cards have replaced the table. Delegate to the
-  // card renderer so all existing call sites (inline edit, search,
-  // filters, pagination) keep working without modification.
-  renderRecordList();
-  return;
-
-  // ── Original table-render kept below as dead code for reference ────
   // Header with checkbox
   const effectivePP = perPage === Infinity ? filtered.length : perPage;
   const pageData = filtered.slice((currentPage - 1) * effectivePP, (currentPage - 1) * effectivePP + effectivePP);
@@ -2417,9 +2452,23 @@ function renderTable() {
       <td onclick="openModal(${rowIdx})">${renderSiftstackPill(r)}</td>
       <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
+      <td class="actions-cell">${renderActionsForRecord(r)}</td>
     </tr>`;
+
+    // Skip-trace expansion row — only on Active queue. Visible when
+    // user clicks the "Skip Trace" action button.
+    if (recordInQueue(r, "active")) {
+      const phones = phonesByRecord.get(r.id) || [];
+      const phoneCount = phones.length;
+      const phoneLabel = phoneCount === 0 ? "no phones yet" : `${phoneCount} phone${phoneCount > 1 ? "s" : ""}`;
+      html += `<tr class="stp-row-wrap" id="stp-row-${escapeHtml(r.id)}" style="display:none">
+        <td colspan="${COLS.length + 1}" style="padding:0;background:var(--bg)">
+          <div id="stp-panel-${escapeHtml(r.id)}" class="skip-trace-panel-table"></div>
+        </td>
+      </tr>`;
+    }
   });
-  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="18" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+  document.getElementById("tbody").innerHTML = html || `<tr><td colspan="${COLS.length + 1}" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>`;
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
