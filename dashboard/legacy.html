@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leads Workspace — Harris County Motivated Sellers</title>
+<title>Harris County Motivated Seller Leads</title>
 <style>
   :root {
     --bg: #0f1117;
@@ -223,15 +223,14 @@
     text-align: left;
     font-size: 0.7rem;
     text-transform: uppercase;
-    color: #60a5fa;
-    font-weight: 700;
-    border-bottom: 2px solid #1d4ed8;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
     letter-spacing: 0.03em;
   }
-  thead th:hover { color: #93c5fd; }
+  thead th:hover { color: var(--accent-light); }
   thead th .sort-arrow { margin-left: 3px; font-size: 0.6rem; }
   tbody tr {
     border-bottom: 1px solid var(--border);
@@ -588,432 +587,6 @@
     border-radius: 50%;
     vertical-align: middle;
   }
-
-  /* ────────────────────────────────────────────────────────────────
-     Card view + queue tabs + skip-trace (added for /leads workspace)
-     ──────────────────────────────────────────────────────────────── */
-
-  /* Queue tabs */
-  .queue-tabs {
-    display: flex;
-    gap: 0;
-    padding: 12px 24px 0;
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-  }
-  .queue-tab {
-    background: transparent;
-    color: var(--text-muted);
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 12px 18px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 500;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-  .queue-tab:hover { color: var(--text); }
-  .queue-tab.active {
-    color: var(--text);
-    border-bottom-color: var(--accent);
-  }
-  .queue-tab .badge {
-    margin-left: 6px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: var(--surface2);
-    font-size: 0.7rem;
-    color: var(--text-muted);
-  }
-  .queue-tab.active .badge { background: var(--accent); color: #fff; }
-
-  /* Records list */
-  .records {
-    padding: 16px 24px;
-  }
-  /* Thin table-row-style card. All 18 fields visible inline.
-     Density matches the old table view; cards just add hover, selection,
-     and an expandable skip-trace section. */
-  .record-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 10px;
-    margin-bottom: 3px;
-    transition: border-color 0.12s, background 0.12s;
-  }
-  .record-card:hover { border-color: var(--accent); }
-  .record-card.selected {
-    background: rgba(124,92,252,0.10);
-    border-color: var(--accent);
-  }
-  /* Single-line table-like layout. Column widths mirror the original table
-     so the same fields land in roughly the same horizontal positions. */
-  .record-row {
-    display: grid;
-    grid-template-columns:
-      24px            /* checkbox */
-      42px            /* score */
-      80px            /* filed */
-      80px            /* sale */
-      52px            /* type */
-      90px            /* category */
-      1fr             /* owner */
-      1fr             /* co-borrower */
-      1fr             /* grantor */
-      90px            /* flags */
-      1.2fr           /* legal */
-      1.4fr           /* property address */
-      1.4fr           /* mailing address */
-      78px            /* amount */
-      60px            /* confidence */
-      70px            /* siftstack pill */
-      88px            /* doc# */
-      72px            /* links */
-      120px;          /* actions */
-    gap: 6px;
-    align-items: center;
-  }
-  .record-cb-cell {
-    display: flex; align-items: center; justify-content: center;
-  }
-  .record-cb {
-    width: 14px; height: 14px;
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-  .record-field {
-    font-size: 0.74rem;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .record-field.wrap { white-space: normal; word-break: break-word; }
-  .record-field.dim { color: var(--text-muted); font-size: 0.7rem; }
-
-  /* Tiny action buttons — single-character with title for full label. */
-  .actions-col {
-    display: flex;
-    gap: 3px;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-  .action-btn {
-    background: transparent; color: var(--text);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 2px 7px; cursor: pointer;
-    font-size: 0.72rem; font-weight: 600;
-    text-align: center;
-    transition: all 0.12s;
-    min-width: 24px;
-    line-height: 1.2;
-  }
-  .action-btn:hover:not(:disabled) { border-color: var(--accent); }
-  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .action-btn.confirm { color: var(--green); border-color: rgba(34,197,94,0.4); }
-  .action-btn.confirm:hover:not(:disabled) { background: rgba(34,197,94,0.15); border-color: var(--green); }
-  .action-btn.archive { color: var(--text-muted); }
-  .action-btn.archive:hover:not(:disabled) { background: rgba(139,143,163,0.15); border-color: var(--text-muted); }
-  .action-btn.research { color: var(--orange); border-color: rgba(245,158,11,0.4); }
-  .action-btn.research:hover:not(:disabled) { background: rgba(245,158,11,0.15); border-color: var(--orange); }
-  .action-btn.reverify { color: var(--accent-light); border-color: rgba(124,92,252,0.4); }
-  .action-btn.reverify:hover:not(:disabled) { background: rgba(124,92,252,0.15); border-color: var(--accent); }
-  .action-btn.skiptrace { color: var(--estatetrace); border-color: rgba(16,185,129,0.4); }
-  .action-btn.skiptrace:hover:not(:disabled) { background: rgba(16,185,129,0.15); border-color: var(--estatetrace); }
-
-  .siftstack-pill-card {
-    display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 600;
-  }
-  .siftstack-pill-card.queued    { background: rgba(245,158,11,0.18); color: var(--orange); }
-  .siftstack-pill-card.completed { background: rgba(16,185,129,0.18); color: var(--estatetrace); }
-  .siftstack-pill-card.failed    { background: rgba(239,68,68,0.18); color: var(--red); }
-  .siftstack-pill-card.manual    { background: rgba(124,92,252,0.18); color: var(--accent-light); }
-
-  /* Actions column inside the table — vertical stack of small buttons */
-  td.actions-cell { padding: 4px 6px; vertical-align: middle; }
-  .actions-cell-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .actions-cell-inner .action-btn {
-    background: transparent;
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 3px 6px;
-    cursor: pointer;
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-align: center;
-    transition: all 0.12s;
-    width: 100%;
-    line-height: 1.2;
-  }
-  .actions-cell-inner .action-btn:hover:not(:disabled) { border-color: var(--accent); }
-  .actions-cell-inner .action-btn.confirm  { color: var(--green); border-color: rgba(34,197,94,0.4); }
-  .actions-cell-inner .action-btn.confirm:hover  { background: rgba(34,197,94,0.15); border-color: var(--green); }
-  .actions-cell-inner .action-btn.archive  { color: var(--text-muted); }
-  .actions-cell-inner .action-btn.archive:hover  { background: rgba(139,143,163,0.15); border-color: var(--text-muted); }
-  .actions-cell-inner .action-btn.research { color: var(--orange); border-color: rgba(245,158,11,0.4); }
-  .actions-cell-inner .action-btn.research:hover { background: rgba(245,158,11,0.15); border-color: var(--orange); }
-  .actions-cell-inner .action-btn.reverify { color: var(--accent-light); border-color: rgba(124,92,252,0.4); }
-  .actions-cell-inner .action-btn.reverify:hover { background: rgba(124,92,252,0.15); border-color: var(--accent); }
-  .actions-cell-inner .action-btn.skiptrace {
-    color: #fff; background: var(--estatetrace); border-color: var(--estatetrace);
-    margin-top: 2px;
-  }
-  .actions-cell-inner .action-btn.skiptrace:hover { background: #0ea372; border-color: #0ea372; }
-  .actions-cell-inner .action-btn.skiptrace.active { background: #0ea372; border-color: #0ea372; }
-
-  /* Skip-trace expansion panel inside the table row */
-  .skip-trace-panel-table {
-    padding: 14px 24px;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-  }
-  .stp-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
-  .stp-header h4 { font-size: 0.92rem; color: var(--text); font-weight: 600; }
-  .stp-meta-row {
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
-  }
-  .stp-meta-row label { font-size: 0.72rem; color: var(--text-muted); }
-  .stp-meta-row .stp-input, .stp-meta-row .stp-select {
-    background: var(--surface2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 4px 8px; font-size: 0.78rem; outline: none;
-  }
-  .stp-meta-row .stp-input:focus { border-color: var(--accent); }
-  .stp-meta-row .stp-input.short-date { width: 130px; }
-  .stp-meta-row .stp-input.comment-input { flex: 1; min-width: 200px; }
-  .stp-meta-row .stp-input.notes-input { flex: 1; min-width: 200px; }
-  .stp-people-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-  .stp-people-grid.single-col { grid-template-columns: 1fr; }
-  .stp-person-block {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 12px;
-  }
-  .stp-person-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 8px;
-    font-size: 0.82rem; font-weight: 600;
-  }
-  .stp-person-header .role-tag {
-    font-size: 0.62rem; color: var(--text-muted);
-    text-transform: uppercase; margin-left: 6px; letter-spacing: 0.5px;
-  }
-  .stp-person-header .tps-link {
-    color: var(--accent-light); text-decoration: none; font-size: 0.7rem;
-    padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px;
-    transition: all 0.12s;
-  }
-  .stp-person-header .tps-link:hover {
-    background: var(--surface2); border-color: var(--accent);
-  }
-  .stp-person-header .tps-link.disabled {
-    color: var(--text-muted); cursor: not-allowed; pointer-events: none;
-  }
-  .stp-phones {
-    display: flex; flex-direction: column; gap: 5px;
-    margin-bottom: 8px;
-  }
-  .phone-slot {
-    display: flex; gap: 6px; align-items: center;
-    padding: 4px 8px;
-    background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 4px;
-  }
-  .phone-slot.is-best { border-color: var(--orange); background: rgba(245,158,11,0.08); }
-  .star-toggle {
-    background: none; border: none;
-    cursor: pointer; padding: 0 4px;
-    font-size: 1rem;
-    color: var(--text-muted);
-    transition: color 0.12s;
-  }
-  .star-toggle.active { color: var(--orange); }
-  .star-toggle:hover { color: var(--orange); }
-  .slot-label {
-    font-size: 0.7rem; color: var(--text-muted);
-    min-width: 48px; font-weight: 500;
-  }
-  .phone-input {
-    flex: 1; min-width: 130px;
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 3px 7px; font-size: 0.78rem; outline: none;
-    font-family: 'SF Mono', Consolas, monospace;
-  }
-  .phone-input:focus { border-color: var(--accent); }
-  .phone-input.error { border-color: var(--red); }
-  .last-seen-input {
-    width: 120px;
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 3px 6px; font-size: 0.72rem; outline: none;
-  }
-  .stp-email-row {
-    display: flex; gap: 6px; align-items: center;
-    padding-top: 6px; border-top: 1px dashed var(--border);
-  }
-  .stp-email-row label { font-size: 0.7rem; color: var(--text-muted); min-width: 48px; }
-  .stp-email-row .email-input {
-    flex: 1;
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 3px 7px; font-size: 0.78rem; outline: none;
-  }
-  .stp-email-row .email-input:focus { border-color: var(--accent); }
-  .stp-error {
-    color: var(--red); font-size: 0.78rem;
-    margin-top: 8px; min-height: 18px;
-  }
-  .stp-buttons {
-    display: flex; gap: 8px;
-    margin-top: 12px; padding-top: 10px;
-    border-top: 1px solid var(--border);
-    justify-content: flex-end;
-  }
-  .stp-btn {
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 0.8rem; font-weight: 600;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    background: var(--surface2); color: var(--text);
-    transition: all 0.12s;
-  }
-  .stp-btn:hover:not(:disabled) { transform: translateY(-1px); }
-  .stp-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-  .stp-btn.primary {
-    background: var(--estatetrace);
-    border-color: var(--estatetrace);
-    color: #fff;
-  }
-  .stp-btn.primary:hover:not(:disabled) { background: #0d9b6e; }
-
-  .ext-link-card {
-    color: var(--accent-light);
-    text-decoration: none;
-    font-size: 0.75rem;
-    margin-right: 6px;
-  }
-  .ext-link-card:hover { text-decoration: underline; }
-
-  /* Skip-trace section */
-  .skip-trace-toggle-row {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 12px;
-  }
-  .skip-trace-toggle-btn {
-    background: var(--estatetrace); color: #fff;
-    border: none; border-radius: 6px;
-    padding: 6px 12px; cursor: pointer;
-    font-size: 0.75rem; font-weight: 600;
-    transition: background 0.15s;
-  }
-  .skip-trace-toggle-btn:hover { background: #0ea372; }
-  .phone-count-badge { font-size: 0.72rem; color: var(--text-muted); }
-  .phone-count-badge.has-phones { color: var(--green); font-weight: 600; }
-  .skip-trace-panel {
-    margin-top: 12px; padding: 14px;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .stp-sections {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-  .stp-section {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 12px;
-  }
-  .stp-section h4 {
-    font-size: 0.78rem; margin-bottom: 8px;
-  }
-  .stp-section h4 span.role-tag {
-    font-size: 0.62rem; color: var(--text-muted);
-    text-transform: uppercase; margin-left: 6px; letter-spacing: 0.5px;
-  }
-  .stp-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-  .stp-row label {
-    font-size: 0.7rem; color: var(--text-muted);
-    width: 60px; flex-shrink: 0;
-  }
-  .stp-input {
-    flex: 1;
-    background: var(--surface2);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 4px 8px; font-size: 0.78rem;
-    color: var(--text); outline: none;
-  }
-  .stp-input:focus { border-color: var(--accent); }
-  .stp-star {
-    background: transparent;
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 2px 6px; cursor: pointer;
-    color: var(--text-muted); font-size: 0.78rem;
-  }
-  .stp-star.active { color: var(--orange); border-color: var(--orange); }
-  .stp-tps-link {
-    display: inline-block; color: var(--accent-light);
-    text-decoration: none; font-size: 0.7rem; margin-left: 6px;
-  }
-  .stp-tps-link:hover { text-decoration: underline; }
-  .stp-actions {
-    display: flex; gap: 8px; margin-top: 12px;
-    justify-content: flex-end;
-  }
-  .stp-btn {
-    background: var(--accent); color: #fff;
-    border: none; border-radius: 6px;
-    padding: 6px 14px; cursor: pointer;
-    font-size: 0.78rem; font-weight: 600;
-  }
-  .stp-btn:hover { background: var(--accent-light); }
-  .stp-btn.cancel {
-    background: transparent; color: var(--text-muted);
-    border: 1px solid var(--border);
-  }
-  .stp-btn.cancel:hover { color: var(--text); }
-
-  /* Empty state */
-  .empty-state {
-    text-align: center;
-    padding: 60px 24px;
-    color: var(--text-muted);
-  }
-  .empty-state h3 { font-size: 1.1rem; margin-bottom: 8px; color: var(--text); }
-  .empty-state p { font-size: 0.85rem; }
-
-  /* Toast */
-  .toast {
-    position: fixed; bottom: 60px; left: 50%;
-    transform: translateX(-50%);
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--border);
-    border-left-width: 4px; border-radius: 8px;
-    padding: 10px 16px; font-size: 0.82rem;
-    z-index: 200; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
-    max-width: 460px;
-  }
-  .toast.success { border-left-color: var(--green); }
-  .toast.error   { border-left-color: var(--red); }
-  .toast.info    { border-left-color: var(--blue); }
 </style>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
@@ -1073,9 +646,7 @@
     <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
     <button class="btn btn-siftstack" id="siftstackBtn" onclick="handleSiftstackButton()" disabled title="Queue selected records for SIFTstack enrichment">SIFTstack <span class="selected-count" id="siftstackCount"></span></button>
     <button class="btn" id="syncProbatesBtn" onclick="handleSyncProbates()" title="Pull latest probate data from the EstateTrace Google Sheet (read-only)">&#x21bb; Sync Probates</button>
-    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button>
-    <button class="btn-undo" id="redoBtn" onclick="redoLastEdit()" disabled title="Redo a previously undone edit">&#8631; Redo</button>
-    <span class="undo-info" id="undoInfo"></span>
+    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
   <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
@@ -1100,28 +671,6 @@
     <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
   </span>
   <button class="btn" onclick="resetFilters()">Reset</button>
-</div>
-
-<!-- Queue tabs (added for /leads workspace) -->
-<div class="queue-tabs">
-  <button class="queue-tab active" data-queue="verify" onclick="setQueue('verify')">
-    Verify <span class="badge" id="verifyCount">0</span>
-  </button>
-  <button class="queue-tab" data-queue="active" onclick="setQueue('active')">
-    Active <span class="badge" id="activeCount">0</span>
-  </button>
-  <button class="queue-tab" data-queue="archive" onclick="setQueue('archive')">
-    Archive <span class="badge" id="archiveCount">0</span>
-  </button>
-  <button class="queue-tab" data-queue="research" onclick="setQueue('research')">
-    Research <span class="badge" id="researchCount">0</span>
-  </button>
-  <button class="queue-tab" data-queue="siftstack" onclick="setQueue('siftstack')" title="Records you manually submitted to SIFTstack via the Submit button">
-    Sent to SIFTstack <span class="badge" id="siftstackQCount">0</span>
-  </button>
-  <button class="queue-tab" data-queue="autoq" onclick="setQueue('autoq')" title="Legacy records auto-queued to SIFTstack by the scraper before manual verification was required">
-    Auto-Q <span class="badge" id="autoqCount">0</span>
-  </button>
 </div>
 
 <div class="table-wrap">
@@ -1179,53 +728,6 @@ let sourceFilter = "";
 let perPage = 50;
 const selectedRows = new Set();
 
-// ── Card-view state (added for /leads workspace) ──────────────────
-let currentQueue = "verify";
-const phonesByRecord = new Map();
-const emailsByRecord = new Map();
-const jobsByRecord   = new Map();   // key = `${record_id}|${service}`
-
-// 6 queue buckets for clerk records:
-//   verify     -> verification_status = 'pending'
-//   active     -> verified_owns AND not yet submitted
-//   archive    -> verified_no_owns
-//   research   -> needs_research
-//   siftstack  -> manual_submitted_at IS NOT NULL (VA submission)
-//   autoq      -> siftstack_status set AND manual_submitted_at NULL (legacy)
-function recordInQueue(r, queue) {
-  if (queue === "siftstack") return !!r.manual_submitted_at;
-  if (queue === "autoq")     return !r.manual_submitted_at && !!r.siftstack_status;
-  if (queue === "active") {
-    return r.verification_status === "verified_owns"
-      && !r.manual_submitted_at
-      && !r.siftstack_status;
-  }
-  if (queue === "verify")   return r.verification_status === "pending" || (r.verification_status == null && !r.siftstack_status);
-  if (queue === "archive")  return r.verification_status === "verified_no_owns";
-  if (queue === "research") return r.verification_status === "needs_research";
-  return false;
-}
-
-function setQueue(q) {
-  currentQueue = q;
-  currentPage = 1;
-  document.querySelectorAll(".queue-tab").forEach(b => {
-    b.classList.toggle("active", b.dataset.queue === q);
-  });
-  applyFilters();
-}
-
-// HTML-escape helper used by card render. Mirrors probate.html.
-function escapeHtml(s) {
-  if (s === null || s === undefined) return "";
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 let currentSession = null;
 let currentProfile = null;
 let realtimeChannel = null;
@@ -1273,7 +775,6 @@ async function handleLogin(e) {
   document.getElementById("loginPassword").value = "";
   await loadProfile();
   await loadData();
-  await loadContactData();
   subscribeRealtime();
 }
 
@@ -1370,106 +871,46 @@ function parseAddress(val) {
   return { address: parts[0], city: parts.slice(1).join(", "), state: "", zip: "" };
 }
 
-// ── Undo / Redo (localStorage, per-browser) ──────────────────────
+// ── Undo (localStorage, per-browser) ─────────────────────────────
 let undoStack = [];
-let redoStack = [];
 try {
   const stored = localStorage.getItem("harris_leads_undo");
   if (stored) undoStack = JSON.parse(stored);
-  const storedRedo = localStorage.getItem("harris_leads_redo");
-  if (storedRedo) redoStack = JSON.parse(storedRedo);
-} catch(e) { undoStack = []; redoStack = []; }
-
-const FIELD_LABELS = { owner: "Owner", co_borrower: "Co-Borrower", grantor_name: "Grantor", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal", sale_date: "Sale Date", match_confidence: "Confidence" };
+} catch(e) { undoStack = []; }
 
 function saveUndoToStorage() {
   if (undoStack.length > 50) undoStack = undoStack.slice(-50);
-  if (redoStack.length > 50) redoStack = redoStack.slice(-50);
-  try {
-    localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack));
-    localStorage.setItem("harris_leads_redo", JSON.stringify(redoStack));
-  } catch(e) {}
+  try { localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack)); } catch(e) {}
 }
 
 function pushUndo(docNum, field, oldVal, newVal) {
   const user = currentProfile?.display_name || "Unknown";
   undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now(), user });
-  // Any new edit invalidates the redo history (user took a new branch)
-  redoStack = [];
   saveUndoToStorage();
   updateUndoUI();
 }
 
 function updateUndoUI() {
   const btn = document.getElementById("undoBtn");
-  const redoBtn = document.getElementById("redoBtn");
   const info = document.getElementById("undoInfo");
-  if (btn) {
-    btn.disabled = undoStack.length === 0;
-    btn.title = undoStack.length === 0
-      ? "Nothing to undo"
-      : `Undo last edit (${undoStack.length} edit${undoStack.length > 1 ? "s" : ""} in history)`;
-  }
-  if (redoBtn) {
-    redoBtn.disabled = redoStack.length === 0;
-    redoBtn.title = redoStack.length === 0
-      ? "Nothing to redo"
-      : `Redo (${redoStack.length} undone edit${redoStack.length > 1 ? "s" : ""} ready to restore)`;
-  }
-  if (info) {
-    if (undoStack.length === 0 && redoStack.length === 0) {
-      info.textContent = "";
-    } else if (undoStack.length > 0) {
-      const last = undoStack[undoStack.length - 1];
-      info.textContent = `Last edit: ${FIELD_LABELS[last.field] || last.field} on ${last.docNum} by ${last.user}`;
-    } else {
-      const next = redoStack[redoStack.length - 1];
-      info.textContent = `Next redo: ${FIELD_LABELS[next.field] || next.field} on ${next.docNum}`;
-    }
+  if (!btn) return;
+  if (undoStack.length === 0) {
+    btn.disabled = true;
+    if (info) info.textContent = "";
+  } else {
+    btn.disabled = false;
+    const last = undoStack[undoStack.length - 1];
+    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", grantor_name: "Grantor", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal", sale_date: "Sale Date" };
+    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum} by ${last.user}`;
   }
 }
 
 async function undoLastEdit() {
   if (undoStack.length === 0) return;
-  const entry = undoStack[undoStack.length - 1];
-  const fieldLabel = FIELD_LABELS[entry.field] || entry.field;
-  const oldDisplay = entry.oldVal || "(empty)";
-  const newDisplay = entry.newVal || "(empty)";
-  // Confirm so accidental clicks don't blow through edits silently
-  const confirmed = confirm(
-    `Undo this edit?\n\n` +
-    `Record: ${entry.docNum}\n` +
-    `Field: ${fieldLabel}\n` +
-    `Edited by: ${entry.user}\n\n` +
-    `Will revert from "${newDisplay}" back to "${oldDisplay}"`
-  );
-  if (!confirmed) return;
-  undoStack.pop();
-  redoStack.push(entry);
+  const entry = undoStack.pop();
   saveUndoToStorage();
   updateUndoUI();
   const ok = await saveFieldToSupabase(entry.docNum, entry.field, entry.oldVal);
-  if (ok) { renderTable(); renderPagination(); }
-}
-
-async function redoLastEdit() {
-  if (redoStack.length === 0) return;
-  const entry = redoStack[redoStack.length - 1];
-  const fieldLabel = FIELD_LABELS[entry.field] || entry.field;
-  const oldDisplay = entry.oldVal || "(empty)";
-  const newDisplay = entry.newVal || "(empty)";
-  const confirmed = confirm(
-    `Redo this edit?\n\n` +
-    `Record: ${entry.docNum}\n` +
-    `Field: ${fieldLabel}\n\n` +
-    `Will re-apply: "${oldDisplay}" -> "${newDisplay}"`
-  );
-  if (!confirmed) return;
-  redoStack.pop();
-  undoStack.push(entry);
-  saveUndoToStorage();
-  updateUndoUI();
-  const ok = await saveFieldToSupabase(entry.docNum, entry.field, entry.newVal);
   if (ok) { renderTable(); renderPagination(); }
 }
 
@@ -1621,7 +1062,6 @@ const COLS = [
   {key: "siftstack", label: "SIFTstack", w: "110px"},
   {key: "doc_num", label: "Doc #", w: "100px"},
   {key: "link", label: "Links", w: "80px"},
-  {key: "actions", label: "Actions", w: "150px"},
 ];
 
 const CAT_COLORS = {
@@ -2040,8 +1480,6 @@ function getFiltered() {
   const filedTo   = document.getElementById("filedTo").value;
 
   return DATA.records.filter(r => {
-    // Queue tab filter (added for /leads workspace) — must pass first
-    if (!recordInQueue(r, currentQueue)) return false;
     // EstateTrace records are isolated from the main table by default.
     // They live in the /probate route. Only surface them in the main view
     // when the source filter is explicitly set to 'estatetrace'.
@@ -2094,643 +1532,7 @@ function getFiltered() {
   });
 }
 
-// =============================================================================
-// CARD VIEW + QUEUE TABS + SKIP-TRACE (added for /leads workspace)
-// =============================================================================
-
-// Recompute the per-tab badges. Counts are scoped to ALL active filters
-// EXCEPT the queue filter itself, so VAs see how many records are in
-// each tab given their current slice.
-function recomputeQueueCounts() {
-  if (!DATA?.records) return;
-  const src   = document.getElementById("sourceFilter").value;
-  const type  = document.getElementById("typeFilter").value;
-  const sMin  = parseInt(document.getElementById("scoreMin").value);
-  const sMax  = parseInt(document.getElementById("scoreMax").value);
-  const minScore = isNaN(sMin) ? 0 : sMin;
-  const maxScore = isNaN(sMax) ? 100 : sMax;
-  const flag  = document.getElementById("flagFilter").value;
-  const addr  = document.getElementById("addrFilter").value;
-  const conf  = document.getElementById("confFilter").value;
-  const saleMonth = document.getElementById("saleMonthFilter").value;
-  const filedFrom = document.getElementById("filedFrom").value;
-  const filedTo   = document.getElementById("filedTo").value;
-  const q     = (document.getElementById("searchInput").value || "").toLowerCase();
-
-  const baseScope = (r) => {
-    if (r._source === "estatetrace" && src !== "estatetrace") return false;
-    if (src && (r._source || "clerk") !== src) return false;
-    if (SELECTED_RUN_RECORD_IDS && !SELECTED_RUN_RECORD_IDS.has(r.id)) return false;
-    if (saleMonth) {
-      if (!r.sale_date) return false;
-      const d = new Date(r.sale_date);
-      if (isNaN(d)) return false;
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      if (key !== saleMonth) return false;
-    }
-    if (filedFrom && r.filed && r.filed < filedFrom) return false;
-    if (filedTo && r.filed && r.filed > filedTo) return false;
-    if (type && r.doc_type !== type) return false;
-    if (r.score < minScore || r.score > maxScore) return false;
-    if (flag && !(r.flags || []).includes(flag)) return false;
-    if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
-    if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
-    if (conf && (r.match_confidence || "none") !== conf) return false;
-    if (q) {
-      const hay = [r.owner, r.grantor_name, r.grantee_names, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
-        .filter(Boolean).join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  };
-
-  const scoped = DATA.records.filter(baseScope);
-  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val.toLocaleString(); };
-  setText("verifyCount",    scoped.filter(r => recordInQueue(r, "verify")).length);
-  setText("activeCount",    scoped.filter(r => recordInQueue(r, "active")).length);
-  setText("archiveCount",   scoped.filter(r => recordInQueue(r, "archive")).length);
-  setText("researchCount",  scoped.filter(r => recordInQueue(r, "research")).length);
-  setText("siftstackQCount", scoped.filter(r => recordInQueue(r, "siftstack")).length);
-  setText("autoqCount",     scoped.filter(r => recordInQueue(r, "autoq")).length);
-}
-
-async function loadContactData() {
-  phonesByRecord.clear();
-  emailsByRecord.clear();
-  jobsByRecord.clear();
-  try {
-    const [pRes, eRes, jRes] = await Promise.all([
-      sb.from("contact_phones").select("*").limit(50000),
-      sb.from("contact_emails").select("*").limit(50000),
-      sb.from("skip_trace_jobs").select("*").limit(50000),
-    ]);
-    (pRes.data || []).forEach(p => {
-      if (!phonesByRecord.has(p.record_id)) phonesByRecord.set(p.record_id, []);
-      phonesByRecord.get(p.record_id).push(p);
-    });
-    (eRes.data || []).forEach(e => {
-      if (!emailsByRecord.has(e.record_id)) emailsByRecord.set(e.record_id, []);
-      emailsByRecord.get(e.record_id).push(e);
-    });
-    (jRes.data || []).forEach(j => {
-      jobsByRecord.set(`${j.record_id}|${j.service}`, j);
-    });
-  } catch (e) { console.warn("loadContactData failed:", e); }
-}
-
-async function refreshContactDataForRecord(recordId) {
-  try {
-    const [pRes, eRes, jRes] = await Promise.all([
-      sb.from("contact_phones").select("*").eq("record_id", recordId),
-      sb.from("contact_emails").select("*").eq("record_id", recordId),
-      sb.from("skip_trace_jobs").select("*").eq("record_id", recordId),
-    ]);
-    phonesByRecord.set(recordId, pRes.data || []);
-    emailsByRecord.set(recordId, eRes.data || []);
-    // Clear and re-set jobs for this record
-    [...jobsByRecord.keys()].forEach(k => { if (k.startsWith(recordId + "|")) jobsByRecord.delete(k); });
-    (jRes.data || []).forEach(j => jobsByRecord.set(`${j.record_id}|${j.service}`, j));
-  } catch (e) { console.warn("refreshContactDataForRecord failed:", e); }
-}
-
-// ── Skip-trace helpers (ported from probate.html) ─────────────────
-function normalizePhone(input) {
-  if (!input) return null;
-  const digits = String(input).replace(/\D/g, "");
-  let ten;
-  if (digits.length === 10) ten = digits;
-  else if (digits.length === 11 && digits[0] === "1") ten = digits.slice(1);
-  else return null;
-  return {
-    e164: "+1" + ten,
-    display: `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`,
-  };
-}
-
-function buildTPSUrl(firstName, lastName, city, state) {
-  const name = [firstName, lastName].filter(Boolean).join(" ").trim();
-  if (!name) return null;
-  const cityState = [city, state].filter(Boolean).join(" ").trim();
-  const params = new URLSearchParams();
-  params.set("name", name);
-  if (cityState) params.set("citystatezip", cityState);
-  return "https://www.truepeoplesearch.com/results?" + params.toString();
-}
-
-function formatPhoneOnBlur(input) {
-  const raw = input.value.trim();
-  if (!raw) { input.classList.remove("error"); return; }
-  const norm = normalizePhone(raw);
-  if (norm) { input.value = norm.display; input.classList.remove("error"); }
-  else { input.classList.add("error"); }
-}
-
-// Toggle which phone slot is "best" within a SECTION (owner or co-borrower).
-// Only one starred per role. Visual-only until Save.
-function toggleBestInSection(sectionEl, slot) {
-  const slots = sectionEl.querySelectorAll(".phone-slot");
-  slots.forEach(el => {
-    const s = parseInt(el.dataset.slot, 10);
-    const star = el.querySelector(".star-toggle");
-    if (s === slot) {
-      const wasActive = el.classList.contains("is-best");
-      el.classList.toggle("is-best", !wasActive);
-      star.classList.toggle("active", !wasActive);
-      star.innerHTML = !wasActive ? "&#9733;" : "&#9734;";
-    } else {
-      el.classList.remove("is-best");
-      star.classList.remove("active");
-      star.innerHTML = "&#9734;";
-    }
-  });
-}
-
-function renderRecordList() {
-  const container = document.getElementById("records");
-  if (!container) return;
-  if (filtered.length === 0) {
-    const labels = {verify:"Verify",active:"Active",archive:"Archive",research:"Research",siftstack:"Sent to SIFTstack",autoq:"Auto-Q"};
-    container.innerHTML = `
-      <div class="empty-state">
-        <h3>No records in ${labels[currentQueue]} queue</h3>
-        <p>Try changing filters or switch to a different queue tab above.</p>
-      </div>`;
-    return;
-  }
-  const effectivePP = perPage === Infinity ? filtered.length : perPage;
-  const pageStart = (currentPage - 1) * effectivePP;
-  const pageEnd = Math.min(pageStart + effectivePP, filtered.length);
-  const page = filtered.slice(pageStart, pageEnd);
-  container.innerHTML = page.map(renderRecordCard).join("");
-}
-
-function renderRecordCard(r) {
-  const isSelected = selectedRows.has(r.doc_num);
-  const selectedCls = isSelected ? " selected" : "";
-  const scoreCls = (r.score || 0) >= 70 ? "score-high" : (r.score || 0) >= 50 ? "score-med" : "score-low";
-
-  let flagsHtml = "";
-  (r.flags || []).forEach(f => {
-    const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
-    flagsHtml += `<span class="flag-pill ${cls}" title="${escapeHtml(f)}">${escapeHtml(f.length > 8 ? f.substring(0,8) + "…" : f)}</span>`;
-  });
-
-  const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
-  const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
-
-  let ssPill = "";
-  if (r.manual_submitted_at) {
-    ssPill = `<span class="siftstack-pill-card manual" title="Manually submitted by VA">M-${r.siftstack_status || "sent"}</span>`;
-  } else if (r.siftstack_status) {
-    ssPill = `<span class="siftstack-pill-card ${r.siftstack_status}" title="Auto-queued by scraper (legacy)">A-${r.siftstack_status}</span>`;
-  }
-
-  const docNumEsc = escapeHtml(r.doc_num || "");
-  const cat = r.cat_label || r.cat || "";
-
-  return `
-    <div class="record-card${selectedCls}" data-doc-num="${docNumEsc}">
-      <div class="record-row">
-        <div class="record-cb-cell">
-          <input type="checkbox" class="record-cb" ${isSelected ? "checked" : ""} onchange="toggleRecordCard('${docNumEsc}', this.checked)">
-        </div>
-        <div class="record-field"><span class="score-pill ${scoreCls}">${r.score || 0}</span></div>
-        <div class="record-field" title="Filed">${r.filed || "—"}</div>
-        <div class="record-field" title="Sale Date">${r.sale_date || ""}</div>
-        <div class="record-field"><span class="type-badge">${escapeHtml(r.doc_type || "")}</span></div>
-        <div class="record-field" title="${escapeHtml(cat)}">${escapeHtml(cat)}</div>
-        <div class="record-field" title="${escapeHtml(r.owner || "")}">${escapeHtml(r.owner || "—")}</div>
-        <div class="record-field" title="${escapeHtml(r.co_borrower || "")}">${escapeHtml(r.co_borrower || "")}</div>
-        <div class="record-field" title="${escapeHtml(r.grantor_name || "")}">${escapeHtml(r.grantor_name || "")}</div>
-        <div class="record-field wrap">${flagsHtml}</div>
-        <div class="record-field" title="${escapeHtml(r.legal || "")}">${escapeHtml(r.legal || "")}</div>
-        <div class="record-field" title="${escapeHtml(propAddr)}">${escapeHtml(propAddr || "—")}</div>
-        <div class="record-field dim" title="${escapeHtml(mailAddr)}">${escapeHtml(mailAddr || "")}</div>
-        <div class="record-field" title="Amount">${escapeHtml(r.amount || "")}</div>
-        <div class="record-field"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></div>
-        <div class="record-field">${ssPill}</div>
-        <div class="record-field dim" title="${docNumEsc}">${docNumEsc}</div>
-        <div class="record-field">
-          ${r.clerk_url ? `<a class="ext-link-card" href="${escapeHtml(r.clerk_url)}" target="_blank" rel="noopener" title="Open Clerk record">CL</a>` : ""}
-          ${r.hcad_url ? `<a class="ext-link-card" href="${escapeHtml(r.hcad_url)}" target="_blank" rel="noopener" title="Open HCAD" style="color:var(--green)">HC</a>` : ""}
-        </div>
-        <div class="actions-col">${renderActionsForRecord(r)}</div>
-      </div>
-      ${renderSkipTraceSection(r)}
-    </div>
-  `;
-}
-
-function renderActionsForRecord(r) {
-  const role = currentProfile?.role;
-  const canEdit = role === "admin" || role === "editor";
-  if (!canEdit) return `<span style="font-size:0.7rem;color:var(--text-muted)">read-only</span>`;
-  const status = r.verification_status;
-  const id = escapeHtml(r.id);
-  // Compact text buttons sized for a table cell. Stack vertically with
-  // small font; user reads what each button does. No more cryptic icons.
-  const btn = (cls, newStatus, label, title) =>
-    `<button class="action-btn ${cls}" title="${title}" onclick="flipStatusCard('${id}','${newStatus}', this)">${label}</button>`;
-
-  let actions;
-  if (status === "pending" || status == null) {
-    actions = btn("confirm", "verified_owns", "Confirm", "Confirm owner owns the property → moves to Active") +
-              btn("archive", "verified_no_owns", "Archive", "No property / not a real lead → moves to Archive") +
-              btn("research", "needs_research", "Research", "Cannot find the address → moves to Research");
-  } else if (status === "verified_owns") {
-    actions = btn("reverify", "pending", "Re-verify", "Send back to Verify queue") +
-              btn("archive", "verified_no_owns", "Archive", "No property") +
-              btn("research", "needs_research", "Research", "Needs research");
-  } else if (status === "verified_no_owns") {
-    actions = btn("reverify", "pending", "Re-verify", "Send back to Verify queue") +
-              btn("confirm", "verified_owns", "Confirm", "Actually owns property");
-  } else if (status === "needs_research") {
-    actions = btn("confirm", "verified_owns", "Confirm", "Confirm Owns") +
-              btn("archive", "verified_no_owns", "Archive", "No Property") +
-              btn("reverify", "pending", "Re-verify", "Re-verify");
-  } else {
-    actions = "—";
-  }
-  // Skip-trace toggle button only shown on Active queue records
-  if (recordInQueue(r, "active")) {
-    const phones = phonesByRecord.get(r.id) || [];
-    const phoneCount = phones.length;
-    actions += `<button class="action-btn skiptrace" title="Open skip-trace panel for owner + co-borrower" onclick="toggleStpRow('${id}', this)">Skip Trace${phoneCount > 0 ? ` (${phoneCount})` : ""}</button>`;
-  }
-  return `<div class="actions-cell-inner">${actions}</div>`;
-}
-
-function toggleStpRow(recordId, btnEl) {
-  const row = document.getElementById(`stp-row-${recordId}`);
-  const panel = document.getElementById(`stp-panel-${recordId}`);
-  if (!row || !panel) return;
-  if (row.style.display === "none" || !row.style.display) {
-    panel.innerHTML = renderPanelForm(recordId);
-    row.style.display = "";
-    if (btnEl) btnEl.classList.add("active");
-  } else {
-    row.style.display = "none";
-    panel.innerHTML = "";
-    if (btnEl) btnEl.classList.remove("active");
-  }
-}
-
-// Build the full skip-trace panel — matches probate UX with two
-// side-by-side sections (owner + co-borrower), search date / status /
-// comment / notes at the top, 4 phone slots + email per section,
-// last-seen date per phone, functional star.
-function renderPanelForm(recordId) {
-  const r = DATA.records.find(rec => rec.id === recordId);
-  if (!r) return `<div class="stp-error">Record not found.</div>`;
-
-  const phones = phonesByRecord.get(recordId) || [];
-  const emails = emailsByRecord.get(recordId) || [];
-  const job = jobsByRecord.get(`${recordId}|truepeoplesearch`) || {};
-
-  const tpsPhones = phones.filter(p => p.source === "truepeoplesearch_manual");
-  const tpsEmails = emails.filter(e => e.source === "truepeoplesearch_manual");
-
-  // Phones bucketed by role, then by priority slot
-  const buckets = { owner: {}, co_borrower: {} };
-  tpsPhones.forEach(p => {
-    if (!buckets[p.role]) return;
-    if (p.priority >= 1 && p.priority <= 4) buckets[p.role][p.priority] = p;
-  });
-  // Email per role (first one)
-  const ownerEmail = tpsEmails.find(e => e.role === "owner")?.email || "";
-  const cobEmail   = tpsEmails.find(e => e.role === "co_borrower")?.email || "";
-
-  // Name parsing for TPS link (first/last from full name string)
-  const nameParts = (s) => {
-    const t = (s || "").trim();
-    if (!t) return [null, null];
-    const parts = t.split(/\s+/);
-    return [parts[0], parts.slice(1).join(" ")];
-  };
-  const [oFirst, oLast] = nameParts(r.owner);
-  const [cFirst, cLast] = nameParts(r.co_borrower);
-  const ownerTps = buildTPSUrl(oFirst, oLast, r.prop_city || r.mail_city, r.prop_state || r.mail_state);
-  const cobTps   = buildTPSUrl(cFirst, cLast, r.prop_city || r.mail_city, r.prop_state || r.mail_state);
-
-  const todayCT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
-
-  const personBlock = (role, name, tpsUrl, slotsObj, emailVal) => {
-    const slot = (n, label) => {
-      const p = slotsObj[n] || {};
-      const isBest = !!p.is_best;
-      return `
-        <div class="phone-slot ${isBest ? "is-best" : ""}" data-role="${role}" data-slot="${n}">
-          <button class="star-toggle ${isBest ? "active" : ""}" type="button"
-                  onclick="toggleBestInSection(this.closest('.stp-person-block'), ${n})"
-                  title="Mark as best phone for SMS">${isBest ? "&#9733;" : "&#9734;"}</button>
-          <span class="slot-label">${label}</span>
-          <input type="text" class="phone-input" placeholder="(XXX) XXX-XXXX"
-                 data-phone-input="${n}" data-role="${role}"
-                 value="${escapeHtml(p.phone_display || "")}"
-                 onblur="formatPhoneOnBlur(this)">
-          <label style="font-size:0.66rem;color:var(--text-muted);margin-left:auto">Last seen</label>
-          <input type="date" class="last-seen-input"
-                 data-last-seen="${n}" data-role="${role}"
-                 value="${escapeHtml(p.last_activity || "")}">
-        </div>`;
-    };
-    return `
-      <div class="stp-person-block" data-role="${role}">
-        <div class="stp-person-header">
-          <span>${escapeHtml(name || "(none)")}<span class="role-tag">${role.replace("_", " ")}</span></span>
-          ${tpsUrl
-            ? `<a class="tps-link" href="${escapeHtml(tpsUrl)}" target="_blank" rel="noopener" title="Search ${escapeHtml(name)} on TruePeopleSearch">&#8599; TPS</a>`
-            : `<span class="tps-link disabled">no name</span>`}
-        </div>
-        <div class="stp-phones">
-          ${slot(1, "Cell 1")}
-          ${slot(2, "Cell 2")}
-          ${slot(3, "Cell 3")}
-          ${slot(4, "Land 1")}
-        </div>
-        <div class="stp-email-row">
-          <label>Email</label>
-          <input type="email" class="email-input" data-role="${role}"
-                 placeholder="email@example.com" value="${escapeHtml(emailVal || "")}">
-        </div>
-      </div>`;
-  };
-
-  const showCob = !!r.co_borrower;
-  const peopleHtml = showCob
-    ? personBlock("owner", r.owner || "(no owner)", ownerTps, buckets.owner, ownerEmail) +
-      personBlock("co_borrower", r.co_borrower, cobTps, buckets.co_borrower, cobEmail)
-    : personBlock("owner", r.owner || "(no owner)", ownerTps, buckets.owner, ownerEmail);
-
-  return `
-    <div class="stp-header">
-      <h4>Skip Trace Workspace</h4>
-      <span style="font-size:0.7rem;color:var(--text-muted)">Doc# ${escapeHtml(r.doc_num || "")}</span>
-    </div>
-
-    <div class="stp-meta-row">
-      <label>Search Date</label>
-      <input type="date" class="stp-input short-date" id="stp-date-${recordId}"
-             value="${escapeHtml(job.search_date || todayCT)}">
-      <label style="margin-left:6px">Status</label>
-      <select class="stp-select" id="stp-status-${recordId}">
-        <option value="pending"        ${(!job.status || job.status === "pending") ? "selected" : ""}>Pending</option>
-        <option value="open"           ${job.status === "open" ? "selected" : ""}>Open</option>
-        <option value="not_found"      ${job.status === "not_found" ? "selected" : ""}>Not Found</option>
-        <option value="needs_research" ${job.status === "needs_research" ? "selected" : ""}>Needs Research</option>
-      </select>
-    </div>
-    <div class="stp-meta-row">
-      <label>Comment</label>
-      <input type="text" class="stp-input comment-input" id="stp-comment-${recordId}"
-             placeholder="One-line comment about this search..."
-             value="${escapeHtml(job.comment || "")}">
-    </div>
-    <div class="stp-meta-row">
-      <label>Notes</label>
-      <textarea class="stp-input notes-input" id="stp-notes-${recordId}" rows="2"
-                placeholder="Free-form notes from VA — context, leads, follow-ups..."
-                style="resize:vertical;min-height:36px">${escapeHtml(job.notes || "")}</textarea>
-    </div>
-
-    <div class="stp-people-grid ${showCob ? "" : "single-col"}" id="stp-people-${recordId}">
-      ${peopleHtml}
-    </div>
-
-    <div class="stp-error" id="stp-error-${recordId}"></div>
-
-    <div class="stp-buttons">
-      <button class="stp-btn" onclick="toggleStpRow('${recordId}', null)">Close</button>
-      <button class="stp-btn primary" onclick="savePanelDataCard('${recordId}', this)">Save Skip Trace</button>
-    </div>`;
-}
-
-// Save the panel — writes to skip_trace_jobs (one row), contact_phones
-// (delete-then-insert all TPS-source rows for owner+co_borrower roles),
-// and contact_emails (same pattern). Comment + Notes both stored on
-// the skip_trace_jobs row.
-async function savePanelDataCard(recordId, btnEl) {
-  if (!currentSession?.user?.id) { leadsToast("Sign in required", "error"); return; }
-  const role = currentProfile?.role;
-  if (role !== "admin" && role !== "editor") {
-    leadsToast("Only editors can save skip-trace data", "error");
-    return;
-  }
-  const errEl = document.getElementById(`stp-error-${recordId}`);
-  if (errEl) errEl.textContent = "";
-
-  // The panel lives inside a <tr> in the table — find it via id, NOT
-  // .closest('.record-card'). That was the bug that broke Save.
-  const panel = document.getElementById(`stp-panel-${recordId}`);
-  if (!panel) {
-    leadsToast("Panel not found — cannot save", "error");
-    return;
-  }
-
-  const date = document.getElementById(`stp-date-${recordId}`).value || null;
-  const status = document.getElementById(`stp-status-${recordId}`).value;
-  const comment = document.getElementById(`stp-comment-${recordId}`).value.trim() || null;
-  const notes = document.getElementById(`stp-notes-${recordId}`).value.trim() || null;
-
-  // Collect phones from each .phone-slot
-  const phoneRows = [];
-  let hasInvalid = false;
-  panel.querySelectorAll(".phone-slot").forEach(el => {
-    const r = el.dataset.role;
-    const slot = parseInt(el.dataset.slot, 10);
-    const phoneInput = el.querySelector(".phone-input");
-    const lastSeenInput = el.querySelector(".last-seen-input");
-    const raw = phoneInput.value.trim();
-    if (!raw) return;
-    const norm = normalizePhone(raw);
-    if (!norm) {
-      phoneInput.classList.add("error");
-      hasInvalid = true;
-      return;
-    }
-    phoneInput.classList.remove("error");
-    phoneRows.push({
-      record_id: recordId,
-      role: r,
-      phone_e164: norm.e164,
-      phone_display: norm.display,
-      phone_type: slot === 4 ? "landline" : "wireless",
-      priority: slot,
-      is_best: el.classList.contains("is-best"),
-      source: "truepeoplesearch_manual",
-      last_activity: lastSeenInput.value || null,
-      added_by: currentSession.user.id,
-      updated_by: currentSession.user.id,
-    });
-  });
-
-  if (hasInvalid) {
-    if (errEl) errEl.textContent = "One or more phones are invalid (need 10 digits). Fix the highlighted fields.";
-    return;
-  }
-
-  // is_best constraint: at most one per (record_id, role)
-  const bestByRole = {};
-  for (const p of phoneRows) {
-    if (p.is_best) {
-      if (bestByRole[p.role]) {
-        if (errEl) errEl.textContent = `Only one "best" phone allowed per person (${p.role}).`;
-        return;
-      }
-      bestByRole[p.role] = true;
-    }
-  }
-
-  // Collect emails per role
-  const emailRows = [];
-  panel.querySelectorAll(".email-input").forEach(input => {
-    const r = input.dataset.role;
-    const raw = input.value.trim();
-    if (!raw) return;
-    if (!raw.includes("@")) {
-      hasInvalid = true;
-      input.classList.add("error");
-      return;
-    }
-    input.classList.remove("error");
-    emailRows.push({
-      record_id: recordId,
-      role: r,
-      email: raw.toLowerCase(),
-      source: "truepeoplesearch_manual",
-      added_by: currentSession.user.id,
-      updated_by: currentSession.user.id,
-    });
-  });
-  if (hasInvalid) {
-    if (errEl) errEl.textContent = "Email looks invalid (no @). Fix highlighted fields.";
-    return;
-  }
-
-  btnEl.disabled = true;
-  btnEl.textContent = "Saving...";
-
-  try {
-    // 1. Upsert skip_trace_jobs row
-    const jobPayload = {
-      record_id: recordId,
-      service: "truepeoplesearch",
-      status: status,
-      search_date: date,
-      comment: comment,
-      searched_by: currentSession.user.id,
-    };
-    // Notes column may not exist in older DB — try with notes first, fall back without
-    let jobErr;
-    ({ error: jobErr } = await sb
-      .from("skip_trace_jobs")
-      .upsert({ ...jobPayload, notes: notes }, { onConflict: "record_id,service" }));
-    if (jobErr && jobErr.message && jobErr.message.includes("notes")) {
-      // notes column doesn't exist — retry without
-      ({ error: jobErr } = await sb
-        .from("skip_trace_jobs")
-        .upsert(jobPayload, { onConflict: "record_id,service" }));
-      if (!jobErr) {
-        leadsToast("Notes saved as comment (notes column missing — see migration).", "info");
-      }
-    }
-    if (jobErr) throw jobErr;
-
-    // 2. Delete + re-insert phones for owner + co_borrower (TPS source)
-    const { error: delPhErr } = await sb
-      .from("contact_phones")
-      .delete()
-      .eq("record_id", recordId)
-      .eq("source", "truepeoplesearch_manual")
-      .in("role", ["owner", "co_borrower"]);
-    if (delPhErr) throw delPhErr;
-    if (phoneRows.length > 0) {
-      const { error: insPhErr } = await sb.from("contact_phones").insert(phoneRows);
-      if (insPhErr) throw insPhErr;
-    }
-
-    // 3. Delete + re-insert emails for owner + co_borrower (TPS source)
-    const { error: delEmErr } = await sb
-      .from("contact_emails")
-      .delete()
-      .eq("record_id", recordId)
-      .eq("source", "truepeoplesearch_manual")
-      .in("role", ["owner", "co_borrower"]);
-    if (delEmErr) throw delEmErr;
-    if (emailRows.length > 0) {
-      const { error: insEmErr } = await sb.from("contact_emails").insert(emailRows);
-      if (insEmErr) throw insEmErr;
-    }
-
-    await refreshContactDataForRecord(recordId);
-    leadsToast("Skip trace saved", "success");
-    applyFilters();
-  } catch (e) {
-    console.error("savePanelDataCard error:", e);
-    const msg = e.message || (e.error ? e.error.message : null) || String(e);
-    if (errEl) errEl.textContent = "Save failed: " + msg;
-    leadsToast("Save failed: " + msg, "error");
-    btnEl.disabled = false;
-    btnEl.textContent = "Save Skip Trace";
-  }
-}
-
-async function flipStatusCard(recordId, newStatus, btnEl) {
-  if (!currentSession?.user?.id) { leadsToast("Sign in required", "error"); return; }
-  const role = currentProfile?.role;
-  if (role !== "admin" && role !== "editor") {
-    leadsToast("Only editors can verify records", "error");
-    return;
-  }
-  const card = btnEl?.closest(".record-card");
-  if (card) { card.style.opacity = "0.5"; card.style.pointerEvents = "none"; }
-  try {
-    const { data, error } = await sb
-      .from("records")
-      .update({ verification_status: newStatus })
-      .eq("id", recordId)
-      .select("verification_status, verified_by, verified_at, manual_overrides")
-      .single();
-    if (error) {
-      leadsToast("Update failed: " + error.message, "error");
-      return;
-    }
-    const rec = DATA.records.find(r => r.id === recordId);
-    if (rec && data) Object.assign(rec, data);
-    applyFilters();
-    leadsToast(`Status changed to ${newStatus.replace(/_/g, " ")}`, "success");
-  } catch (e) {
-    leadsToast("Update crashed: " + (e.message || e), "error");
-  } finally {
-    if (card) { card.style.opacity = "1"; card.style.pointerEvents = ""; }
-  }
-}
-
-function toggleRecordCard(docNum, checked) {
-  if (checked) selectedRows.add(docNum);
-  else selectedRows.delete(docNum);
-  const card = document.querySelector(`.record-card[data-doc-num="${docNum}"]`);
-  if (card) card.classList.toggle("selected", checked);
-  updateSelectionUI();
-}
-
-let leadsToastEl = null;
-let leadsToastTimer = null;
-function leadsToast(message, type = "info") {
-  if (leadsToastEl) leadsToastEl.remove();
-  if (leadsToastTimer) clearTimeout(leadsToastTimer);
-  leadsToastEl = document.createElement("div");
-  leadsToastEl.className = `toast ${type}`;
-  leadsToastEl.textContent = message;
-  document.body.appendChild(leadsToastEl);
-  leadsToastTimer = setTimeout(() => {
-    if (leadsToastEl) leadsToastEl.remove();
-    leadsToastEl = null;
-  }, 3500);
-}
-
 function applyFilters() {
-  recomputeQueueCounts();
   filtered = getFiltered();
   sortData();
   renderTable();
@@ -2858,23 +1660,9 @@ function renderTable() {
       <td onclick="openModal(${rowIdx})">${renderSiftstackPill(r)}</td>
       <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
       <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
-      <td class="actions-cell">${renderActionsForRecord(r)}</td>
     </tr>`;
-
-    // Skip-trace expansion row — only on Active queue. Visible when
-    // user clicks the "Skip Trace" action button.
-    if (recordInQueue(r, "active")) {
-      const phones = phonesByRecord.get(r.id) || [];
-      const phoneCount = phones.length;
-      const phoneLabel = phoneCount === 0 ? "no phones yet" : `${phoneCount} phone${phoneCount > 1 ? "s" : ""}`;
-      html += `<tr class="stp-row-wrap" id="stp-row-${escapeHtml(r.id)}" style="display:none">
-        <td colspan="${COLS.length + 1}" style="padding:0;background:var(--bg)">
-          <div id="stp-panel-${escapeHtml(r.id)}" class="skip-trace-panel-table"></div>
-        </td>
-      </tr>`;
-    }
   });
-  document.getElementById("tbody").innerHTML = html || `<tr><td colspan="${COLS.length + 1}" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>`;
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="18" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
 }
 
 // ── Row Selection ─────────────────────────────────────────────────
@@ -3042,41 +1830,17 @@ async function handleSiftstackButton() {
     status:    "pending",
   }));
 
-  // Step 1: mark records as VA-submitted so they move out of Active and into
-  // the Sent-to-SIFTstack tab immediately, even before the worker runs.
-  const now = new Date().toISOString();
-  const ids = toQueue.map(r => r.id);
-  try {
-    const { error: updErr } = await sb
-      .from("records")
-      .update({ manual_submitted_at: now, manual_submitted_by: currentSession.user.id })
-      .in("id", ids);
-    if (updErr) {
-      alert("Failed to mark records as submitted: " + updErr.message);
-      return;
-    }
-  } catch (e) {
-    alert("Submit-stamp crashed: " + (e.message || e));
-    return;
-  }
-
-  // Step 2: insert into siftstack_queue so the worker picks them up.
   const { error } = await sb.from("siftstack_queue").insert(rows);
   if (error) {
-    alert("Records were marked but queue insert failed: " + error.message);
+    alert("Failed to queue: " + error.message);
     return;
   }
 
-  // Patch local state so cards refresh immediately
-  toQueue.forEach(r => {
-    r.manual_submitted_at = now;
-    r.manual_submitted_by = currentSession.user.id;
-    if (!r.siftstack_status) r.siftstack_status = "queued";
-  });
-
-  alert(`Submitted ${rows.length} record(s) to SIFTstack. Worker runs every 5 min.`);
+  // Trigger will set records.siftstack_status = 'queued' for each one.
+  // Realtime subscription on records table picks up the change.
+  alert(`Queued ${rows.length} record(s) for SIFTstack enrichment.`);
   selectedRows.clear();
-  applyFilters();
+  renderTable();
   updateSelectionUI();
 }
 
@@ -3429,7 +2193,6 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal()
   const ok = await checkAuth();
   if (ok) {
     await loadData();
-    await loadContactData();
     subscribeRealtime();
   }
 })();
