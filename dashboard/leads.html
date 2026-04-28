@@ -631,63 +631,96 @@
   .records {
     padding: 16px 24px;
   }
+  /* Thin table-row-style card. All 18 fields visible inline.
+     Density matches the old table view; cards just add hover, selection,
+     and an expandable skip-trace section. */
   .record-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-    transition: border-color 0.15s;
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 3px;
+    transition: border-color 0.12s, background 0.12s;
   }
   .record-card:hover { border-color: var(--accent); }
   .record-card.selected {
     background: rgba(124,92,252,0.10);
     border-color: var(--accent);
   }
+  /* Single-line table-like layout. Column widths mirror the original table
+     so the same fields land in roughly the same horizontal positions. */
   .record-row {
     display: grid;
-    grid-template-columns: 28px 80px 1fr 1.4fr 1.6fr 1.4fr 130px;
-    gap: 14px;
-    align-items: start;
+    grid-template-columns:
+      24px            /* checkbox */
+      42px            /* score */
+      80px            /* filed */
+      80px            /* sale */
+      52px            /* type */
+      90px            /* category */
+      1fr             /* owner */
+      1fr             /* co-borrower */
+      1fr             /* grantor */
+      90px            /* flags */
+      1.2fr           /* legal */
+      1.4fr           /* property address */
+      1.4fr           /* mailing address */
+      78px            /* amount */
+      60px            /* confidence */
+      70px            /* siftstack pill */
+      88px            /* doc# */
+      72px            /* links */
+      120px;          /* actions */
+    gap: 6px;
+    align-items: center;
   }
   .record-cb-cell {
-    display: flex; align-items: flex-start; justify-content: center;
-    padding-top: 4px;
+    display: flex; align-items: center; justify-content: center;
   }
   .record-cb {
-    width: 18px; height: 18px;
+    width: 14px; height: 14px;
     accent-color: var(--accent);
     cursor: pointer;
   }
-  .record-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .field-label {
-    font-size: 0.62rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .record-field {
+    font-size: 0.74rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .field-value { font-size: 0.8rem; word-break: break-word; }
-  .field-value.dim { color: var(--text-muted); font-size: 0.72rem; }
+  .record-field.wrap { white-space: normal; word-break: break-word; }
+  .record-field.dim { color: var(--text-muted); font-size: 0.7rem; }
 
-  /* Per-card actions */
-  .actions-col { display: flex; flex-direction: column; gap: 6px; }
+  /* Tiny action buttons — single-character with title for full label. */
+  .actions-col {
+    display: flex;
+    gap: 3px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
   .action-btn {
     background: transparent; color: var(--text);
-    border: 1px solid var(--border); border-radius: 6px;
-    padding: 5px 8px; cursor: pointer;
-    font-size: 0.72rem; text-align: center;
-    transition: all 0.15s;
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 7px; cursor: pointer;
+    font-size: 0.72rem; font-weight: 600;
+    text-align: center;
+    transition: all 0.12s;
+    min-width: 24px;
+    line-height: 1.2;
   }
   .action-btn:hover:not(:disabled) { border-color: var(--accent); }
   .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .action-btn.confirm { color: var(--green); border-color: rgba(34,197,94,0.4); }
-  .action-btn.confirm:hover:not(:disabled) { background: rgba(34,197,94,0.1); border-color: var(--green); }
+  .action-btn.confirm:hover:not(:disabled) { background: rgba(34,197,94,0.15); border-color: var(--green); }
   .action-btn.archive { color: var(--text-muted); }
-  .action-btn.archive:hover:not(:disabled) { background: rgba(139,143,163,0.1); }
+  .action-btn.archive:hover:not(:disabled) { background: rgba(139,143,163,0.15); border-color: var(--text-muted); }
   .action-btn.research { color: var(--orange); border-color: rgba(245,158,11,0.4); }
-  .action-btn.research:hover:not(:disabled) { background: rgba(245,158,11,0.1); border-color: var(--orange); }
+  .action-btn.research:hover:not(:disabled) { background: rgba(245,158,11,0.15); border-color: var(--orange); }
   .action-btn.reverify { color: var(--accent-light); border-color: rgba(124,92,252,0.4); }
-  .action-btn.reverify:hover:not(:disabled) { background: rgba(124,92,252,0.1); border-color: var(--accent); }
+  .action-btn.reverify:hover:not(:disabled) { background: rgba(124,92,252,0.15); border-color: var(--accent); }
+  .action-btn.skiptrace { color: var(--estatetrace); border-color: rgba(16,185,129,0.4); }
+  .action-btn.skiptrace:hover:not(:disabled) { background: rgba(16,185,129,0.15); border-color: var(--estatetrace); }
 
   .siftstack-pill-card {
     display: inline-block;
@@ -1966,7 +1999,7 @@ function renderRecordCard(r) {
   let flagsHtml = "";
   (r.flags || []).forEach(f => {
     const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
-    flagsHtml += `<span class="flag-pill ${cls}">${escapeHtml(f)}</span>`;
+    flagsHtml += `<span class="flag-pill ${cls}" title="${escapeHtml(f)}">${escapeHtml(f.length > 8 ? f.substring(0,8) + "…" : f)}</span>`;
   });
 
   const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
@@ -1974,12 +2007,13 @@ function renderRecordCard(r) {
 
   let ssPill = "";
   if (r.manual_submitted_at) {
-    ssPill = `<span class="siftstack-pill-card manual">Manual ${r.siftstack_status || "submitted"}</span>`;
+    ssPill = `<span class="siftstack-pill-card manual" title="Manually submitted by VA">M-${r.siftstack_status || "sent"}</span>`;
   } else if (r.siftstack_status) {
-    ssPill = `<span class="siftstack-pill-card ${r.siftstack_status}">Auto ${r.siftstack_status}</span>`;
+    ssPill = `<span class="siftstack-pill-card ${r.siftstack_status}" title="Auto-queued by scraper (legacy)">A-${r.siftstack_status}</span>`;
   }
 
   const docNumEsc = escapeHtml(r.doc_num || "");
+  const cat = r.cat_label || r.cat || "";
 
   return `
     <div class="record-card${selectedCls}" data-doc-num="${docNumEsc}">
@@ -1987,43 +2021,27 @@ function renderRecordCard(r) {
         <div class="record-cb-cell">
           <input type="checkbox" class="record-cb" ${isSelected ? "checked" : ""} onchange="toggleRecordCard('${docNumEsc}', this.checked)">
         </div>
+        <div class="record-field"><span class="score-pill ${scoreCls}">${r.score || 0}</span></div>
+        <div class="record-field" title="Filed">${r.filed || "—"}</div>
+        <div class="record-field" title="Sale Date">${r.sale_date || ""}</div>
+        <div class="record-field"><span class="type-badge">${escapeHtml(r.doc_type || "")}</span></div>
+        <div class="record-field" title="${escapeHtml(cat)}">${escapeHtml(cat)}</div>
+        <div class="record-field" title="${escapeHtml(r.owner || "")}">${escapeHtml(r.owner || "—")}</div>
+        <div class="record-field" title="${escapeHtml(r.co_borrower || "")}">${escapeHtml(r.co_borrower || "")}</div>
+        <div class="record-field" title="${escapeHtml(r.grantor_name || "")}">${escapeHtml(r.grantor_name || "")}</div>
+        <div class="record-field wrap">${flagsHtml}</div>
+        <div class="record-field" title="${escapeHtml(r.legal || "")}">${escapeHtml(r.legal || "")}</div>
+        <div class="record-field" title="${escapeHtml(propAddr)}">${escapeHtml(propAddr || "—")}</div>
+        <div class="record-field dim" title="${escapeHtml(mailAddr)}">${escapeHtml(mailAddr || "")}</div>
+        <div class="record-field" title="Amount">${escapeHtml(r.amount || "")}</div>
+        <div class="record-field"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></div>
+        <div class="record-field">${ssPill}</div>
+        <div class="record-field dim" title="${docNumEsc}">${docNumEsc}</div>
         <div class="record-field">
-          <span class="score-pill ${scoreCls}">${r.score || 0}</span>
-          <div class="field-value dim" style="margin-top:6px"><strong>Filed</strong> ${r.filed || "—"}</div>
-          ${r.sale_date ? `<div class="field-value dim"><strong>Sale</strong> ${r.sale_date}</div>` : ""}
-          <div style="margin-top:4px"><span class="type-badge">${escapeHtml(r.doc_type || "")}</span></div>
-          ${r.cat_label ? `<div class="field-value dim" style="margin-top:4px">${escapeHtml(r.cat_label)}</div>` : ""}
-          ${ssPill ? `<div style="margin-top:4px">${ssPill}</div>` : ""}
+          ${r.clerk_url ? `<a class="ext-link-card" href="${escapeHtml(r.clerk_url)}" target="_blank" rel="noopener" title="Open Clerk record">CL</a>` : ""}
+          ${r.hcad_url ? `<a class="ext-link-card" href="${escapeHtml(r.hcad_url)}" target="_blank" rel="noopener" title="Open HCAD" style="color:var(--green)">HC</a>` : ""}
         </div>
-        <div class="record-field">
-          <div class="field-label">Owner</div>
-          <div class="field-value">${escapeHtml(r.owner || "—")}</div>
-          ${r.co_borrower ? `<div class="field-label" style="margin-top:6px">Co-Borrower</div><div class="field-value">${escapeHtml(r.co_borrower)}</div>` : ""}
-          ${r.grantor_name ? `<div class="field-label" style="margin-top:6px">Grantor</div><div class="field-value">${escapeHtml(r.grantor_name)}</div>` : ""}
-        </div>
-        <div class="record-field">
-          <div class="field-label">Property Address</div>
-          <div class="field-value">${escapeHtml(propAddr || "—")}</div>
-          ${mailAddr ? `<div class="field-label" style="margin-top:6px">Mailing</div><div class="field-value dim">${escapeHtml(mailAddr)}</div>` : ""}
-          ${r.legal ? `<div class="field-label" style="margin-top:6px">Legal</div><div class="field-value dim">${escapeHtml(r.legal)}</div>` : ""}
-        </div>
-        <div class="record-field">
-          ${r.amount ? `<div class="field-label">Amount</div><div class="field-value">${escapeHtml(r.amount)}</div>` : ""}
-          ${flagsHtml ? `<div style="margin-top:6px">${flagsHtml}</div>` : ""}
-          <div class="field-label" style="margin-top:8px">Confidence / Doc#</div>
-          <div class="field-value">
-            <span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span>
-            <span class="field-value dim" style="margin-left:6px">${docNumEsc}</span>
-          </div>
-          <div style="margin-top:6px">
-            ${r.clerk_url ? `<a class="ext-link-card" href="${escapeHtml(r.clerk_url)}" target="_blank" rel="noopener">Clerk &#8599;</a>` : ""}
-            ${r.hcad_url ? `<a class="ext-link-card" href="${escapeHtml(r.hcad_url)}" target="_blank" rel="noopener" style="color:var(--green)">HCAD &#8599;</a>` : ""}
-          </div>
-        </div>
-        <div class="actions-col">
-          <div class="field-label">Actions</div>
-          ${renderActionsForRecord(r)}
-        </div>
+        <div class="actions-col">${renderActionsForRecord(r)}</div>
       </div>
       ${renderSkipTraceSection(r)}
     </div>
@@ -2033,33 +2051,33 @@ function renderRecordCard(r) {
 function renderActionsForRecord(r) {
   const role = currentProfile?.role;
   const canEdit = role === "admin" || role === "editor";
-  if (!canEdit) return `<div class="field-value dim">Read-only</div>`;
+  if (!canEdit) return `<span class="record-field dim">read-only</span>`;
   const status = r.verification_status;
   const id = escapeHtml(r.id);
+  // Compact icon-style buttons. Letter labels with tooltip for full intent.
+  const btn = (cls, status, char, title) =>
+    `<button class="action-btn ${cls}" title="${title}" onclick="flipStatusCard('${id}','${status}', this)">${char}</button>`;
+
   if (status === "pending" || status == null) {
-    return `
-      <button class="action-btn confirm" onclick="flipStatusCard('${id}','verified_owns', this)">Confirm Owns</button>
-      <button class="action-btn archive" onclick="flipStatusCard('${id}','verified_no_owns', this)">No Property</button>
-      <button class="action-btn research" onclick="flipStatusCard('${id}','needs_research', this)">Research</button>`;
+    return btn("confirm", "verified_owns", "✓", "Confirm Owns") +
+           btn("archive", "verified_no_owns", "✗", "No Property") +
+           btn("research", "needs_research", "?", "Needs Research");
   }
   if (status === "verified_owns") {
-    return `
-      <button class="action-btn reverify" onclick="flipStatusCard('${id}','pending', this)">Re-verify</button>
-      <button class="action-btn archive" onclick="flipStatusCard('${id}','verified_no_owns', this)">No Property</button>
-      <button class="action-btn research" onclick="flipStatusCard('${id}','needs_research', this)">Research</button>`;
+    return btn("reverify", "pending", "↶", "Re-verify (back to Verify queue)") +
+           btn("archive", "verified_no_owns", "✗", "No Property") +
+           btn("research", "needs_research", "?", "Needs Research");
   }
   if (status === "verified_no_owns") {
-    return `
-      <button class="action-btn reverify" onclick="flipStatusCard('${id}','pending', this)">Re-verify</button>
-      <button class="action-btn confirm" onclick="flipStatusCard('${id}','verified_owns', this)">Confirm Owns</button>`;
+    return btn("reverify", "pending", "↶", "Re-verify") +
+           btn("confirm", "verified_owns", "✓", "Confirm Owns");
   }
   if (status === "needs_research") {
-    return `
-      <button class="action-btn confirm" onclick="flipStatusCard('${id}','verified_owns', this)">Confirm Owns</button>
-      <button class="action-btn archive" onclick="flipStatusCard('${id}','verified_no_owns', this)">No Property</button>
-      <button class="action-btn reverify" onclick="flipStatusCard('${id}','pending', this)">Re-verify</button>`;
+    return btn("confirm", "verified_owns", "✓", "Confirm Owns") +
+           btn("archive", "verified_no_owns", "✗", "No Property") +
+           btn("reverify", "pending", "↶", "Re-verify");
   }
-  return `<div class="field-value dim">—</div>`;
+  return `<span class="record-field dim">—</span>`;
 }
 
 function renderSkipTraceSection(r) {
