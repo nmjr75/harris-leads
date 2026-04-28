@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leads Workspace — Harris County Motivated Sellers</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #23273a;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-muted: #8b8fa3;
+    --accent: #7c5cfc;
+    --accent-light: #9b82fc;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --cyan: #06b6d4;
+    --estatetrace: #10b981;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding-bottom: 50px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .header h1 { font-size: 1.25rem; font-weight: 700; }
+  .header h1 span { color: var(--accent-light); }
+  .nav-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.78rem;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .nav-link:hover { color: var(--text); border-color: var(--accent); }
+  .header-meta { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* Queue tabs */
+  .queue-tabs {
+    display: flex;
+    gap: 0;
+    padding: 12px 24px 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .queue-tab {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 12px 18px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .queue-tab:hover { color: var(--text); }
+  .queue-tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .queue-tab .badge {
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--surface2);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .queue-tab.active .badge {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 14px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  select.filter-select, input.date-input {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    outline: none;
+    cursor: pointer;
+  }
+  input.date-input { cursor: text; width: 130px; }
+  select.filter-select:hover, input.date-input:focus { border-color: var(--accent); }
+  .search-input {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    outline: none;
+    min-width: 240px;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .reset-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  .reset-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* Selection toolbar */
+  .select-bar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 10px 24px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+  }
+  .select-bar label.cb-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text);
+    user-select: none;
+  }
+  .select-bar .sel-count {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .select-bar button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+  }
+  .select-bar button:hover:not(:disabled) { border-color: var(--accent); }
+  .select-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .select-bar button.btn-export {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .select-bar button.btn-export:hover:not(:disabled) {
+    background: var(--accent-light);
+    border-color: var(--accent-light);
+  }
+  .select-bar button.btn-siftstack {
+    background: var(--estatetrace);
+    border-color: var(--estatetrace);
+    color: #fff;
+    font-weight: 600;
+  }
+  .select-bar button.btn-siftstack:hover:not(:disabled) {
+    background: #0ea372;
+    border-color: #0ea372;
+  }
+  .select-bar .sel-spacer { flex: 1; }
+
+  /* Records list */
+  .records {
+    padding: 16px 24px;
+  }
+  .record-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+  }
+  .record-card:hover { border-color: var(--accent); }
+  .record-card.selected {
+    background: rgba(124,92,252,0.10);
+    border-color: var(--accent);
+  }
+  .record-row {
+    display: grid;
+    grid-template-columns: 28px 80px 1fr 1.4fr 1.6fr 1.4fr 130px;
+    gap: 14px;
+    align-items: start;
+  }
+  .record-cb-cell {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 4px;
+  }
+  .record-cb {
+    width: 18px; height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .record-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .field-label {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .field-value { font-size: 0.8rem; word-break: break-word; }
+  .field-value.muted { color: var(--text-muted); font-style: italic; }
+  .field-value.dim { color: var(--text-muted); font-size: 0.72rem; }
+
+  /* Score pill */
+  .score-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #fff;
+    text-align: center;
+    min-width: 38px;
+  }
+  .score-high { background: var(--green); }
+  .score-med  { background: var(--orange); }
+  .score-low  { background: var(--accent); }
+
+  /* Pills */
+  .type-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .conf-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #fff;
+  }
+  .conf-high { background: var(--green); }
+  .conf-medium { background: var(--orange); }
+  .conf-low { background: var(--red); }
+  .conf-none { background: var(--text-muted); }
+  .flag-pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    margin: 2px 2px 0 0;
+    font-weight: 500;
+  }
+  .flag-pill.fresh { background: rgba(34,197,94,0.15); color: var(--green); }
+  .flag-pill.distress { background: rgba(239,68,68,0.15); color: var(--red); }
+  .flag-pill.info { background: rgba(59,130,246,0.15); color: var(--blue); }
+
+  .siftstack-pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+  .siftstack-pill.queued    { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .siftstack-pill.completed { background: rgba(16,185,129,0.18); color: var(--estatetrace); }
+  .siftstack-pill.failed    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .siftstack-pill.manual    { background: rgba(124,92,252,0.18); color: var(--accent-light); }
+
+  /* External link icon */
+  .ext-link {
+    color: var(--accent-light);
+    text-decoration: none;
+    font-size: 0.75rem;
+    margin-right: 6px;
+  }
+  .ext-link:hover { text-decoration: underline; }
+
+  /* Action buttons in card */
+  .actions-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .action-btn {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 0.72rem;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .action-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .action-btn.confirm { color: var(--green); border-color: rgba(34,197,94,0.4); }
+  .action-btn.confirm:hover:not(:disabled) { background: rgba(34,197,94,0.1); border-color: var(--green); }
+  .action-btn.archive { color: var(--text-muted); }
+  .action-btn.archive:hover:not(:disabled) { background: rgba(139,143,163,0.1); }
+  .action-btn.research { color: var(--orange); border-color: rgba(245,158,11,0.4); }
+  .action-btn.research:hover:not(:disabled) { background: rgba(245,158,11,0.1); border-color: var(--orange); }
+  .action-btn.reverify { color: var(--accent-light); border-color: rgba(124,92,252,0.4); }
+  .action-btn.reverify:hover:not(:disabled) { background: rgba(124,92,252,0.1); border-color: var(--accent); }
+
+  /* Skip-trace section */
+  .skip-trace-toggle-row {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .skip-trace-toggle-btn {
+    background: var(--estatetrace);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  .skip-trace-toggle-btn:hover { background: #0ea372; }
+  .phone-count-badge {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .phone-count-badge.has-phones { color: var(--green); font-weight: 600; }
+  .skip-trace-panel {
+    margin-top: 12px;
+    padding: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .stp-sections {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .stp-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .stp-section h4 {
+    font-size: 0.78rem;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .stp-section h4 span.role-tag {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-left: 6px;
+    letter-spacing: 0.5px;
+  }
+  .stp-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .stp-row label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    width: 60px;
+    flex-shrink: 0;
+  }
+  .stp-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    color: var(--text);
+    outline: none;
+  }
+  .stp-input:focus { border-color: var(--accent); }
+  .stp-star {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+  .stp-star.active { color: var(--orange); border-color: var(--orange); }
+  .stp-tps-link {
+    display: inline-block;
+    color: var(--accent-light);
+    text-decoration: none;
+    font-size: 0.7rem;
+    margin-left: 6px;
+  }
+  .stp-tps-link:hover { text-decoration: underline; }
+  .stp-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: flex-end;
+  }
+  .stp-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .stp-btn:hover { background: var(--accent-light); }
+  .stp-btn.cancel {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .stp-btn.cancel:hover { color: var(--text); }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+  }
+  .pagination button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  .pagination button:hover:not(:disabled) { border-color: var(--accent); }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pagination .page-info { font-size: 0.78rem; color: var(--text-muted); padding: 0 8px; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-muted);
+  }
+  .empty-state h3 { font-size: 1.1rem; margin-bottom: 8px; color: var(--text); }
+  .empty-state p { font-size: 0.85rem; }
+
+  /* Modals */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 420px;
+    width: 100%;
+    border: 1px solid var(--border);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    z-index: 200;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    max-width: 460px;
+  }
+  .toast.success { border-left-color: var(--green); }
+  .toast.error   { border-left-color: var(--red); }
+  .toast.info    { border-left-color: var(--blue); }
+
+  /* User bar */
+  #userBar {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 6px 24px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    align-items: center;
+    gap: 12px;
+    z-index: 99;
+  }
+  #userBar button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.65rem;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <h1>Leads <span>Workspace</span></h1>
+    <a href="probate.html" class="nav-link">Probate Workspace &rarr;</a>
+    <a href="index.html" class="nav-link">Old Dashboard (table)</a>
+  </div>
+  <div class="header-meta" id="headerMeta">Loading...</div>
+</header>
+
+<!-- Login modal -->
+<div class="modal-overlay" id="loginOverlay">
+  <div class="modal" style="max-width:380px;padding:32px">
+    <h2 style="margin-bottom:4px;font-size:1.25rem;text-align:center">Leads <span style="color:var(--accent-light)">Workspace</span></h2>
+    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px;text-align:center">Sign in to continue</p>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
+      <button type="submit" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Main UI -->
+<div id="mainUI" style="display:none">
+
+  <!-- Filter bar (above tabs per Nelson's spec) -->
+  <div class="filter-bar">
+    <select class="filter-select" id="sourceFilter" onchange="render()">
+      <option value="">All Sources</option>
+      <option value="clerk_lead">Clerk Lead</option>
+      <option value="clerk_foreclosure">Clerk Foreclosure</option>
+    </select>
+    <select class="filter-select" id="typeFilter" onchange="render()">
+      <option value="">All Types</option>
+    </select>
+    <select class="filter-select" id="saleMonthFilter" onchange="render()">
+      <option value="">All Sale Months</option>
+    </select>
+    <span class="filter-label">Filed:</span>
+    <input type="date" class="date-input" id="filedFrom" onchange="render()">
+    <span class="filter-label">to</span>
+    <input type="date" class="date-input" id="filedTo" onchange="render()">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#..." oninput="render()">
+    <button class="reset-btn" onclick="resetFilters()">Reset</button>
+  </div>
+
+  <!-- Queue tabs -->
+  <div class="queue-tabs">
+    <button class="queue-tab active" data-queue="verify" onclick="setQueue('verify')">
+      Verify <span class="badge" id="verifyCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="active" onclick="setQueue('active')">
+      Active <span class="badge" id="activeCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="archive" onclick="setQueue('archive')">
+      Archive <span class="badge" id="archiveCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="research" onclick="setQueue('research')">
+      Research <span class="badge" id="researchCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="siftstack" onclick="setQueue('siftstack')" title="Records VAs have manually submitted to SIFTstack via the Submit button">
+      Sent to SIFTstack <span class="badge" id="siftstackCount">0</span>
+    </button>
+    <button class="queue-tab" data-queue="autoq" onclick="setQueue('autoq')" title="Legacy records auto-queued to SIFTstack by the scraper before manual verification was required">
+      Auto-Q <span class="badge" id="autoqCount">0</span>
+    </button>
+  </div>
+
+  <!-- Selection toolbar -->
+  <div class="select-bar">
+    <label class="cb-label" title="Select/deselect every record visible on this page">
+      <input type="checkbox" id="pageSelectAll" onchange="togglePageAll(this.checked)">
+      <span>Select page</span>
+    </label>
+    <button id="selectAllFilteredBtn" onclick="selectAllFiltered()" title="Select every record matching the current filters across all pages">Select all (all pages)</button>
+    <button id="clearSelectionBtn" onclick="clearSelection()" disabled>Clear</button>
+    <span class="sel-count" id="selCountLabel">0 selected</span>
+    <span class="sel-spacer"></span>
+    <span class="filter-label" style="margin-right:-4px">Show:</span>
+    <select class="filter-select" id="perPageSelect" onchange="setPerPage(this.value)">
+      <option value="20">20</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+      <option value="150">150</option>
+      <option value="all">All</option>
+    </select>
+    <button class="btn-export" id="exportSelectedBtn" onclick="exportLeadsCSV()" disabled title="Download selected records as CSV — vendor-friendly format for xLeads / Deal Machine / Smart Skip">Export Selected to CSV</button>
+    <button class="btn-siftstack" id="submitSiftstackBtn" onclick="submitToSiftstack()" disabled title="Queue selected records for upload to DataSift via SIFTstack. Worker runs every 5 min.">Submit to SIFTstack</button>
+  </div>
+
+  <!-- Records list -->
+  <div class="records" id="records"></div>
+
+  <!-- Pagination -->
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<!-- User bar -->
+<div id="userBar">
+  <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
+  <button onclick="handleSignOut()">Sign Out</button>
+</div>
+
+<script>
+// ── Supabase Client ────────────────────────────────────────────────
+const SUPABASE_URL = "https://oqkcmysnhgorjkinfamu.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_XfR5NTuo1LYF8p73_cqQ7w_Ug4LDl3_";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+// ── State ─────────────────────────────────────────────────────────
+let DATA = { records: [], loaded: false };
+let currentSession = null;
+let currentProfile = null;
+let currentQueue = "verify";
+let currentPage = 1;
+let PER_PAGE = 50;
+
+const selectedRecords = new Set();
+const phonesByRecord = new Map();
+const emailsByRecord = new Map();
+const jobsByRecord   = new Map();
+
+const DISTRESS_FLAGS = new Set([
+  "Bankruptcy", "Tax delinquent", "Foreclosure", "Lis pendens", "Probate"
+]);
+
+// Queue routing — clerk records flow through 6 buckets:
+//   verify     -> verification_status=pending (default for new clerk records)
+//   active     -> verification_status=verified_owns AND not yet submitted
+//   archive    -> verification_status=verified_no_owns
+//   research   -> verification_status=needs_research
+//   siftstack  -> manual_submitted_at IS NOT NULL (VA-submitted)
+//   autoq      -> siftstack_status IS NOT NULL AND manual_submitted_at IS NULL (legacy)
+function recordInQueue(r, queue) {
+  if (queue === "siftstack") return !!r.manual_submitted_at;
+  if (queue === "autoq")     return !r.manual_submitted_at && !!r.siftstack_status;
+  if (queue === "active") {
+    return r.verification_status === "verified_owns"
+      && !r.manual_submitted_at
+      && !r.siftstack_status;
+  }
+  if (queue === "verify")   return r.verification_status === "pending";
+  if (queue === "archive")  return r.verification_status === "verified_no_owns";
+  if (queue === "research") return r.verification_status === "needs_research";
+  return false;
+}
+
+function effPP(total) {
+  return PER_PAGE === Infinity ? Math.max(total, 1) : PER_PAGE;
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); return false; }
+  currentSession = session;
+  await loadProfile();
+  return true;
+}
+
+async function loadProfile() {
+  if (!currentSession?.user?.id) return;
+  const { data, error } = await sb.from("profiles").select("*").eq("id", currentSession.user.id).single();
+  if (error) {
+    console.error("loadProfile error:", error);
+    return;
+  }
+  currentProfile = data;
+  document.getElementById("currentUserLabel").textContent = `${currentProfile.display_name || currentProfile.id} (${currentProfile.role})`;
+  document.getElementById("userBar").style.display = "flex";
+}
+
+function showLogin() {
+  document.getElementById("loginOverlay").classList.add("show");
+}
+
+function hideLogin() {
+  document.getElementById("loginOverlay").classList.remove("show");
+  document.getElementById("mainUI").style.display = "block";
+}
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.textContent = "";
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    errEl.textContent = error.message;
+    return;
+  }
+  currentSession = data.session;
+  await loadProfile();
+  hideLogin();
+  await loadData();
+  render();
+});
+
+async function handleSignOut() {
+  await sb.auth.signOut();
+  window.location.reload();
+}
+
+// ── Data load ─────────────────────────────────────────────────────
+async function loadData() {
+  const meta = document.getElementById("headerMeta");
+  meta.textContent = "Loading clerk records...";
+
+  // Pull all clerk records in pages of 1000 (Supabase default cap).
+  // EstateTrace records live on /probate.html and are excluded here.
+  const all = [];
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from("records")
+      .select("id, doc_num, source, doc_type, cat, cat_label, score, " +
+              "filed, sale_date, owner, co_borrower, grantor_name, grantee_names, " +
+              "prop_address, prop_city, prop_state, prop_zip, " +
+              "mail_address, mail_city, mail_state, mail_zip, " +
+              "amount, legal, flags, match_confidence, " +
+              "clerk_url, hcad_url, batch_id, " +
+              "verification_status, verified_at, " +
+              "siftstack_status, siftstack_completed_at, " +
+              "manual_submitted_at, manual_submitted_by, " +
+              "manual_overrides")
+      .in("source", ["clerk_lead", "clerk_foreclosure"])
+      .order("filed", { ascending: false, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (error) {
+      meta.textContent = "Load failed: " + error.message;
+      console.error(error);
+      return;
+    }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  DATA.records = all;
+  DATA.loaded = true;
+
+  await loadContactData();
+  populateTypeFilter();
+  populateSaleMonthFilter();
+
+  meta.textContent = `${all.length.toLocaleString()} clerk records loaded`;
+}
+
+async function loadContactData() {
+  // Load ALL phones / emails / skip-trace jobs into in-memory maps.
+  // Refreshed after every save to stay in sync. Filters by record_id at
+  // query time, not by role — we want all phones for the Auto-Q tab too.
+  phonesByRecord.clear();
+  emailsByRecord.clear();
+  jobsByRecord.clear();
+
+  try {
+    const [pRes, eRes, jRes] = await Promise.all([
+      sb.from("contact_phones").select("*").limit(50000),
+      sb.from("contact_emails").select("*").limit(50000),
+      sb.from("skip_trace_jobs").select("*").limit(50000),
+    ]);
+    (pRes.data || []).forEach(p => {
+      if (!phonesByRecord.has(p.record_id)) phonesByRecord.set(p.record_id, []);
+      phonesByRecord.get(p.record_id).push(p);
+    });
+    (eRes.data || []).forEach(e => {
+      if (!emailsByRecord.has(e.record_id)) emailsByRecord.set(e.record_id, []);
+      emailsByRecord.get(e.record_id).push(e);
+    });
+    (jRes.data || []).forEach(j => {
+      const key = `${j.record_id}::${j.service}`;
+      jobsByRecord.set(key, j);
+    });
+  } catch (e) {
+    console.warn("loadContactData failed:", e);
+  }
+}
+
+// ── Filter setup ──────────────────────────────────────────────────
+function populateTypeFilter() {
+  const sel = document.getElementById("typeFilter");
+  const types = new Set(DATA.records.map(r => r.doc_type).filter(Boolean));
+  Array.from(types).sort().forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t; opt.textContent = t;
+    sel.appendChild(opt);
+  });
+}
+
+function populateSaleMonthFilter() {
+  const sel = document.getElementById("saleMonthFilter");
+  const months = new Set();
+  DATA.records.forEach(r => {
+    if (!r.sale_date) return;
+    const d = new Date(r.sale_date);
+    if (isNaN(d)) return;
+    months.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  });
+  Array.from(months).sort().reverse().forEach(m => {
+    const opt = document.createElement("option");
+    opt.value = m; opt.textContent = m;
+    sel.appendChild(opt);
+  });
+}
+
+function resetFilters() {
+  document.getElementById("sourceFilter").value = "";
+  document.getElementById("typeFilter").value = "";
+  document.getElementById("saleMonthFilter").value = "";
+  document.getElementById("filedFrom").value = "";
+  document.getElementById("filedTo").value = "";
+  document.getElementById("searchInput").value = "";
+  currentPage = 1;
+  render();
+}
+
+// ── Filters & counts ──────────────────────────────────────────────
+function applyFilters(records) {
+  const src   = document.getElementById("sourceFilter").value;
+  const type  = document.getElementById("typeFilter").value;
+  const sm    = document.getElementById("saleMonthFilter").value;
+  const ff    = document.getElementById("filedFrom").value;
+  const ft    = document.getElementById("filedTo").value;
+  const q     = document.getElementById("searchInput").value.trim().toLowerCase();
+
+  return records.filter(r => {
+    if (!recordInQueue(r, currentQueue)) return false;
+    if (src && r.source !== src) return false;
+    if (type && r.doc_type !== type) return false;
+    if (ff && r.filed && r.filed < ff) return false;
+    if (ft && r.filed && r.filed > ft) return false;
+    if (sm) {
+      if (!r.sale_date) return false;
+      const d = new Date(r.sale_date);
+      if (isNaN(d)) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (key !== sm) return false;
+    }
+    if (q) {
+      const hay = [r.doc_num, r.owner, r.co_borrower, r.grantor_name,
+                   r.legal, r.prop_address, r.mail_address, r.cat_label]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function recomputeCounts() {
+  // Count per queue across the OTHER active filters (excluding the queue
+  // filter itself), so VAs see the size of each tab given their slice.
+  const baseScope = (r) => {
+    const src   = document.getElementById("sourceFilter").value;
+    const type  = document.getElementById("typeFilter").value;
+    const sm    = document.getElementById("saleMonthFilter").value;
+    const ff    = document.getElementById("filedFrom").value;
+    const ft    = document.getElementById("filedTo").value;
+    const q     = document.getElementById("searchInput").value.trim().toLowerCase();
+    if (src && r.source !== src) return false;
+    if (type && r.doc_type !== type) return false;
+    if (ff && r.filed && r.filed < ff) return false;
+    if (ft && r.filed && r.filed > ft) return false;
+    if (sm) {
+      if (!r.sale_date) return false;
+      const d = new Date(r.sale_date);
+      if (isNaN(d)) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (key !== sm) return false;
+    }
+    if (q) {
+      const hay = [r.doc_num, r.owner, r.co_borrower, r.grantor_name,
+                   r.legal, r.prop_address, r.mail_address, r.cat_label]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  };
+  const scoped = DATA.records.filter(baseScope);
+  document.getElementById("verifyCount").textContent    = scoped.filter(r => recordInQueue(r, "verify")).length;
+  document.getElementById("activeCount").textContent    = scoped.filter(r => recordInQueue(r, "active")).length;
+  document.getElementById("archiveCount").textContent   = scoped.filter(r => recordInQueue(r, "archive")).length;
+  document.getElementById("researchCount").textContent  = scoped.filter(r => recordInQueue(r, "research")).length;
+  document.getElementById("siftstackCount").textContent = scoped.filter(r => recordInQueue(r, "siftstack")).length;
+  document.getElementById("autoqCount").textContent     = scoped.filter(r => recordInQueue(r, "autoq")).length;
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function render() {
+  if (!DATA.loaded) return;
+  recomputeCounts();
+  const filtered = applyFilters(DATA.records);
+  renderRecordList(filtered);
+  renderPagination(filtered.length);
+  updateBulkUI();
+}
+
+function renderRecordList(records) {
+  const container = document.getElementById("records");
+  if (records.length === 0) {
+    const labels = {verify:"Verify",active:"Active",archive:"Archive",research:"Research",siftstack:"Sent to SIFTstack",autoq:"Auto-Q"};
+    container.innerHTML = `
+      <div class="empty-state">
+        <h3>No records in ${labels[currentQueue]} queue</h3>
+        <p>Try changing filters or switch to a different queue tab above.</p>
+      </div>`;
+    return;
+  }
+  const pp = effPP(records.length);
+  const pageStart = (currentPage - 1) * pp;
+  const pageEnd = Math.min(pageStart + pp, records.length);
+  const page = records.slice(pageStart, pageEnd);
+  container.innerHTML = page.map(renderRecordCard).join("");
+}
+
+function renderRecordCard(r) {
+  const isSelected = selectedRecords.has(r.id);
+  const selectedCls = isSelected ? " selected" : "";
+
+  const scoreCls = (r.score || 0) >= 70 ? "score-high" : (r.score || 0) >= 50 ? "score-med" : "score-low";
+
+  // Flags
+  let flagsHtml = "";
+  (r.flags || []).forEach(f => {
+    const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
+    flagsHtml += `<span class="flag-pill ${cls}">${escapeHtml(f)}</span>`;
+  });
+
+  const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
+  const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
+
+  // SIFTstack pill
+  let ssPill = "";
+  if (r.manual_submitted_at) {
+    ssPill = `<span class="siftstack-pill manual">Manual ${r.siftstack_status || "submitted"}</span>`;
+  } else if (r.siftstack_status) {
+    ssPill = `<span class="siftstack-pill ${r.siftstack_status}">Auto ${r.siftstack_status}</span>`;
+  }
+
+  return `
+    <div class="record-card${selectedCls}" data-record-id="${escapeHtml(r.id)}">
+      <div class="record-row">
+        <div class="record-cb-cell">
+          <input type="checkbox" class="record-cb" ${isSelected ? "checked" : ""} onchange="toggleRecord('${escapeHtml(r.id)}', this.checked)">
+        </div>
+
+        <!-- Score + dates + type -->
+        <div class="record-field">
+          <span class="score-pill ${scoreCls}">${r.score || 0}</span>
+          <div class="field-value dim" style="margin-top:6px"><strong>Filed</strong> ${r.filed || "—"}</div>
+          ${r.sale_date ? `<div class="field-value dim"><strong>Sale</strong> ${r.sale_date}</div>` : ""}
+          <div style="margin-top:4px">
+            <span class="type-badge">${escapeHtml(r.doc_type || "")}</span>
+          </div>
+          ${r.cat_label ? `<div class="field-value dim" style="margin-top:4px">${escapeHtml(r.cat_label)}</div>` : ""}
+          ${ssPill ? `<div style="margin-top:4px">${ssPill}</div>` : ""}
+        </div>
+
+        <!-- People -->
+        <div class="record-field">
+          <div class="field-label">Owner</div>
+          <div class="field-value">${escapeHtml(r.owner || "—")}</div>
+          ${r.co_borrower ? `
+            <div class="field-label" style="margin-top:6px">Co-Borrower</div>
+            <div class="field-value">${escapeHtml(r.co_borrower)}</div>
+          ` : ""}
+          ${r.grantor_name ? `
+            <div class="field-label" style="margin-top:6px">Grantor</div>
+            <div class="field-value">${escapeHtml(r.grantor_name)}</div>
+          ` : ""}
+        </div>
+
+        <!-- Property + Mailing -->
+        <div class="record-field">
+          <div class="field-label">Property Address</div>
+          <div class="field-value">${escapeHtml(propAddr || "—")}</div>
+          ${mailAddr ? `
+            <div class="field-label" style="margin-top:6px">Mailing</div>
+            <div class="field-value dim">${escapeHtml(mailAddr)}</div>
+          ` : ""}
+          ${r.legal ? `
+            <div class="field-label" style="margin-top:6px">Legal</div>
+            <div class="field-value dim">${escapeHtml(r.legal)}</div>
+          ` : ""}
+        </div>
+
+        <!-- Amount + flags + confidence + doc# + links -->
+        <div class="record-field">
+          ${r.amount ? `
+            <div class="field-label">Amount</div>
+            <div class="field-value">${escapeHtml(r.amount)}</div>
+          ` : ""}
+          ${flagsHtml ? `<div style="margin-top:6px">${flagsHtml}</div>` : ""}
+          <div class="field-label" style="margin-top:8px">Confidence / Doc#</div>
+          <div class="field-value">
+            <span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span>
+            <span class="field-value dim" style="margin-left:6px">${escapeHtml(r.doc_num || "")}</span>
+          </div>
+          <div style="margin-top:6px">
+            ${r.clerk_url ? `<a class="ext-link" href="${escapeHtml(r.clerk_url)}" target="_blank" rel="noopener">Clerk &#8599;</a>` : ""}
+            ${r.hcad_url ? `<a class="ext-link" href="${escapeHtml(r.hcad_url)}" target="_blank" rel="noopener" style="color:var(--green)">HCAD &#8599;</a>` : ""}
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions-col">
+          <div class="field-label">Actions</div>
+          ${renderActionsForRecord(r)}
+        </div>
+      </div>
+      ${renderSkipTraceSection(r)}
+    </div>
+  `;
+}
+
+function renderActionsForRecord(r) {
+  const role = currentProfile?.role;
+  const canEdit = role === "admin" || role === "editor";
+  if (!canEdit) {
+    return `<div class="field-value dim">Read-only</div>`;
+  }
+  const status = r.verification_status;
+  const id = escapeHtml(r.id);
+
+  // Each queue gets contextually appropriate buttons.
+  // Backwards re-verify is always allowed (no destructive flips).
+  if (status === "pending" || status == null) {
+    return `
+      <button class="action-btn confirm" onclick="flipStatus('${id}','verified_owns', this)">Confirm Owns</button>
+      <button class="action-btn archive" onclick="flipStatus('${id}','verified_no_owns', this)">No Property</button>
+      <button class="action-btn research" onclick="flipStatus('${id}','needs_research', this)">Research</button>
+    `;
+  }
+  if (status === "verified_owns") {
+    return `
+      <button class="action-btn reverify" onclick="flipStatus('${id}','pending', this)">Re-verify</button>
+      <button class="action-btn archive" onclick="flipStatus('${id}','verified_no_owns', this)">No Property</button>
+      <button class="action-btn research" onclick="flipStatus('${id}','needs_research', this)">Research</button>
+    `;
+  }
+  if (status === "verified_no_owns") {
+    return `
+      <button class="action-btn reverify" onclick="flipStatus('${id}','pending', this)">Re-verify</button>
+      <button class="action-btn confirm" onclick="flipStatus('${id}','verified_owns', this)">Confirm Owns</button>
+    `;
+  }
+  if (status === "needs_research") {
+    return `
+      <button class="action-btn confirm" onclick="flipStatus('${id}','verified_owns', this)">Confirm Owns</button>
+      <button class="action-btn archive" onclick="flipStatus('${id}','verified_no_owns', this)">No Property</button>
+      <button class="action-btn reverify" onclick="flipStatus('${id}','pending', this)">Re-verify</button>
+    `;
+  }
+  return `<div class="field-value dim">—</div>`;
+}
+
+function renderSkipTraceSection(r) {
+  // Only show skip-trace UI in the Active queue (records ready for outreach).
+  if (!recordInQueue(r, "active")) return "";
+
+  const id = escapeHtml(r.id);
+  const phones = phonesByRecord.get(r.id) || [];
+  const phoneCount = phones.length;
+  const badgeCls = phoneCount > 0 ? "phone-count-badge has-phones" : "phone-count-badge";
+  const badgeText = phoneCount === 0
+    ? "(no phones yet)"
+    : `(${phoneCount} ${phoneCount === 1 ? "phone" : "phones"})`;
+
+  return `
+    <div class="skip-trace-toggle-row">
+      <button class="skip-trace-toggle-btn" onclick="togglePanel('${id}', this)">
+        &#9660; Open Skip Trace
+      </button>
+      <span class="${badgeCls}">${badgeText}</span>
+    </div>
+    <div class="skip-trace-panel" id="panel-${id}" style="display:none"></div>
+  `;
+}
+
+// ── Skip-trace panel (owner + co-borrower side-by-side) ───────────
+function togglePanel(recordId, btnEl) {
+  const panel = document.getElementById(`panel-${recordId}`);
+  if (!panel) return;
+  if (panel.style.display === "none" || !panel.style.display) {
+    panel.innerHTML = renderPanelForm(recordId);
+    panel.style.display = "block";
+    btnEl.innerHTML = "&#9650; Close Skip Trace";
+  } else {
+    panel.style.display = "none";
+    panel.innerHTML = "";
+    btnEl.innerHTML = "&#9660; Open Skip Trace";
+  }
+}
+
+function renderPanelForm(recordId) {
+  const r = DATA.records.find(rec => rec.id === recordId);
+  if (!r) return "<p>Record not found</p>";
+  const phones = phonesByRecord.get(recordId) || [];
+  const ownerPhones = phones.filter(p => p.role === "owner");
+  const coBorrowerPhones = phones.filter(p => p.role === "co_borrower");
+  const owner = r.owner || "(no owner)";
+  const cob = r.co_borrower || "";
+
+  const tpsLink = (name) => {
+    if (!name) return "";
+    const url = `https://www.truepeoplesearch.com/results?name=${encodeURIComponent(name)}`;
+    return `<a class="stp-tps-link" href="${url}" target="_blank" rel="noopener">TPS &#8599;</a>`;
+  };
+
+  const sectionFor = (role, name, rolePhones) => {
+    const cell = (slot, label) => {
+      const ph = rolePhones.find(p => p.priority === slot);
+      const val = ph ? (ph.phone_display || ph.phone_e164 || "") : "";
+      const isBest = ph && ph.is_best;
+      return `
+        <div class="stp-row">
+          <label>${label}</label>
+          <input class="stp-input" data-role="${role}" data-slot="${slot}" type="text" value="${escapeHtml(val)}" placeholder="(xxx) xxx-xxxx">
+          <button type="button" class="stp-star ${isBest ? "active" : ""}" data-role="${role}" data-slot="${slot}" onclick="toggleStar(this)" title="Mark as best phone for SMS">&#9733;</button>
+        </div>
+      `;
+    };
+    return `
+      <div class="stp-section">
+        <h4>${escapeHtml(name)} <span class="role-tag">${role.replace("_", " ")}</span> ${tpsLink(name)}</h4>
+        ${cell(1, "Cell 1")}
+        ${cell(2, "Cell 2")}
+        ${cell(3, "Cell 3")}
+        ${cell(4, "Land 1")}
+      </div>
+    `;
+  };
+
+  const sections = [sectionFor("owner", owner, ownerPhones)];
+  if (cob) {
+    sections.push(sectionFor("co_borrower", cob, coBorrowerPhones));
+  }
+
+  return `
+    <div class="stp-sections" style="${cob ? '' : 'grid-template-columns:1fr'}">
+      ${sections.join("")}
+    </div>
+    <div class="stp-actions">
+      <button class="stp-btn cancel" onclick="togglePanel('${recordId}', this.closest('.record-card').querySelector('.skip-trace-toggle-btn'))">Cancel</button>
+      <button class="stp-btn" onclick="savePanelData('${recordId}', this)">Save Phones</button>
+    </div>
+  `;
+}
+
+function toggleStar(btn) {
+  // Within a single role, only one phone can be is_best at a time.
+  const role = btn.dataset.role;
+  const card = btn.closest(".record-card");
+  card.querySelectorAll(`.stp-star[data-role="${role}"]`).forEach(b => {
+    if (b !== btn) b.classList.remove("active");
+  });
+  btn.classList.toggle("active");
+}
+
+async function savePanelData(recordId, btnEl) {
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can save phones", "error");
+    return;
+  }
+
+  const card = btnEl.closest(".record-card");
+  if (!card) return;
+  btnEl.disabled = true;
+  btnEl.textContent = "Saving...";
+
+  // Collect all rows from the form
+  const rows = [];
+  card.querySelectorAll(".stp-input").forEach(input => {
+    const r = input.dataset.role;
+    const slot = parseInt(input.dataset.slot, 10);
+    const raw = input.value.trim();
+    if (!raw) return;
+    const e164 = toE164(raw);
+    if (!e164) return;
+    const display = formatPhoneDisplay(e164);
+    const star = card.querySelector(`.stp-star[data-role="${r}"][data-slot="${slot}"]`);
+    rows.push({
+      record_id: recordId,
+      role: r,
+      phone_e164: e164,
+      phone_display: display,
+      phone_type: "wireless",  // default; VA can refine later
+      priority: slot,
+      is_best: star ? star.classList.contains("active") : false,
+      source: "truepeoplesearch_manual",
+      added_by: currentSession.user.id,
+      updated_by: currentSession.user.id,
+    });
+  });
+
+  // Delete-then-insert pattern (simpler than upsert with the unique
+  // constraint on record_id+role+is_best=true)
+  try {
+    await sb.from("contact_phones")
+      .delete()
+      .eq("record_id", recordId)
+      .in("role", ["owner", "co_borrower"]);
+
+    if (rows.length > 0) {
+      const { error } = await sb.from("contact_phones").insert(rows);
+      if (error) throw error;
+    }
+    toast("Phones saved", "success");
+    await refreshContactDataForRecord(recordId);
+    render();
+  } catch (e) {
+    toast("Save failed: " + (e.message || e), "error");
+    btnEl.disabled = false;
+    btnEl.textContent = "Save Phones";
+  }
+}
+
+async function refreshContactDataForRecord(recordId) {
+  try {
+    const [pRes, eRes] = await Promise.all([
+      sb.from("contact_phones").select("*").eq("record_id", recordId),
+      sb.from("contact_emails").select("*").eq("record_id", recordId),
+    ]);
+    phonesByRecord.set(recordId, pRes.data || []);
+    emailsByRecord.set(recordId, eRes.data || []);
+  } catch (e) {
+    console.warn("refreshContactDataForRecord failed:", e);
+  }
+}
+
+function toE164(raw) {
+  // Strip non-digits, take last 10 (US-only), prepend +1
+  const digits = raw.replace(/\D+/g, "");
+  if (digits.length < 10) return null;
+  const last10 = digits.slice(-10);
+  return "+1" + last10;
+}
+
+function formatPhoneDisplay(e164) {
+  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+}
+
+// ── Verification action ───────────────────────────────────────────
+async function flipStatus(recordId, newStatus, btnEl) {
+  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can verify records", "error");
+    return;
+  }
+  const card = btnEl?.closest(".record-card");
+  if (card) { card.style.opacity = "0.5"; card.style.pointerEvents = "none"; }
+
+  try {
+    const { data, error } = await sb
+      .from("records")
+      .update({ verification_status: newStatus })
+      .eq("id", recordId)
+      .select("verification_status, verified_by, verified_at, manual_overrides")
+      .single();
+    if (error) {
+      toast("Update failed: " + error.message, "error");
+      return;
+    }
+    const rec = DATA.records.find(r => r.id === recordId);
+    if (rec && data) Object.assign(rec, data);
+    render();
+    toast(`Status changed to ${newStatus.replace(/_/g, " ")}`, "success");
+  } catch (e) {
+    toast("Update crashed: " + (e.message || e), "error");
+  } finally {
+    if (card) { card.style.opacity = "1"; card.style.pointerEvents = ""; }
+  }
+}
+
+// ── Selection ─────────────────────────────────────────────────────
+function toggleRecord(id, checked) {
+  if (checked) selectedRecords.add(id);
+  else selectedRecords.delete(id);
+  const card = document.querySelector(`.record-card[data-record-id="${id}"]`);
+  if (card) card.classList.toggle("selected", checked);
+  updateBulkUI();
+}
+
+function togglePageAll(checked) {
+  const filtered = applyFilters(DATA.records);
+  const pp = effPP(filtered.length);
+  const pageStart = (currentPage - 1) * pp;
+  const pageEnd = Math.min(pageStart + pp, filtered.length);
+  for (let i = pageStart; i < pageEnd; i++) {
+    if (checked) selectedRecords.add(filtered[i].id);
+    else selectedRecords.delete(filtered[i].id);
+  }
+  render();
+}
+
+function selectAllFiltered() {
+  const filtered = applyFilters(DATA.records);
+  if (filtered.length === 0) return;
+  if (filtered.length > 500) {
+    if (!confirm(`Select all ${filtered.length.toLocaleString()} filtered records?`)) return;
+  }
+  filtered.forEach(r => selectedRecords.add(r.id));
+  render();
+}
+
+function clearSelection() {
+  if (selectedRecords.size === 0) return;
+  selectedRecords.clear();
+  render();
+}
+
+function updateBulkUI() {
+  const count = selectedRecords.size;
+  const exportBtn = document.getElementById("exportSelectedBtn");
+  const submitBtn = document.getElementById("submitSiftstackBtn");
+  const clearBtn = document.getElementById("clearSelectionBtn");
+  const label = document.getElementById("selCountLabel");
+  const pageCb = document.getElementById("pageSelectAll");
+
+  if (label) label.textContent = `${count.toLocaleString()} selected`;
+  if (clearBtn) clearBtn.disabled = count === 0;
+  if (exportBtn) {
+    exportBtn.disabled = count === 0;
+    exportBtn.textContent = count === 0 ? "Export Selected to CSV" : `Export Selected to CSV (${count.toLocaleString()})`;
+  }
+  if (submitBtn) {
+    submitBtn.disabled = count === 0;
+    submitBtn.textContent = count === 0 ? "Submit to SIFTstack" : `Submit to SIFTstack (${count.toLocaleString()})`;
+  }
+  if (pageCb) {
+    const filtered = applyFilters(DATA.records);
+    const pp = effPP(filtered.length);
+    const pageStart = (currentPage - 1) * pp;
+    const pageEnd = Math.min(pageStart + pp, filtered.length);
+    const pageRows = filtered.slice(pageStart, pageEnd);
+    pageCb.checked = pageRows.length > 0 && pageRows.every(r => selectedRecords.has(r.id));
+    pageCb.indeterminate = !pageCb.checked && pageRows.some(r => selectedRecords.has(r.id));
+  }
+}
+
+// ── Submit to SIFTstack ───────────────────────────────────────────
+async function submitToSiftstack() {
+  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can submit to SIFTstack", "error");
+    return;
+  }
+  if (selectedRecords.size === 0) return;
+
+  const byId = new Map();
+  DATA.records.forEach(r => byId.set(r.id, r));
+  const selected = [];
+  selectedRecords.forEach(id => {
+    const r = byId.get(id);
+    if (r) selected.push(r);
+  });
+  if (selected.length === 0) {
+    toast("Selected records no longer in dataset. Clear and re-select.", "error");
+    return;
+  }
+
+  // Bucket: skip records already manually-submitted unless user confirms
+  const alreadyManual = selected.filter(r => r.manual_submitted_at);
+  const fresh = selected.filter(r => !r.manual_submitted_at);
+  let toSubmit = fresh;
+
+  if (alreadyManual.length > 0) {
+    const msg = `${selected.length} selected:\n` +
+      `  - ${fresh.length} new (will be queued)\n` +
+      `  - ${alreadyManual.length} already submitted\n\n` +
+      `Re-submit the ${alreadyManual.length} already-submitted? OK = yes, Cancel = only push the new ones.`;
+    if (confirm(msg)) toSubmit = [...fresh, ...alreadyManual];
+  }
+  if (toSubmit.length === 0) {
+    toast("No records to submit", "info");
+    return;
+  }
+
+  const submitBtn = document.getElementById("submitSiftstackBtn");
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Queueing..."; }
+
+  // Two-step: (1) update records.manual_submitted_at to mark them as
+  // manually submitted, (2) insert into siftstack_queue. Order matters
+  // so the dashboard reflects the manual submission immediately.
+  const now = new Date().toISOString();
+  const ids = toSubmit.map(r => r.id);
+
+  try {
+    const { error: updErr } = await sb
+      .from("records")
+      .update({ manual_submitted_at: now, manual_submitted_by: currentSession.user.id })
+      .in("id", ids);
+    if (updErr) {
+      toast("Failed to mark records: " + updErr.message, "error");
+      if (submitBtn) submitBtn.disabled = false;
+      updateBulkUI();
+      return;
+    }
+
+    const batchId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+      "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+
+    const queueRows = toSubmit.map(r => ({
+      record_id: r.id,
+      batch_id:  batchId,
+      queued_by: currentSession.user.id,
+      status:    "pending",
+    }));
+    const { error: qErr } = await sb.from("siftstack_queue").insert(queueRows);
+    if (qErr) {
+      toast("Queue insert failed: " + qErr.message + " (records were marked but not queued)", "error");
+      if (submitBtn) submitBtn.disabled = false;
+      updateBulkUI();
+      return;
+    }
+
+    // Patch local state so UI updates immediately
+    toSubmit.forEach(r => {
+      r.manual_submitted_at = now;
+      r.manual_submitted_by = currentSession.user.id;
+      if (!r.siftstack_status) r.siftstack_status = "queued";
+    });
+    toast(`Submitted ${toSubmit.length} record(s) to SIFTstack. Worker runs every 5 min.`, "success");
+    selectedRecords.clear();
+    render();
+  } catch (e) {
+    toast("Submit crashed: " + (e.message || e), "error");
+    if (submitBtn) submitBtn.disabled = false;
+    updateBulkUI();
+  }
+}
+
+// ── CSV export ────────────────────────────────────────────────────
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function splitName(full) {
+  if (!full) return { first: "", middle: "", last: "" };
+  const clean = full.trim().replace(/\s+/g, " ");
+  if (!clean) return { first: "", middle: "", last: "" };
+  if (clean.includes(",")) {
+    const [last, rest = ""] = clean.split(",").map(s => s.trim());
+    const restParts = rest.split(" ");
+    return { first: restParts[0] || "", middle: restParts.slice(1).join(" "), last: last };
+  }
+  const parts = clean.split(" ");
+  if (parts.length === 1) return { first: "", middle: "", last: parts[0] };
+  if (parts.length === 2) return { first: parts[0], middle: "", last: parts[1] };
+  return { first: parts[0], middle: parts.slice(1, -1).join(" "), last: parts[parts.length - 1] };
+}
+
+function exportLeadsCSV() {
+  if (selectedRecords.size === 0) return;
+  const byId = new Map();
+  DATA.records.forEach(r => byId.set(r.id, r));
+  const rows = [];
+  selectedRecords.forEach(id => {
+    const r = byId.get(id);
+    if (r) rows.push(r);
+  });
+  if (rows.length === 0) {
+    toast("Selected records no longer in dataset.", "error");
+    return;
+  }
+  rows.sort((a, b) => (b.filed || "").localeCompare(a.filed || ""));
+
+  const headers = [
+    "Score","Filed","Sale Date","Type","Category",
+    "Owner First","Owner Middle","Owner Last",
+    "Co-Borrower First","Co-Borrower Middle","Co-Borrower Last",
+    "Grantor First","Grantor Middle","Grantor Last",
+    "Property Address","Property City","Property State","Property Zip",
+    "Mailing Address","Mailing City","Mailing State","Mailing Zip",
+    "Flags","Legal","Amount",
+    "Match Confidence","Doc #","Source","Verification Status",
+    "Clerk URL","HCAD URL","Record ID"
+  ];
+  let csv = headers.join(",") + "\n";
+  rows.forEach(r => {
+    const o = splitName(r.owner);
+    const cb = splitName(r.co_borrower);
+    const g = splitName(r.grantor_name);
+    csv += [
+      r.score, r.filed || "", r.sale_date || "", r.doc_type || "", csvCell(r.cat_label),
+      csvCell(o.first), csvCell(o.middle), csvCell(o.last),
+      csvCell(cb.first), csvCell(cb.middle), csvCell(cb.last),
+      csvCell(g.first), csvCell(g.middle), csvCell(g.last),
+      csvCell(r.prop_address), csvCell(r.prop_city), csvCell(r.prop_state), csvCell(r.prop_zip),
+      csvCell(r.mail_address), csvCell(r.mail_city), csvCell(r.mail_state), csvCell(r.mail_zip),
+      csvCell((r.flags || []).join("; ")),
+      csvCell(r.legal), csvCell(r.amount),
+      r.match_confidence || "none", csvCell(r.doc_num), r.source, r.verification_status || "",
+      csvCell(r.clerk_url), csvCell(r.hcad_url), csvCell(r.id),
+    ].join(",") + "\n";
+  });
+
+  const datePart = new Date().toISOString().slice(0,10);
+  const queueLabel = ({verify:"verify",active:"active",archive:"archive",research:"research",siftstack:"sent_siftstack",autoq:"auto_queued"})[currentQueue] || "all";
+  const filename = `harris_leads_${queueLabel}_selected-${rows.length}_${datePart}.csv`
+    .replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+
+  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ── Pagination ────────────────────────────────────────────────────
+function renderPagination(total) {
+  const pp = effPP(total);
+  const totalPages = Math.max(1, Math.ceil(total / pp));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const showStart = total === 0 ? 0 : (currentPage - 1) * pp + 1;
+  const showEnd = Math.min(currentPage * pp, total);
+  const html = `
+    <button onclick="goPage(1)" ${currentPage === 1 ? "disabled" : ""}>First</button>
+    <button onclick="goPage(${currentPage - 1})" ${currentPage === 1 ? "disabled" : ""}>Prev</button>
+    <span class="page-info">${showStart.toLocaleString()}–${showEnd.toLocaleString()} of ${total.toLocaleString()} (page ${currentPage}/${totalPages})</span>
+    <button onclick="goPage(${currentPage + 1})" ${currentPage === totalPages ? "disabled" : ""}>Next</button>
+    <button onclick="goPage(${totalPages})" ${currentPage === totalPages ? "disabled" : ""}>Last</button>
+  `;
+  document.getElementById("pagination").innerHTML = html;
+}
+
+function goPage(n) {
+  currentPage = Math.max(1, n);
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function setPerPage(v) {
+  PER_PAGE = (v === "all") ? Infinity : parseInt(v, 10);
+  currentPage = 1;
+  render();
+}
+
+// ── Tab switching ─────────────────────────────────────────────────
+function setQueue(q) {
+  currentQueue = q;
+  currentPage = 1;
+  document.querySelectorAll(".queue-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.queue === q);
+  });
+  render();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+let toastEl = null;
+let toastTimer = null;
+function toast(message, type = "info") {
+  if (toastEl) toastEl.remove();
+  if (toastTimer) clearTimeout(toastTimer);
+  toastEl = document.createElement("div");
+  toastEl.className = `toast ${type}`;
+  toastEl.textContent = message;
+  document.body.appendChild(toastEl);
+  toastTimer = setTimeout(() => {
+    if (toastEl) toastEl.remove();
+    toastEl = null;
+  }, 3500);
+}
+
+// ── Utils ─────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+async function init() {
+  const authed = await checkAuth();
+  if (!authed) return;
+  hideLogin();
+  await loadData();
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
