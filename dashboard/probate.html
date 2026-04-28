@@ -715,6 +715,9 @@
     <button class="queue-tab" data-queue="research" onclick="setQueue('research')">
       Research <span class="badge" id="researchCount">0</span>
     </button>
+    <button class="queue-tab" data-queue="siftstack" onclick="setQueue('siftstack')" title="Active records that have been submitted to SIFTstack (queued/completed/failed). Active tab shows only those NOT yet submitted.">
+      Sent to SIFTstack <span class="badge" id="siftstackCount">0</span>
+    </button>
   </div>
 
   <!-- Filter bar -->
@@ -794,7 +797,22 @@ const QUEUE_TO_STATUS = {
   active:   "verified_owns",
   archive:  "verified_no_owns",
   research: "needs_research",
+  // siftstack queue is a special split of verified_owns based on
+  // probate_campaign_status — handled in recordInQueue() below
+  siftstack: "verified_owns",
 };
+
+// Decide whether a record belongs in a queue. Active and Sent-to-SIFTstack
+// share verified_owns but split by whether the record has been submitted.
+function recordInQueue(r, queue) {
+  if (queue === "siftstack") {
+    return r.verification_status === "verified_owns" && !!r.probate_campaign_status;
+  }
+  if (queue === "active") {
+    return r.verification_status === "verified_owns" && !r.probate_campaign_status;
+  }
+  return r.verification_status === QUEUE_TO_STATUS[queue];
+}
 
 let DATA = {
   records: [],
@@ -1007,9 +1025,8 @@ function extractMonth(tabName) {
 // ── Filters & Counts ──────────────────────────────────────────────
 function applyFilters(records) {
   return records.filter(r => {
-    // Queue
-    const wantStatus = QUEUE_TO_STATUS[currentQueue];
-    if (r.verification_status !== wantStatus) return false;
+    // Queue (verify/active/archive/research/siftstack)
+    if (!recordInQueue(r, currentQueue)) return false;
 
     // County
     if (currentCounty && r.county !== currentCounty) return false;
@@ -1050,14 +1067,15 @@ function recomputeCounts() {
   };
 
   const scoped = DATA.records.filter(baseScope);
-  document.getElementById("verifyCount").textContent   = scoped.filter(r => r.verification_status === "pending").length;
-  document.getElementById("activeCount").textContent   = scoped.filter(r => r.verification_status === "verified_owns").length;
-  document.getElementById("archiveCount").textContent  = scoped.filter(r => r.verification_status === "verified_no_owns").length;
-  document.getElementById("researchCount").textContent = scoped.filter(r => r.verification_status === "needs_research").length;
+  document.getElementById("verifyCount").textContent    = scoped.filter(r => recordInQueue(r, "verify")).length;
+  document.getElementById("activeCount").textContent    = scoped.filter(r => recordInQueue(r, "active")).length;
+  document.getElementById("archiveCount").textContent   = scoped.filter(r => recordInQueue(r, "archive")).length;
+  document.getElementById("researchCount").textContent  = scoped.filter(r => recordInQueue(r, "research")).length;
+  document.getElementById("siftstackCount").textContent = scoped.filter(r => recordInQueue(r, "siftstack")).length;
 
   // County pills are scoped to current queue + month + search (but not county)
   const byCountyScope = (r) => {
-    if (r.verification_status !== QUEUE_TO_STATUS[currentQueue]) return false;
+    if (!recordInQueue(r, currentQueue)) return false;
     if (currentMonth && extractMonth(r.sheet_tab_name) !== currentMonth) return false;
     if (currentSearch) {
       const q = currentSearch.toLowerCase();
@@ -1110,7 +1128,7 @@ function renderRecordList(records) {
   const total = records.length;
 
   if (total === 0) {
-    const queueLabel = ({verify:"Verify",active:"Active",archive:"Archive",research:"Research"})[currentQueue];
+    const queueLabel = ({verify:"Verify",active:"Active",archive:"Archive",research:"Research",siftstack:"Sent to SIFTstack"})[currentQueue];
     container.innerHTML = `
       <div class="empty-state">
         <h3>No records in ${queueLabel} queue</h3>
@@ -2171,7 +2189,7 @@ function exportProbateCSV() {
   });
 
   // Filename includes queue + count + date for easy archiving
-  const queueLabel = ({verify:"verify",active:"active",archive:"archive",research:"research"})[currentQueue] || "all";
+  const queueLabel = ({verify:"verify",active:"active",archive:"archive",research:"research",siftstack:"sent_to_siftstack"})[currentQueue] || "all";
   const datePart = new Date().toISOString().slice(0,10);
   const countyPart = currentCounty ? `_${currentCounty.toLowerCase()}` : "";
   const filename = `probate_${queueLabel}${countyPart}_selected-${rows.length}_${datePart}.csv`
