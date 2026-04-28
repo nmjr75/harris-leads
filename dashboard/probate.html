@@ -1170,7 +1170,7 @@ function renderRecordCard(r) {
         </div>
         <div class="record-field">
           <div class="field-label">Case</div>
-          <div class="doc-num" onclick="openInClerk('${escapeHtml(r.doc_num || "")}')" title="Click to look up in Harris County Clerk Probate Search (case# auto-copied to clipboard)">
+          <div class="doc-num" onclick="openInClerk('${escapeHtml(r.doc_num || "")}', '${escapeHtml(r.county || "")}')" title="Click to look up case# in the ${r.county === "Fortbend" ? "Fort Bend" : "Harris"} County clerk site (case# auto-copied to clipboard)">
             ${escapeHtml(r.doc_num || "")}<span class="ext-icon">&#8599;</span>
           </div>
           <div style="margin-top:4px;">
@@ -1468,14 +1468,16 @@ function toast(msg, kind = "success") {
 
 // ── Clerk lookup (PROBATE WORKSPACE ONLY) ─────────────────────────
 // HARD RULE: this function is for the EstateTrace probate workspace.
-// It opens ONLY the probate-specific clerk search page. Foreclosure and
-// lead records use entirely different clerk URLs and are handled in
-// the main dashboard, never here. See memory:
+// It routes to the probate-specific clerk search page for the record's
+// county. Foreclosure and lead records use entirely different clerk URLs
+// and are handled in the main dashboard, never here. See memory:
 // reference_clerk_urls_per_scraper.md for the full mapping.
-const PROBATE_CLERK_SEARCH_URL =
+const HARRIS_PROBATE_CLERK_SEARCH_URL =
   "https://www.cclerk.hctx.net/applications/websearch/CourtSearch.aspx?CaseType=Probate";
+const FORTBEND_PROBATE_CLERK_SEARCH_URL =
+  "https://tylerpaw.fortbendcountytx.gov/PublicAccess/Search.aspx?ID=200";
 
-async function openInClerk(caseNum) {
+async function openInClerk(caseNum, county) {
   if (!caseNum) return;
 
   // Try to copy to clipboard so VA only needs to paste once on the clerk page.
@@ -1491,14 +1493,18 @@ async function openInClerk(caseNum) {
     // Permission denied or unsupported — silent fall-through. Page still opens.
   }
 
-  // Open the probate clerk search page. Always the same URL — never use any
-  // other clerk URL here.
-  window.open(PROBATE_CLERK_SEARCH_URL, "_blank", "noopener,noreferrer");
+  // Route to the correct county clerk site. Fortbend uses tylerpaw;
+  // Harris (and any unknown/missing county, as a safe default) uses cclerk.
+  const url = county === "Fortbend"
+    ? FORTBEND_PROBATE_CLERK_SEARCH_URL
+    : HARRIS_PROBATE_CLERK_SEARCH_URL;
+  window.open(url, "_blank", "noopener,noreferrer");
 
+  const countyLabel = county === "Fortbend" ? "Fort Bend" : "Harris";
   toast(
     copied
-      ? `Case# ${caseNum} copied — paste in the clerk search box`
-      : `Search the clerk site for case# ${caseNum}`,
+      ? `Case# ${caseNum} copied — paste in the ${countyLabel} clerk search box`
+      : `Search the ${countyLabel} clerk site for case# ${caseNum}`,
     "success"
   );
 }
