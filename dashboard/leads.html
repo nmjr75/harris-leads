@@ -777,6 +777,130 @@
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
   }
+  .stp-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .stp-header h4 { font-size: 0.92rem; color: var(--text); font-weight: 600; }
+  .stp-meta-row {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .stp-meta-row label { font-size: 0.72rem; color: var(--text-muted); }
+  .stp-meta-row .stp-input, .stp-meta-row .stp-select {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 8px; font-size: 0.78rem; outline: none;
+  }
+  .stp-meta-row .stp-input:focus { border-color: var(--accent); }
+  .stp-meta-row .stp-input.short-date { width: 130px; }
+  .stp-meta-row .stp-input.comment-input { flex: 1; min-width: 200px; }
+  .stp-meta-row .stp-input.notes-input { flex: 1; min-width: 200px; }
+  .stp-people-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .stp-people-grid.single-col { grid-template-columns: 1fr; }
+  .stp-person-block {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
+  }
+  .stp-person-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+    font-size: 0.82rem; font-weight: 600;
+  }
+  .stp-person-header .role-tag {
+    font-size: 0.62rem; color: var(--text-muted);
+    text-transform: uppercase; margin-left: 6px; letter-spacing: 0.5px;
+  }
+  .stp-person-header .tps-link {
+    color: var(--accent-light); text-decoration: none; font-size: 0.7rem;
+    padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px;
+    transition: all 0.12s;
+  }
+  .stp-person-header .tps-link:hover {
+    background: var(--surface2); border-color: var(--accent);
+  }
+  .stp-person-header .tps-link.disabled {
+    color: var(--text-muted); cursor: not-allowed; pointer-events: none;
+  }
+  .stp-phones {
+    display: flex; flex-direction: column; gap: 5px;
+    margin-bottom: 8px;
+  }
+  .phone-slot {
+    display: flex; gap: 6px; align-items: center;
+    padding: 4px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 4px;
+  }
+  .phone-slot.is-best { border-color: var(--orange); background: rgba(245,158,11,0.08); }
+  .star-toggle {
+    background: none; border: none;
+    cursor: pointer; padding: 0 4px;
+    font-size: 1rem;
+    color: var(--text-muted);
+    transition: color 0.12s;
+  }
+  .star-toggle.active { color: var(--orange); }
+  .star-toggle:hover { color: var(--orange); }
+  .slot-label {
+    font-size: 0.7rem; color: var(--text-muted);
+    min-width: 48px; font-weight: 500;
+  }
+  .phone-input {
+    flex: 1; min-width: 130px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 7px; font-size: 0.78rem; outline: none;
+    font-family: 'SF Mono', Consolas, monospace;
+  }
+  .phone-input:focus { border-color: var(--accent); }
+  .phone-input.error { border-color: var(--red); }
+  .last-seen-input {
+    width: 120px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 6px; font-size: 0.72rem; outline: none;
+  }
+  .stp-email-row {
+    display: flex; gap: 6px; align-items: center;
+    padding-top: 6px; border-top: 1px dashed var(--border);
+  }
+  .stp-email-row label { font-size: 0.7rem; color: var(--text-muted); min-width: 48px; }
+  .stp-email-row .email-input {
+    flex: 1;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 7px; font-size: 0.78rem; outline: none;
+  }
+  .stp-email-row .email-input:focus { border-color: var(--accent); }
+  .stp-error {
+    color: var(--red); font-size: 0.78rem;
+    margin-top: 8px; min-height: 18px;
+  }
+  .stp-buttons {
+    display: flex; gap: 8px;
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+    justify-content: flex-end;
+  }
+  .stp-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.8rem; font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text);
+    transition: all 0.12s;
+  }
+  .stp-btn:hover:not(:disabled) { transform: translateY(-1px); }
+  .stp-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .stp-btn.primary {
+    background: var(--estatetrace);
+    border-color: var(--estatetrace);
+    color: #fff;
+  }
+  .stp-btn.primary:hover:not(:disabled) { background: #0d9b6e; }
 
   .ext-link-card {
     color: var(--accent-light);
@@ -1055,6 +1179,7 @@ const selectedRows = new Set();
 let currentQueue = "verify";
 const phonesByRecord = new Map();
 const emailsByRecord = new Map();
+const jobsByRecord   = new Map();   // key = `${record_id}|${service}`
 
 // 6 queue buckets for clerk records:
 //   verify     -> verification_status = 'pending'
@@ -2057,10 +2182,12 @@ function recomputeQueueCounts() {
 async function loadContactData() {
   phonesByRecord.clear();
   emailsByRecord.clear();
+  jobsByRecord.clear();
   try {
-    const [pRes, eRes] = await Promise.all([
+    const [pRes, eRes, jRes] = await Promise.all([
       sb.from("contact_phones").select("*").limit(50000),
       sb.from("contact_emails").select("*").limit(50000),
+      sb.from("skip_trace_jobs").select("*").limit(50000),
     ]);
     (pRes.data || []).forEach(p => {
       if (!phonesByRecord.has(p.record_id)) phonesByRecord.set(p.record_id, []);
@@ -2070,18 +2197,77 @@ async function loadContactData() {
       if (!emailsByRecord.has(e.record_id)) emailsByRecord.set(e.record_id, []);
       emailsByRecord.get(e.record_id).push(e);
     });
+    (jRes.data || []).forEach(j => {
+      jobsByRecord.set(`${j.record_id}|${j.service}`, j);
+    });
   } catch (e) { console.warn("loadContactData failed:", e); }
 }
 
 async function refreshContactDataForRecord(recordId) {
   try {
-    const [pRes, eRes] = await Promise.all([
+    const [pRes, eRes, jRes] = await Promise.all([
       sb.from("contact_phones").select("*").eq("record_id", recordId),
       sb.from("contact_emails").select("*").eq("record_id", recordId),
+      sb.from("skip_trace_jobs").select("*").eq("record_id", recordId),
     ]);
     phonesByRecord.set(recordId, pRes.data || []);
     emailsByRecord.set(recordId, eRes.data || []);
+    // Clear and re-set jobs for this record
+    [...jobsByRecord.keys()].forEach(k => { if (k.startsWith(recordId + "|")) jobsByRecord.delete(k); });
+    (jRes.data || []).forEach(j => jobsByRecord.set(`${j.record_id}|${j.service}`, j));
   } catch (e) { console.warn("refreshContactDataForRecord failed:", e); }
+}
+
+// ── Skip-trace helpers (ported from probate.html) ─────────────────
+function normalizePhone(input) {
+  if (!input) return null;
+  const digits = String(input).replace(/\D/g, "");
+  let ten;
+  if (digits.length === 10) ten = digits;
+  else if (digits.length === 11 && digits[0] === "1") ten = digits.slice(1);
+  else return null;
+  return {
+    e164: "+1" + ten,
+    display: `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`,
+  };
+}
+
+function buildTPSUrl(firstName, lastName, city, state) {
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (!name) return null;
+  const cityState = [city, state].filter(Boolean).join(" ").trim();
+  const params = new URLSearchParams();
+  params.set("name", name);
+  if (cityState) params.set("citystatezip", cityState);
+  return "https://www.truepeoplesearch.com/results?" + params.toString();
+}
+
+function formatPhoneOnBlur(input) {
+  const raw = input.value.trim();
+  if (!raw) { input.classList.remove("error"); return; }
+  const norm = normalizePhone(raw);
+  if (norm) { input.value = norm.display; input.classList.remove("error"); }
+  else { input.classList.add("error"); }
+}
+
+// Toggle which phone slot is "best" within a SECTION (owner or co-borrower).
+// Only one starred per role. Visual-only until Save.
+function toggleBestInSection(sectionEl, slot) {
+  const slots = sectionEl.querySelectorAll(".phone-slot");
+  slots.forEach(el => {
+    const s = parseInt(el.dataset.slot, 10);
+    const star = el.querySelector(".star-toggle");
+    if (s === slot) {
+      const wasActive = el.classList.contains("is-best");
+      el.classList.toggle("is-best", !wasActive);
+      star.classList.toggle("active", !wasActive);
+      star.innerHTML = !wasActive ? "&#9733;" : "&#9734;";
+    } else {
+      el.classList.remove("is-best");
+      star.classList.remove("active");
+      star.innerHTML = "&#9734;";
+    }
+  });
 }
 
 function renderRecordList() {
@@ -2214,120 +2400,304 @@ function toggleStpRow(recordId, btnEl) {
   }
 }
 
+// Build the full skip-trace panel — matches probate UX with two
+// side-by-side sections (owner + co-borrower), search date / status /
+// comment / notes at the top, 4 phone slots + email per section,
+// last-seen date per phone, functional star.
 function renderPanelForm(recordId) {
   const r = DATA.records.find(rec => rec.id === recordId);
-  if (!r) return "<p>Record not found</p>";
+  if (!r) return `<div class="stp-error">Record not found.</div>`;
+
   const phones = phonesByRecord.get(recordId) || [];
-  const ownerPhones = phones.filter(p => p.role === "owner");
-  const cobPhones   = phones.filter(p => p.role === "co_borrower");
-  const owner = r.owner || "(no owner)";
-  const cob = r.co_borrower || "";
+  const emails = emailsByRecord.get(recordId) || [];
+  const job = jobsByRecord.get(`${recordId}|truepeoplesearch`) || {};
 
-  const tpsLink = (name) => {
-    if (!name) return "";
-    const url = `https://www.truepeoplesearch.com/results?name=${encodeURIComponent(name)}`;
-    return `<a class="stp-tps-link" href="${url}" target="_blank" rel="noopener">TPS &#8599;</a>`;
+  const tpsPhones = phones.filter(p => p.source === "truepeoplesearch_manual");
+  const tpsEmails = emails.filter(e => e.source === "truepeoplesearch_manual");
+
+  // Phones bucketed by role, then by priority slot
+  const buckets = { owner: {}, co_borrower: {} };
+  tpsPhones.forEach(p => {
+    if (!buckets[p.role]) return;
+    if (p.priority >= 1 && p.priority <= 4) buckets[p.role][p.priority] = p;
+  });
+  // Email per role (first one)
+  const ownerEmail = tpsEmails.find(e => e.role === "owner")?.email || "";
+  const cobEmail   = tpsEmails.find(e => e.role === "co_borrower")?.email || "";
+
+  // Name parsing for TPS link (first/last from full name string)
+  const nameParts = (s) => {
+    const t = (s || "").trim();
+    if (!t) return [null, null];
+    const parts = t.split(/\s+/);
+    return [parts[0], parts.slice(1).join(" ")];
   };
+  const [oFirst, oLast] = nameParts(r.owner);
+  const [cFirst, cLast] = nameParts(r.co_borrower);
+  const ownerTps = buildTPSUrl(oFirst, oLast, r.prop_city || r.mail_city, r.prop_state || r.mail_state);
+  const cobTps   = buildTPSUrl(cFirst, cLast, r.prop_city || r.mail_city, r.prop_state || r.mail_state);
 
-  const sectionFor = (role, name, rolePhones) => {
-    const cell = (slot, label) => {
-      const ph = rolePhones.find(p => p.priority === slot);
-      const val = ph ? (ph.phone_display || ph.phone_e164 || "") : "";
-      const isBest = ph && ph.is_best;
+  const todayCT = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+
+  const personBlock = (role, name, tpsUrl, slotsObj, emailVal) => {
+    const slot = (n, label) => {
+      const p = slotsObj[n] || {};
+      const isBest = !!p.is_best;
       return `
-        <div class="stp-row">
-          <label>${label}</label>
-          <input class="stp-input" data-role="${role}" data-slot="${slot}" type="text" value="${escapeHtml(val)}" placeholder="(xxx) xxx-xxxx">
-          <button type="button" class="stp-star ${isBest ? "active" : ""}" data-role="${role}" data-slot="${slot}" onclick="toggleStarCard(this)" title="Mark as best phone">&#9733;</button>
+        <div class="phone-slot ${isBest ? "is-best" : ""}" data-role="${role}" data-slot="${n}">
+          <button class="star-toggle ${isBest ? "active" : ""}" type="button"
+                  onclick="toggleBestInSection(this.closest('.stp-person-block'), ${n})"
+                  title="Mark as best phone for SMS">${isBest ? "&#9733;" : "&#9734;"}</button>
+          <span class="slot-label">${label}</span>
+          <input type="text" class="phone-input" placeholder="(XXX) XXX-XXXX"
+                 data-phone-input="${n}" data-role="${role}"
+                 value="${escapeHtml(p.phone_display || "")}"
+                 onblur="formatPhoneOnBlur(this)">
+          <label style="font-size:0.66rem;color:var(--text-muted);margin-left:auto">Last seen</label>
+          <input type="date" class="last-seen-input"
+                 data-last-seen="${n}" data-role="${role}"
+                 value="${escapeHtml(p.last_activity || "")}">
         </div>`;
     };
     return `
-      <div class="stp-section">
-        <h4>${escapeHtml(name)} <span class="role-tag">${role.replace("_", " ")}</span> ${tpsLink(name)}</h4>
-        ${cell(1, "Cell 1")}${cell(2, "Cell 2")}${cell(3, "Cell 3")}${cell(4, "Land 1")}
+      <div class="stp-person-block" data-role="${role}">
+        <div class="stp-person-header">
+          <span>${escapeHtml(name || "(none)")}<span class="role-tag">${role.replace("_", " ")}</span></span>
+          ${tpsUrl
+            ? `<a class="tps-link" href="${escapeHtml(tpsUrl)}" target="_blank" rel="noopener" title="Search ${escapeHtml(name)} on TruePeopleSearch">&#8599; TPS</a>`
+            : `<span class="tps-link disabled">no name</span>`}
+        </div>
+        <div class="stp-phones">
+          ${slot(1, "Cell 1")}
+          ${slot(2, "Cell 2")}
+          ${slot(3, "Cell 3")}
+          ${slot(4, "Land 1")}
+        </div>
+        <div class="stp-email-row">
+          <label>Email</label>
+          <input type="email" class="email-input" data-role="${role}"
+                 placeholder="email@example.com" value="${escapeHtml(emailVal || "")}">
+        </div>
       </div>`;
   };
 
-  const sections = [sectionFor("owner", owner, ownerPhones)];
-  if (cob) sections.push(sectionFor("co_borrower", cob, cobPhones));
+  const showCob = !!r.co_borrower;
+  const peopleHtml = showCob
+    ? personBlock("owner", r.owner || "(no owner)", ownerTps, buckets.owner, ownerEmail) +
+      personBlock("co_borrower", r.co_borrower, cobTps, buckets.co_borrower, cobEmail)
+    : personBlock("owner", r.owner || "(no owner)", ownerTps, buckets.owner, ownerEmail);
 
   return `
-    <div class="stp-sections" style="${cob ? '' : 'grid-template-columns:1fr'}">
-      ${sections.join("")}
+    <div class="stp-header">
+      <h4>Skip Trace Workspace</h4>
+      <span style="font-size:0.7rem;color:var(--text-muted)">Doc# ${escapeHtml(r.doc_num || "")}</span>
     </div>
-    <div class="stp-actions">
-      <button class="stp-btn cancel" onclick="togglePanel('${recordId}', this.closest('.record-card').querySelector('.skip-trace-toggle-btn'))">Cancel</button>
-      <button class="stp-btn" onclick="savePanelDataCard('${recordId}', this)">Save Phones</button>
+
+    <div class="stp-meta-row">
+      <label>Search Date</label>
+      <input type="date" class="stp-input short-date" id="stp-date-${recordId}"
+             value="${escapeHtml(job.search_date || todayCT)}">
+      <label style="margin-left:6px">Status</label>
+      <select class="stp-select" id="stp-status-${recordId}">
+        <option value="pending"        ${(!job.status || job.status === "pending") ? "selected" : ""}>Pending</option>
+        <option value="open"           ${job.status === "open" ? "selected" : ""}>Open</option>
+        <option value="not_found"      ${job.status === "not_found" ? "selected" : ""}>Not Found</option>
+        <option value="needs_research" ${job.status === "needs_research" ? "selected" : ""}>Needs Research</option>
+      </select>
+    </div>
+    <div class="stp-meta-row">
+      <label>Comment</label>
+      <input type="text" class="stp-input comment-input" id="stp-comment-${recordId}"
+             placeholder="One-line comment about this search..."
+             value="${escapeHtml(job.comment || "")}">
+    </div>
+    <div class="stp-meta-row">
+      <label>Notes</label>
+      <textarea class="stp-input notes-input" id="stp-notes-${recordId}" rows="2"
+                placeholder="Free-form notes from VA — context, leads, follow-ups..."
+                style="resize:vertical;min-height:36px">${escapeHtml(job.notes || "")}</textarea>
+    </div>
+
+    <div class="stp-people-grid ${showCob ? "" : "single-col"}" id="stp-people-${recordId}">
+      ${peopleHtml}
+    </div>
+
+    <div class="stp-error" id="stp-error-${recordId}"></div>
+
+    <div class="stp-buttons">
+      <button class="stp-btn" onclick="toggleStpRow('${recordId}', null)">Close</button>
+      <button class="stp-btn primary" onclick="savePanelDataCard('${recordId}', this)">Save Skip Trace</button>
     </div>`;
 }
 
-function toggleStarCard(btn) {
-  const role = btn.dataset.role;
-  const card = btn.closest(".record-card");
-  card.querySelectorAll(`.stp-star[data-role="${role}"]`).forEach(b => {
-    if (b !== btn) b.classList.remove("active");
-  });
-  btn.classList.toggle("active");
-}
-
+// Save the panel — writes to skip_trace_jobs (one row), contact_phones
+// (delete-then-insert all TPS-source rows for owner+co_borrower roles),
+// and contact_emails (same pattern). Comment + Notes both stored on
+// the skip_trace_jobs row.
 async function savePanelDataCard(recordId, btnEl) {
+  if (!currentSession?.user?.id) { leadsToast("Sign in required", "error"); return; }
   const role = currentProfile?.role;
   if (role !== "admin" && role !== "editor") {
-    leadsToast("Only editors can save phones", "error");
+    leadsToast("Only editors can save skip-trace data", "error");
     return;
   }
-  const card = btnEl.closest(".record-card");
-  if (!card) return;
-  btnEl.disabled = true;
-  btnEl.textContent = "Saving...";
+  const errEl = document.getElementById(`stp-error-${recordId}`);
+  if (errEl) errEl.textContent = "";
 
-  const rows = [];
-  card.querySelectorAll(".stp-input").forEach(input => {
-    const r = input.dataset.role;
-    const slot = parseInt(input.dataset.slot, 10);
-    const raw = input.value.trim();
+  // The panel lives inside a <tr> in the table — find it via id, NOT
+  // .closest('.record-card'). That was the bug that broke Save.
+  const panel = document.getElementById(`stp-panel-${recordId}`);
+  if (!panel) {
+    leadsToast("Panel not found — cannot save", "error");
+    return;
+  }
+
+  const date = document.getElementById(`stp-date-${recordId}`).value || null;
+  const status = document.getElementById(`stp-status-${recordId}`).value;
+  const comment = document.getElementById(`stp-comment-${recordId}`).value.trim() || null;
+  const notes = document.getElementById(`stp-notes-${recordId}`).value.trim() || null;
+
+  // Collect phones from each .phone-slot
+  const phoneRows = [];
+  let hasInvalid = false;
+  panel.querySelectorAll(".phone-slot").forEach(el => {
+    const r = el.dataset.role;
+    const slot = parseInt(el.dataset.slot, 10);
+    const phoneInput = el.querySelector(".phone-input");
+    const lastSeenInput = el.querySelector(".last-seen-input");
+    const raw = phoneInput.value.trim();
     if (!raw) return;
-    const e164 = toE164Card(raw);
-    if (!e164) return;
-    const display = formatPhoneDisplayCard(e164);
-    const star = card.querySelector(`.stp-star[data-role="${r}"][data-slot="${slot}"]`);
-    rows.push({
-      record_id: recordId, role: r,
-      phone_e164: e164, phone_display: display,
-      phone_type: "wireless",
+    const norm = normalizePhone(raw);
+    if (!norm) {
+      phoneInput.classList.add("error");
+      hasInvalid = true;
+      return;
+    }
+    phoneInput.classList.remove("error");
+    phoneRows.push({
+      record_id: recordId,
+      role: r,
+      phone_e164: norm.e164,
+      phone_display: norm.display,
+      phone_type: slot === 4 ? "landline" : "wireless",
       priority: slot,
-      is_best: star ? star.classList.contains("active") : false,
+      is_best: el.classList.contains("is-best"),
       source: "truepeoplesearch_manual",
+      last_activity: lastSeenInput.value || null,
       added_by: currentSession.user.id,
       updated_by: currentSession.user.id,
     });
   });
 
-  try {
-    await sb.from("contact_phones").delete().eq("record_id", recordId).in("role", ["owner", "co_borrower"]);
-    if (rows.length > 0) {
-      const { error } = await sb.from("contact_phones").insert(rows);
-      if (error) throw error;
+  if (hasInvalid) {
+    if (errEl) errEl.textContent = "One or more phones are invalid (need 10 digits). Fix the highlighted fields.";
+    return;
+  }
+
+  // is_best constraint: at most one per (record_id, role)
+  const bestByRole = {};
+  for (const p of phoneRows) {
+    if (p.is_best) {
+      if (bestByRole[p.role]) {
+        if (errEl) errEl.textContent = `Only one "best" phone allowed per person (${p.role}).`;
+        return;
+      }
+      bestByRole[p.role] = true;
     }
-    leadsToast("Phones saved", "success");
+  }
+
+  // Collect emails per role
+  const emailRows = [];
+  panel.querySelectorAll(".email-input").forEach(input => {
+    const r = input.dataset.role;
+    const raw = input.value.trim();
+    if (!raw) return;
+    if (!raw.includes("@")) {
+      hasInvalid = true;
+      input.classList.add("error");
+      return;
+    }
+    input.classList.remove("error");
+    emailRows.push({
+      record_id: recordId,
+      role: r,
+      email: raw.toLowerCase(),
+      source: "truepeoplesearch_manual",
+      added_by: currentSession.user.id,
+      updated_by: currentSession.user.id,
+    });
+  });
+  if (hasInvalid) {
+    if (errEl) errEl.textContent = "Email looks invalid (no @). Fix highlighted fields.";
+    return;
+  }
+
+  btnEl.disabled = true;
+  btnEl.textContent = "Saving...";
+
+  try {
+    // 1. Upsert skip_trace_jobs row
+    const jobPayload = {
+      record_id: recordId,
+      service: "truepeoplesearch",
+      status: status,
+      search_date: date,
+      comment: comment,
+      searched_by: currentSession.user.id,
+    };
+    // Notes column may not exist in older DB — try with notes first, fall back without
+    let jobErr;
+    ({ error: jobErr } = await sb
+      .from("skip_trace_jobs")
+      .upsert({ ...jobPayload, notes: notes }, { onConflict: "record_id,service" }));
+    if (jobErr && jobErr.message && jobErr.message.includes("notes")) {
+      // notes column doesn't exist — retry without
+      ({ error: jobErr } = await sb
+        .from("skip_trace_jobs")
+        .upsert(jobPayload, { onConflict: "record_id,service" }));
+      if (!jobErr) {
+        leadsToast("Notes saved as comment (notes column missing — see migration).", "info");
+      }
+    }
+    if (jobErr) throw jobErr;
+
+    // 2. Delete + re-insert phones for owner + co_borrower (TPS source)
+    const { error: delPhErr } = await sb
+      .from("contact_phones")
+      .delete()
+      .eq("record_id", recordId)
+      .eq("source", "truepeoplesearch_manual")
+      .in("role", ["owner", "co_borrower"]);
+    if (delPhErr) throw delPhErr;
+    if (phoneRows.length > 0) {
+      const { error: insPhErr } = await sb.from("contact_phones").insert(phoneRows);
+      if (insPhErr) throw insPhErr;
+    }
+
+    // 3. Delete + re-insert emails for owner + co_borrower (TPS source)
+    const { error: delEmErr } = await sb
+      .from("contact_emails")
+      .delete()
+      .eq("record_id", recordId)
+      .eq("source", "truepeoplesearch_manual")
+      .in("role", ["owner", "co_borrower"]);
+    if (delEmErr) throw delEmErr;
+    if (emailRows.length > 0) {
+      const { error: insEmErr } = await sb.from("contact_emails").insert(emailRows);
+      if (insEmErr) throw insEmErr;
+    }
+
     await refreshContactDataForRecord(recordId);
+    leadsToast("Skip trace saved", "success");
     applyFilters();
   } catch (e) {
-    leadsToast("Save failed: " + (e.message || e), "error");
+    console.error("savePanelDataCard error:", e);
+    const msg = e.message || (e.error ? e.error.message : null) || String(e);
+    if (errEl) errEl.textContent = "Save failed: " + msg;
+    leadsToast("Save failed: " + msg, "error");
     btnEl.disabled = false;
-    btnEl.textContent = "Save Phones";
+    btnEl.textContent = "Save Skip Trace";
   }
-}
-
-function toE164Card(raw) {
-  const digits = raw.replace(/\D+/g, "");
-  if (digits.length < 10) return null;
-  return "+1" + digits.slice(-10);
-}
-
-function formatPhoneDisplayCard(e164) {
-  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
-  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
 }
 
 async function flipStatusCard(recordId, newStatus, btnEl) {
