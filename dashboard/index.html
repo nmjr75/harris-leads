@@ -640,11 +640,6 @@
   <select id="runPicker" title="Pick a scraper run to see only the records it touched">
     <option value="">All Runs</option>
   </select>
-  <select id="saleMonthFilter"><option value="">All Sale Months</option></select>
-  <span style="font-size:0.72rem;color:var(--text-muted);">Filed:</span>
-  <input type="date" id="filedFrom" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed from date">
-  <span style="font-size:0.72rem;color:var(--text-muted);">to</span>
-  <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
   <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
   <button class="btn" onclick="resetFilters()">Reset</button>
   <div class="export-group">
@@ -665,6 +660,17 @@
     </select>
     <span class="showing-label" id="showingLabel"></span>
   </div>
+</div>
+
+<!-- Second filter row: date filters kept together -->
+<div class="filters" id="filtersBar2" style="padding-top:0">
+  <select id="saleMonthFilter"><option value="">All Sale Months</option></select>
+  <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">
+    <span style="font-size:0.72rem;color:var(--text-muted);">Filed:</span>
+    <input type="date" id="filedFrom" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed from date">
+    <span style="font-size:0.72rem;color:var(--text-muted);">to</span>
+    <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
+  </span>
 </div>
 
 <div class="table-wrap">
