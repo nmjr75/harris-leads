@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Leads Workspace — Harris County Motivated Sellers</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -20,7 +19,6 @@
     --orange: #f59e0b;
     --blue: #3b82f6;
     --cyan: #06b6d4;
-    --estatetrace: #10b981;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -29,7 +27,7 @@
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
-    padding-bottom: 50px;
+    padding-bottom: 40px;
   }
 
   /* Header */
@@ -40,22 +38,559 @@
     padding: 16px 24px;
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
   }
-  .header-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   .header h1 { font-size: 1.25rem; font-weight: 700; }
   .header h1 span { color: var(--accent-light); }
-  .nav-link {
+  .header-meta { font-size: 0.75rem; color: var(--text-muted); text-align: right; }
+
+  /* Stat Cards */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 16px 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .stat-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .stat-card.active { border-color: var(--accent); background: var(--surface2); }
+  .stat-card .value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--accent-light);
+  }
+  .stat-card .label {
+    font-size: 0.7rem;
     color: var(--text-muted);
-    text-decoration: none;
-    font-size: 0.78rem;
-    padding: 6px 10px;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-card.total .value { color: var(--text); }
+  .stat-card.addr .value  { color: var(--green); }
+
+  /* Score badge on cards */
+  .stat-card .pct {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+  }
+
+  /* Charts row */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 0 24px 12px;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .chart-card h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    letter-spacing: 0.04em;
+  }
+  .bar-chart { display: flex; flex-direction: column; gap: 6px; }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+  }
+  .bar-label { width: 120px; text-align: right; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; height: 18px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; display: flex; align-items: center; padding-left: 6px; font-size: 0.65rem; font-weight: 600; color: #fff; }
+  .bar-count { width: 35px; text-align: right; font-weight: 600; font-size: 0.75rem; flex-shrink: 0; }
+
+  /* Score distribution */
+  .score-dist { display: flex; align-items: flex-end; gap: 3px; height: 80px; }
+  .score-bar {
+    flex: 1;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+    min-width: 8px;
+    transition: height 0.4s ease;
+    position: relative;
+    cursor: pointer;
+  }
+  .score-bar:hover { opacity: 0.8; }
+  .score-bar .tooltip {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #000;
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-bottom: 4px;
+  }
+  .score-bar:hover .tooltip { display: block; }
+  .score-labels { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--text-muted); margin-top: 4px; }
+
+  /* Filters */
+  .filters {
+    display: flex;
+    gap: 8px;
+    padding: 12px 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filters input, .filters select {
+    background: var(--surface);
+    color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .filters input:focus, .filters select:focus { border-color: var(--accent); }
+  .filters input::placeholder { color: var(--text-muted); }
+  .search-input { width: 200px; }
+  .score-input { width: 72px; }
+  .score-range { display: flex; align-items: center; gap: 4px; }
+  .score-range span { color: var(--text-muted); font-size: 0.75rem; }
+  .btn {
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-accent:hover { background: var(--accent-light); }
+  .btn-green { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+  .btn-green:hover { opacity: 0.85; }
+  .btn-green:disabled { opacity: 0.4; cursor: default; }
+  .export-group { display: flex; gap: 4px; align-items: center; }
+  .selected-count { font-size: 0.7rem; color: var(--green); font-weight: 600; margin-left: 2px; }
+  .filter-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .filter-tag .x { cursor: pointer; opacity: 0.7; }
+  .filter-tag .x:hover { opacity: 1; }
+  .showing-label { font-size: 0.75rem; color: var(--text-muted); margin-left: auto; }
+
+  /* Table */
+  .table-wrap {
+    overflow-x: auto;
+    padding: 0 24px 24px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    padding: 10px 8px;
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+  }
+  thead th:hover { color: var(--accent-light); }
+  thead th .sort-arrow { margin-left: 3px; font-size: 0.6rem; }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 10px 8px; vertical-align: top; }
+  td.score-cell {
+    font-weight: 700;
+    text-align: center;
+  }
+  .score-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .score-high { background: rgba(34,197,94,0.15); color: var(--green); }
+  .score-med  { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .score-low  { background: rgba(139,143,163,0.15); color: var(--text-muted); }
+  .type-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .flag-pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    margin: 1px 2px;
+    white-space: nowrap;
+  }
+  .flag-pill.distress { background: rgba(239,68,68,0.15); color: var(--red); }
+  .flag-pill.info     { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .flag-pill.fresh    { background: rgba(34,197,94,0.15); color: var(--green); }
+
+  /* Confidence badges */
+  .conf-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .conf-high   { background: rgba(34,197,94,0.18); color: var(--green); }
+  .conf-medium { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .conf-low    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .conf-none   { background: rgba(139,143,163,0.12); color: var(--text-muted); }
+
+  /* SIFTstack submission status pill */
+  .siftstack-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: help;
+    white-space: nowrap;
+  }
+  .siftstack-pill.ss-completed { background: rgba(34,197,94,0.18); color: var(--green); }
+  .siftstack-pill.ss-queued    { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .siftstack-pill.ss-failed    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .siftstack-pill.ss-none      { background: rgba(139,143,163,0.12); color: var(--text-muted); }
+
+  /* Stat card color variants for siftstack filters */
+  .stat-card.enriched .value { color: var(--green); }
+  .stat-card.queued   .value { color: var(--orange); }
+  .stat-card.manual   .value { color: var(--red); }
+
+  /* SIFTstack queue-confirm modal */
+  .siftstack-confirm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10000;
+  }
+  .siftstack-confirm {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    max-width: 460px;
+    width: 92%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .siftstack-confirm h3 { margin: 0 0 12px; color: var(--text); font-size: 1.1rem; }
+  .siftstack-confirm p  { color: var(--text-muted); font-size: 0.9rem; margin: 8px 0; }
+  .siftstack-confirm ul { color: var(--text); font-size: 0.9rem; margin: 8px 0 16px; padding-left: 22px; }
+  .siftstack-confirm ul li { margin: 4px 0; }
+  .siftstack-confirm-buttons {
+    display: flex; flex-direction: column; gap: 8px; margin-top: 16px;
+  }
+  .siftstack-confirm-buttons .btn { width: 100%; justify-content: center; }
+
+  /* SIFTstack action button (next to Export Selected) */
+  .btn-siftstack {
+    background: #7c5cfc; color: #fff; border-color: #7c5cfc;
+  }
+  .btn-siftstack:hover:not(:disabled) { background: #6a4af0; }
+  .btn-siftstack:disabled { opacity: 0.45; cursor: not-allowed; }
+  td a { color: var(--accent-light); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .addr-cell { max-width: 200px; }
+  .owner-cell { max-width: 260px; word-break: break-word; font-size: 0.78rem; }
+
+  /* Editable cells (foreclosure records) */
+  .editable-cell {
+    position: relative;
+    cursor: text !important;
+    border: 1px dashed transparent;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .editable-cell:hover {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.06);
+  }
+  .editable-cell::after {
+    content: "\270E";
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    font-size: 0.65rem;
+    color: var(--accent-light);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .editable-cell:hover::after { opacity: 0.7; }
+  .editable-cell.editing {
+    border-color: var(--accent);
+    background: rgba(124,92,252,0.1);
+  }
+  .editable-cell input {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    font-size: 0.78rem;
+    padding: 3px 6px;
+    border-radius: 3px;
+    width: 100%;
+    outline: none;
+  }
+  .editable-cell input:focus { border-color: var(--accent-light); }
+  .edit-saved {
+    animation: editFlash 0.6s ease;
+  }
+  @keyframes editFlash {
+    0% { background: rgba(34,197,94,0.25); }
+    100% { background: transparent; }
+  }
+  /* Undo button */
+  .btn-undo {
+    background: rgba(239,68,68,0.15);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.3);
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
     transition: all 0.15s;
   }
-  .nav-link:hover { color: var(--text); border-color: var(--accent); }
-  .header-meta { font-size: 0.75rem; color: var(--text-muted); }
+  .btn-undo:hover:not(:disabled) {
+    background: rgba(239,68,68,0.25);
+    border-color: var(--red);
+  }
+  .btn-undo:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .undo-info {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+
+  /* Row checkboxes */
+  .row-cb, .hdr-cb {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  tbody tr.selected { background: rgba(124,92,252,0.08); }
+  tbody tr.selected:hover { background: rgba(124,92,252,0.14); }
+  tbody tr td:not(:first-child) { cursor: pointer; }
+
+  /* Detail Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .modal-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    flex: 1;
+    word-break: break-word;
+  }
+  .modal-header .cat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-score {
+    font-size: 1.5rem;
+    font-weight: 800;
+  }
+  .modal-score-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .modal-score-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .modal-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .modal-section {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-section:last-child { border-bottom: none; }
+  .modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .modal-field-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+  }
+  .modal-field-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .modal-field-value a { color: var(--accent-light); text-decoration: none; font-size: 0.78rem; }
+  .modal-field-value a:hover { text-decoration: underline; }
+  .modal-addr-block {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 4px;
+  }
+  .modal-addr-block .addr-line {
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+  .modal-addr-block .addr-city {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 24px;
+  }
+  .pagination button {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pagination button:hover { border-color: var(--accent); }
+  .pagination button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+  .page-info { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .header { padding: 12px 16px; }
+    .filters { padding: 8px 16px; }
+    .table-wrap { padding: 0 8px 16px; }
+    .search-input { width: 100%; }
+    .bar-label { width: 80px; font-size: 0.65rem; }
+  }
+
+  /* Edit marker dot — shows next to score when row has manual edits */
+  .edit-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 5px;
+    background: var(--accent-light);
+    border-radius: 50%;
+    vertical-align: middle;
+  }
+
+  /* ────────────────────────────────────────────────────────────────
+     Card view + queue tabs + skip-trace (added for /leads workspace)
+     ──────────────────────────────────────────────────────────────── */
 
   /* Queue tabs */
   .queue-tabs {
@@ -90,117 +625,7 @@
     font-size: 0.7rem;
     color: var(--text-muted);
   }
-  .queue-tab.active .badge {
-    background: var(--accent);
-    color: #fff;
-  }
-
-  /* Filter bar */
-  .filter-bar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 14px 24px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-  }
-  .filter-label {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  select.filter-select, input.date-input {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 0.78rem;
-    outline: none;
-    cursor: pointer;
-  }
-  input.date-input { cursor: text; width: 130px; }
-  select.filter-select:hover, input.date-input:focus { border-color: var(--accent); }
-  .search-input {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 0.78rem;
-    outline: none;
-    min-width: 240px;
-  }
-  .search-input:focus { border-color: var(--accent); }
-  .reset-btn {
-    background: transparent;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 12px;
-    cursor: pointer;
-    font-size: 0.78rem;
-  }
-  .reset-btn:hover { border-color: var(--accent); color: var(--text); }
-
-  /* Selection toolbar */
-  .select-bar {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 10px 24px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    font-size: 0.78rem;
-  }
-  .select-bar label.cb-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    color: var(--text);
-    user-select: none;
-  }
-  .select-bar .sel-count {
-    color: var(--text-muted);
-    font-size: 0.75rem;
-  }
-  .select-bar button {
-    background: transparent;
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 12px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    transition: all 0.15s;
-  }
-  .select-bar button:hover:not(:disabled) { border-color: var(--accent); }
-  .select-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .select-bar button.btn-export {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-    font-weight: 600;
-  }
-  .select-bar button.btn-export:hover:not(:disabled) {
-    background: var(--accent-light);
-    border-color: var(--accent-light);
-  }
-  .select-bar button.btn-siftstack {
-    background: var(--estatetrace);
-    border-color: var(--estatetrace);
-    color: #fff;
-    font-weight: 600;
-  }
-  .select-bar button.btn-siftstack:hover:not(:disabled) {
-    background: #0ea372;
-    border-color: #0ea372;
-  }
-  .select-bar .sel-spacer { flex: 1; }
+  .queue-tab.active .badge { background: var(--accent); color: #fff; }
 
   /* Records list */
   .records {
@@ -226,9 +651,7 @@
     align-items: start;
   }
   .record-cb-cell {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    display: flex; align-items: flex-start; justify-content: center;
     padding-top: 4px;
   }
   .record-cb {
@@ -244,94 +667,15 @@
     letter-spacing: 0.5px;
   }
   .field-value { font-size: 0.8rem; word-break: break-word; }
-  .field-value.muted { color: var(--text-muted); font-style: italic; }
   .field-value.dim { color: var(--text-muted); font-size: 0.72rem; }
 
-  /* Score pill */
-  .score-pill {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 0.85rem;
-    color: #fff;
-    text-align: center;
-    min-width: 38px;
-  }
-  .score-high { background: var(--green); }
-  .score-med  { background: var(--orange); }
-  .score-low  { background: var(--accent); }
-
-  /* Pills */
-  .type-badge {
-    display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    background: var(--surface2);
-    color: var(--text);
-  }
-  .conf-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 8px;
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: #fff;
-  }
-  .conf-high { background: var(--green); }
-  .conf-medium { background: var(--orange); }
-  .conf-low { background: var(--red); }
-  .conf-none { background: var(--text-muted); }
-  .flag-pill {
-    display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    margin: 2px 2px 0 0;
-    font-weight: 500;
-  }
-  .flag-pill.fresh { background: rgba(34,197,94,0.15); color: var(--green); }
-  .flag-pill.distress { background: rgba(239,68,68,0.15); color: var(--red); }
-  .flag-pill.info { background: rgba(59,130,246,0.15); color: var(--blue); }
-
-  .siftstack-pill {
-    display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 600;
-  }
-  .siftstack-pill.queued    { background: rgba(245,158,11,0.18); color: var(--orange); }
-  .siftstack-pill.completed { background: rgba(16,185,129,0.18); color: var(--estatetrace); }
-  .siftstack-pill.failed    { background: rgba(239,68,68,0.18); color: var(--red); }
-  .siftstack-pill.manual    { background: rgba(124,92,252,0.18); color: var(--accent-light); }
-
-  /* External link icon */
-  .ext-link {
-    color: var(--accent-light);
-    text-decoration: none;
-    font-size: 0.75rem;
-    margin-right: 6px;
-  }
-  .ext-link:hover { text-decoration: underline; }
-
-  /* Action buttons in card */
-  .actions-col {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
+  /* Per-card actions */
+  .actions-col { display: flex; flex-direction: column; gap: 6px; }
   .action-btn {
-    background: transparent;
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 8px;
-    cursor: pointer;
-    font-size: 0.72rem;
-    text-align: center;
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 8px; cursor: pointer;
+    font-size: 0.72rem; text-align: center;
     transition: all 0.15s;
   }
   .action-btn:hover:not(:disabled) { border-color: var(--accent); }
@@ -345,37 +689,46 @@
   .action-btn.reverify { color: var(--accent-light); border-color: rgba(124,92,252,0.4); }
   .action-btn.reverify:hover:not(:disabled) { background: rgba(124,92,252,0.1); border-color: var(--accent); }
 
+  .siftstack-pill-card {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+  .siftstack-pill-card.queued    { background: rgba(245,158,11,0.18); color: var(--orange); }
+  .siftstack-pill-card.completed { background: rgba(16,185,129,0.18); color: var(--estatetrace); }
+  .siftstack-pill-card.failed    { background: rgba(239,68,68,0.18); color: var(--red); }
+  .siftstack-pill-card.manual    { background: rgba(124,92,252,0.18); color: var(--accent-light); }
+
+  .ext-link-card {
+    color: var(--accent-light);
+    text-decoration: none;
+    font-size: 0.75rem;
+    margin-right: 6px;
+  }
+  .ext-link-card:hover { text-decoration: underline; }
+
   /* Skip-trace section */
   .skip-trace-toggle-row {
     margin-top: 12px;
     padding-top: 10px;
     border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    display: flex; align-items: center; gap: 12px;
   }
   .skip-trace-toggle-btn {
-    background: var(--estatetrace);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 0.75rem;
-    font-weight: 600;
+    background: var(--estatetrace); color: #fff;
+    border: none; border-radius: 6px;
+    padding: 6px 12px; cursor: pointer;
+    font-size: 0.75rem; font-weight: 600;
     transition: background 0.15s;
   }
   .skip-trace-toggle-btn:hover { background: #0ea372; }
-  .phone-count-badge {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-  }
+  .phone-count-badge { font-size: 0.72rem; color: var(--text-muted); }
   .phone-count-badge.has-phones { color: var(--green); font-weight: 600; }
   .skip-trace-panel {
-    margin-top: 12px;
-    padding: 14px;
-    background: var(--bg);
-    border: 1px solid var(--border);
+    margin-top: 12px; padding: 14px;
+    background: var(--bg); border: 1px solid var(--border);
     border-radius: 8px;
   }
   .stp-sections {
@@ -384,104 +737,57 @@
     gap: 16px;
   }
   .stp-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
   }
   .stp-section h4 {
-    font-size: 0.78rem;
-    margin-bottom: 8px;
-    color: var(--text);
+    font-size: 0.78rem; margin-bottom: 8px;
   }
   .stp-section h4 span.role-tag {
-    font-size: 0.62rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    margin-left: 6px;
-    letter-spacing: 0.5px;
+    font-size: 0.62rem; color: var(--text-muted);
+    text-transform: uppercase; margin-left: 6px; letter-spacing: 0.5px;
   }
   .stp-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
   .stp-row label {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    width: 60px;
-    flex-shrink: 0;
+    font-size: 0.7rem; color: var(--text-muted);
+    width: 60px; flex-shrink: 0;
   }
   .stp-input {
     flex: 1;
     background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 0.78rem;
-    color: var(--text);
-    outline: none;
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 8px; font-size: 0.78rem;
+    color: var(--text); outline: none;
   }
   .stp-input:focus { border-color: var(--accent); }
   .stp-star {
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 6px;
-    cursor: pointer;
-    color: var(--text-muted);
-    font-size: 0.78rem;
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 6px; cursor: pointer;
+    color: var(--text-muted); font-size: 0.78rem;
   }
   .stp-star.active { color: var(--orange); border-color: var(--orange); }
   .stp-tps-link {
-    display: inline-block;
-    color: var(--accent-light);
-    text-decoration: none;
-    font-size: 0.7rem;
-    margin-left: 6px;
+    display: inline-block; color: var(--accent-light);
+    text-decoration: none; font-size: 0.7rem; margin-left: 6px;
   }
   .stp-tps-link:hover { text-decoration: underline; }
   .stp-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
+    display: flex; gap: 8px; margin-top: 12px;
     justify-content: flex-end;
   }
   .stp-btn {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 14px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 600;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 6px;
+    padding: 6px 14px; cursor: pointer;
+    font-size: 0.78rem; font-weight: 600;
   }
   .stp-btn:hover { background: var(--accent-light); }
   .stp-btn.cancel {
-    background: transparent;
-    color: var(--text-muted);
+    background: transparent; color: var(--text-muted);
     border: 1px solid var(--border);
   }
   .stp-btn.cancel:hover { color: var(--text); }
-
-  /* Pagination */
-  .pagination {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-    padding: 16px 24px;
-    border-top: 1px solid var(--border);
-  }
-  .pagination button {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 0.78rem;
-  }
-  .pagination button:hover:not(:disabled) { border-color: var(--accent); }
-  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .pagination .page-info { font-size: 0.78rem; color: var(--text-muted); padding: 0 8px; }
 
   /* Empty state */
   .empty-state {
@@ -492,182 +798,157 @@
   .empty-state h3 { font-size: 1.1rem; margin-bottom: 8px; color: var(--text); }
   .empty-state p { font-size: 0.85rem; }
 
-  /* Modals */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 100;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-  }
-  .modal-overlay.show { display: flex; }
-  .modal {
-    background: var(--surface);
-    border-radius: 12px;
-    padding: 24px;
-    max-width: 420px;
-    width: 100%;
-    border: 1px solid var(--border);
-  }
-
   /* Toast */
   .toast {
-    position: fixed;
-    bottom: 60px;
-    left: 50%;
+    position: fixed; bottom: 60px; left: 50%;
     transform: translateX(-50%);
-    background: var(--surface);
-    color: var(--text);
+    background: var(--surface); color: var(--text);
     border: 1px solid var(--border);
-    border-left-width: 4px;
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 0.82rem;
-    z-index: 200;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    border-left-width: 4px; border-radius: 8px;
+    padding: 10px 16px; font-size: 0.82rem;
+    z-index: 200; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
     max-width: 460px;
   }
   .toast.success { border-left-color: var(--green); }
   .toast.error   { border-left-color: var(--red); }
   .toast.info    { border-left-color: var(--blue); }
-
-  /* User bar */
-  #userBar {
-    display: none;
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    padding: 6px 24px;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    align-items: center;
-    gap: 12px;
-    z-index: 99;
-  }
-  #userBar button {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 0.65rem;
-    cursor: pointer;
-  }
 </style>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
-<!-- Header -->
-<header class="header">
-  <div class="header-left">
-    <h1>Leads <span>Workspace</span></h1>
-    <a href="probate.html" class="nav-link">Probate Workspace &rarr;</a>
-    <a href="index.html" class="nav-link">Old Dashboard (table)</a>
-  </div>
-  <div class="header-meta" id="headerMeta">Loading...</div>
-</header>
+<div class="header">
+  <h1>Harris County <span>Motivated Sellers</span></h1>
+  <div class="header-meta" id="meta"></div>
+</div>
 
-<!-- Login modal -->
-<div class="modal-overlay" id="loginOverlay">
-  <div class="modal" style="max-width:380px;padding:32px">
-    <h2 style="margin-bottom:4px;font-size:1.25rem;text-align:center">Leads <span style="color:var(--accent-light)">Workspace</span></h2>
-    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px;text-align:center">Sign in to continue</p>
-    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
-      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
-      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
-      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
-      <button type="submit" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
-    </form>
+<div class="stats" id="stats"></div>
+
+<div class="charts-row" id="chartsRow">
+  <div class="chart-card">
+    <h3>Leads by Category</h3>
+    <div class="bar-chart" id="catChart"></div>
+  </div>
+  <div class="chart-card">
+    <h3>Score Distribution</h3>
+    <div class="score-dist" id="scoreChart"></div>
+    <div class="score-labels"><span>30</span><span>50</span><span>70</span><span>100</span></div>
   </div>
 </div>
 
-<!-- Main UI -->
-<div id="mainUI" style="display:none">
-
-  <!-- Filter bar (above tabs per Nelson's spec) -->
-  <div class="filter-bar">
-    <select class="filter-select" id="sourceFilter" onchange="render()">
-      <option value="">All Sources</option>
-      <option value="clerk_lead">Clerk Lead</option>
-      <option value="clerk_foreclosure">Clerk Foreclosure</option>
-    </select>
-    <select class="filter-select" id="typeFilter" onchange="render()">
-      <option value="">All Types</option>
-    </select>
-    <select class="filter-select" id="saleMonthFilter" onchange="render()">
-      <option value="">All Sale Months</option>
-    </select>
-    <span class="filter-label">Filed:</span>
-    <input type="date" class="date-input" id="filedFrom" onchange="render()">
-    <span class="filter-label">to</span>
-    <input type="date" class="date-input" id="filedTo" onchange="render()">
-    <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#..." oninput="render()">
-    <button class="reset-btn" onclick="resetFilters()">Reset</button>
+<div class="filters" id="filtersBar">
+  <select id="typeFilter"><option value="">All Types</option></select>
+  <div class="score-range">
+    <input type="number" class="score-input" id="scoreMin" placeholder="Min" min="0" max="100">
+    <span>–</span>
+    <input type="number" class="score-input" id="scoreMax" placeholder="Max" min="0" max="100">
   </div>
-
-  <!-- Queue tabs -->
-  <div class="queue-tabs">
-    <button class="queue-tab active" data-queue="verify" onclick="setQueue('verify')">
-      Verify <span class="badge" id="verifyCount">0</span>
-    </button>
-    <button class="queue-tab" data-queue="active" onclick="setQueue('active')">
-      Active <span class="badge" id="activeCount">0</span>
-    </button>
-    <button class="queue-tab" data-queue="archive" onclick="setQueue('archive')">
-      Archive <span class="badge" id="archiveCount">0</span>
-    </button>
-    <button class="queue-tab" data-queue="research" onclick="setQueue('research')">
-      Research <span class="badge" id="researchCount">0</span>
-    </button>
-    <button class="queue-tab" data-queue="siftstack" onclick="setQueue('siftstack')" title="Records VAs have manually submitted to SIFTstack via the Submit button">
-      Sent to SIFTstack <span class="badge" id="siftstackCount">0</span>
-    </button>
-    <button class="queue-tab" data-queue="autoq" onclick="setQueue('autoq')" title="Legacy records auto-queued to SIFTstack by the scraper before manual verification was required">
-      Auto-Q <span class="badge" id="autoqCount">0</span>
-    </button>
+  <select id="flagFilter"><option value="">All Flags</option></select>
+  <select id="addrFilter">
+    <option value="">All</option>
+    <option value="with">With Address</option>
+    <option value="without">Without Address</option>
+  </select>
+  <select id="confFilter">
+    <option value="">All Confidence</option>
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+    <option value="none">None</option>
+  </select>
+  <select id="sourceFilter">
+    <option value="">All Sources</option>
+    <option value="clerk">Clerk Records</option>
+    <option value="foreclosure">Foreclosures</option>
+    <option value="estatetrace">EstateTrace Probates</option>
+  </select>
+  <select id="runPicker" title="Pick a scraper run to see only the records it touched">
+    <option value="">All Runs</option>
+  </select>
+  <select id="batchFilter">
+    <option value="">All Batches</option>
+  </select>
+  <select id="saleMonthFilter"><option value="">All Sale Months</option></select>
+  <span style="font-size:0.72rem;color:var(--text-muted);">Filed:</span>
+  <input type="date" id="filedFrom" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed from date">
+  <span style="font-size:0.72rem;color:var(--text-muted);">to</span>
+  <input type="date" id="filedTo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:125px" title="Filed to date">
+  <input type="text" class="search-input" id="searchInput" placeholder="Search owner, legal, doc#...">
+  <button class="btn" onclick="resetFilters()">Reset</button>
+  <div class="export-group">
+    <button class="btn btn-accent" onclick="exportCSV('all')">Export All</button>
+    <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
+    <button class="btn btn-siftstack" id="siftstackBtn" onclick="handleSiftstackButton()" disabled title="Queue selected records for SIFTstack enrichment">SIFTstack <span class="selected-count" id="siftstackCount"></span></button>
+    <button class="btn" id="syncProbatesBtn" onclick="handleSyncProbates()" title="Pull latest probate data from the EstateTrace Google Sheet (read-only)">&#x21bb; Sync Probates</button>
+    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
   </div>
-
-  <!-- Selection toolbar -->
-  <div class="select-bar">
-    <label class="cb-label" title="Select/deselect every record visible on this page">
-      <input type="checkbox" id="pageSelectAll" onchange="togglePageAll(this.checked)">
-      <span>Select page</span>
-    </label>
-    <button id="selectAllFilteredBtn" onclick="selectAllFiltered()" title="Select every record matching the current filters across all pages">Select all (all pages)</button>
-    <button id="clearSelectionBtn" onclick="clearSelection()" disabled>Clear</button>
-    <span class="sel-count" id="selCountLabel">0 selected</span>
-    <span class="sel-spacer"></span>
-    <span class="filter-label" style="margin-right:-4px">Show:</span>
-    <select class="filter-select" id="perPageSelect" onchange="setPerPage(this.value)">
-      <option value="20">20</option>
+  <span id="activeFilter"></span>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <span style="font-size:0.72rem;color:var(--text-muted);">Show:</span>
+    <select id="perpageSelect" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:0.75rem;outline:none;width:68px">
       <option value="50" selected>50</option>
       <option value="100">100</option>
       <option value="150">150</option>
       <option value="all">All</option>
     </select>
-    <button class="btn-export" id="exportSelectedBtn" onclick="exportLeadsCSV()" disabled title="Download selected records as CSV — vendor-friendly format for xLeads / Deal Machine / Smart Skip">Export Selected to CSV</button>
-    <button class="btn-siftstack" id="submitSiftstackBtn" onclick="submitToSiftstack()" disabled title="Queue selected records for upload to DataSift via SIFTstack. Worker runs every 5 min.">Submit to SIFTstack</button>
+    <span class="showing-label" id="showingLabel"></span>
   </div>
-
-  <!-- Records list -->
-  <div class="records" id="records"></div>
-
-  <!-- Pagination -->
-  <div class="pagination" id="pagination"></div>
 </div>
 
-<!-- User bar -->
-<div id="userBar">
+<!-- Queue tabs (added for /leads workspace) -->
+<div class="queue-tabs">
+  <button class="queue-tab active" data-queue="verify" onclick="setQueue('verify')">
+    Verify <span class="badge" id="verifyCount">0</span>
+  </button>
+  <button class="queue-tab" data-queue="active" onclick="setQueue('active')">
+    Active <span class="badge" id="activeCount">0</span>
+  </button>
+  <button class="queue-tab" data-queue="archive" onclick="setQueue('archive')">
+    Archive <span class="badge" id="archiveCount">0</span>
+  </button>
+  <button class="queue-tab" data-queue="research" onclick="setQueue('research')">
+    Research <span class="badge" id="researchCount">0</span>
+  </button>
+  <button class="queue-tab" data-queue="siftstack" onclick="setQueue('siftstack')" title="Records you manually submitted to SIFTstack via the Submit button">
+    Sent to SIFTstack <span class="badge" id="siftstackQCount">0</span>
+  </button>
+  <button class="queue-tab" data-queue="autoq" onclick="setQueue('autoq')" title="Legacy records auto-queued to SIFTstack by the scraper before manual verification was required">
+    Auto-Q <span class="badge" id="autoqCount">0</span>
+  </button>
+</div>
+
+<div class="records" id="records"></div>
+
+<div class="pagination" id="pagination"></div>
+
+<!-- Login Modal -->
+<div class="modal-overlay" id="loginOverlay" style="display:none">
+  <div class="modal" style="max-width:380px;padding:32px">
+    <h2 style="margin-bottom:4px;font-size:1.25rem;text-align:center">Harris County <span style="color:var(--accent-light)">Motivated Sellers</span></h2>
+    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px;text-align:center">Sign in to continue</p>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
+      <button type="submit" id="loginBtn" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Logged-in user bar -->
+<div id="userBar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 24px;font-size:0.72rem;color:var(--text-muted);align-items:center;gap:12px;z-index:99">
   <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
-  <button onclick="handleSignOut()">Sign Out</button>
+  <button onclick="handleLogout()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:2px 8px;font-size:0.65rem;cursor:pointer">Sign Out</button>
+  <span style="margin-left:auto" id="editSyncStatus"></span>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
 </div>
 
 <script>
-// ── Supabase Client ────────────────────────────────────────────────
+// ── Supabase Client ───────────────────────────────────────────────
 const SUPABASE_URL = "https://oqkcmysnhgorjkinfamu.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_XfR5NTuo1LYF8p73_cqQ7w_Ug4LDl3_";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -675,29 +956,29 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, 
 });
 
 // ── State ─────────────────────────────────────────────────────────
-let DATA = { records: [], loaded: false };
-let currentSession = null;
-let currentProfile = null;
-let currentQueue = "verify";
+let DATA = null;
+let FRCL_DATA = null;   // kept for compatibility with existing render/filter code
+let filtered = [];
+let sortCol = "score";
+let sortAsc = false;
 let currentPage = 1;
-let PER_PAGE = 50;
+let cardFilter = null;
+let sourceFilter = "";
+let perPage = 50;
+const selectedRows = new Set();
 
-const selectedRecords = new Set();
+// ── Card-view state (added for /leads workspace) ──────────────────
+let currentQueue = "verify";
 const phonesByRecord = new Map();
 const emailsByRecord = new Map();
-const jobsByRecord   = new Map();
 
-const DISTRESS_FLAGS = new Set([
-  "Bankruptcy", "Tax delinquent", "Foreclosure", "Lis pendens", "Probate"
-]);
-
-// Queue routing — clerk records flow through 6 buckets:
-//   verify     -> verification_status=pending (default for new clerk records)
-//   active     -> verification_status=verified_owns AND not yet submitted
-//   archive    -> verification_status=verified_no_owns
-//   research   -> verification_status=needs_research
-//   siftstack  -> manual_submitted_at IS NOT NULL (VA-submitted)
-//   autoq      -> siftstack_status IS NOT NULL AND manual_submitted_at IS NULL (legacy)
+// 6 queue buckets for clerk records:
+//   verify     -> verification_status = 'pending'
+//   active     -> verified_owns AND not yet submitted
+//   archive    -> verified_no_owns
+//   research   -> needs_research
+//   siftstack  -> manual_submitted_at IS NOT NULL (VA submission)
+//   autoq      -> siftstack_status set AND manual_submitted_at NULL (legacy)
 function recordInQueue(r, queue) {
   if (queue === "siftstack") return !!r.manual_submitted_at;
   if (queue === "autoq")     return !r.manual_submitted_at && !!r.siftstack_status;
@@ -706,15 +987,25 @@ function recordInQueue(r, queue) {
       && !r.manual_submitted_at
       && !r.siftstack_status;
   }
-  if (queue === "verify")   return r.verification_status === "pending";
+  if (queue === "verify")   return r.verification_status === "pending" || (r.verification_status == null && !r.siftstack_status);
   if (queue === "archive")  return r.verification_status === "verified_no_owns";
   if (queue === "research") return r.verification_status === "needs_research";
   return false;
 }
 
-function effPP(total) {
-  return PER_PAGE === Infinity ? Math.max(total, 1) : PER_PAGE;
+function setQueue(q) {
+  currentQueue = q;
+  currentPage = 1;
+  document.querySelectorAll(".queue-tab").forEach(b => {
+    b.classList.toggle("active", b.dataset.queue === q);
+  });
+  applyFilters();
 }
+
+let currentSession = null;
+let currentProfile = null;
+let realtimeChannel = null;
+let currentModalParcelAcct = null;
 
 // ── Auth ──────────────────────────────────────────────────────────
 async function checkAuth() {
@@ -726,109 +1017,894 @@ async function checkAuth() {
 }
 
 async function loadProfile() {
-  if (!currentSession?.user?.id) return;
   const { data, error } = await sb.from("profiles").select("*").eq("id", currentSession.user.id).single();
-  if (error) {
-    console.error("loadProfile error:", error);
-    return;
+  if (error || !data) {
+    currentProfile = { display_name: currentSession.user.email.split("@")[0], role: "viewer" };
+  } else {
+    currentProfile = data;
   }
-  currentProfile = data;
-  document.getElementById("currentUserLabel").textContent = `${currentProfile.display_name || currentProfile.id} (${currentProfile.role})`;
+  document.getElementById("currentUserLabel").textContent = `${currentProfile.display_name} (${currentProfile.role})`;
   document.getElementById("userBar").style.display = "flex";
 }
 
 function showLogin() {
-  document.getElementById("loginOverlay").classList.add("show");
+  document.getElementById("loginOverlay").style.display = "flex";
+  document.getElementById("userBar").style.display = "none";
+  setTimeout(() => document.getElementById("loginEmail").focus(), 50);
 }
 
-function hideLogin() {
-  document.getElementById("loginOverlay").classList.remove("show");
-  document.getElementById("mainUI").style.display = "block";
-}
-
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
+async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById("loginEmail").value.trim();
   const password = document.getElementById("loginPassword").value;
   const errEl = document.getElementById("loginError");
+  const btn = document.getElementById("loginBtn");
   errEl.textContent = "";
+  btn.disabled = true; btn.textContent = "Signing in…";
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) {
-    errEl.textContent = error.message;
-    return;
-  }
+  btn.disabled = false; btn.textContent = "Sign In";
+  if (error) { errEl.textContent = error.message; return; }
   currentSession = data.session;
+  document.getElementById("loginOverlay").style.display = "none";
+  document.getElementById("loginPassword").value = "";
   await loadProfile();
-  hideLogin();
   await loadData();
-  render();
-});
-
-async function handleSignOut() {
-  await sb.auth.signOut();
-  window.location.reload();
+  await loadContactData();
+  subscribeRealtime();
 }
 
-// ── Data load ─────────────────────────────────────────────────────
-async function loadData() {
-  const meta = document.getElementById("headerMeta");
-  meta.textContent = "Loading clerk records...";
+async function handleLogout() {
+  if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+  await sb.auth.signOut();
+  currentSession = null;
+  currentProfile = null;
+  DATA = null;
+  showLogin();
+}
 
-  // Pull all clerk records in pages of 1000 (Supabase default cap).
-  // EstateTrace records live on /probate.html and are excluded here.
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("loginForm").addEventListener("submit", handleLogin);
+});
+
+// ── Save edit to Supabase ────────────────────────────────────────
+// Maps UI field names → Supabase column names and writes the update.
+function fieldToUpdate(field, newVal) {
+  if (field === "prop_address") {
+    const v = newVal || {};
+    return {
+      prop_address: v.address || null,
+      prop_city: v.city || null,
+      prop_state: v.state || null,
+      prop_zip: v.zip || null,
+    };
+  }
+  if (field === "mail_address") {
+    const v = newVal || {};
+    return {
+      mail_address: v.address || null,
+      mail_city: v.city || null,
+      mail_state: v.state || null,
+      mail_zip: v.zip || null,
+    };
+  }
+  if (field === "legal")     return { legal_description: newVal || null };
+  if (field === "sale_date") return { sale_date: newVal || null };
+  if (field === "filed")     return { filed_date: newVal || null };
+  return { [field]: newVal || null };
+}
+
+function applyUpdateToRecord(rec, field, newVal) {
+  if (field === "prop_address") {
+    const v = newVal || {};
+    rec.prop_address = v.address || "";
+    rec.prop_city    = v.city    || "";
+    rec.prop_state   = v.state   || "";
+    rec.prop_zip     = v.zip     || "";
+  } else if (field === "mail_address") {
+    const v = newVal || {};
+    rec.mail_address = v.address || "";
+    rec.mail_city    = v.city    || "";
+    rec.mail_state   = v.state   || "";
+    rec.mail_zip     = v.zip     || "";
+  } else if (field === "legal") {
+    rec.legal = newVal || "";
+  } else {
+    rec[field] = newVal || "";
+  }
+}
+
+async function saveFieldToSupabase(docNum, field, newVal) {
+  const status = document.getElementById("editSyncStatus");
+  if (status) status.textContent = "Saving…";
+  const update = fieldToUpdate(field, newVal);
+  const { error } = await sb.from("records").update(update).eq("doc_num", docNum);
+  if (error) {
+    if (status) { status.textContent = "Save failed"; setTimeout(() => status.textContent = "", 3000); }
+    console.error("Save failed:", error);
+    return false;
+  }
+  const rec = DATA?.records?.find(r => r.doc_num === docNum);
+  if (rec) applyUpdateToRecord(rec, field, newVal);
+  if (status) { status.textContent = "Saved"; setTimeout(() => status.textContent = "", 1500); }
+  return true;
+}
+
+// Parse "123 Main St, Houston, TX 77001" → { address, city, state, zip }
+function parseAddress(val) {
+  const parts = val.split(",").map(s => s.trim());
+  if (parts.length < 2) return { address: val, city: "", state: "", zip: "" };
+  const lastPart = parts[parts.length - 1];
+  const stZip = lastPart.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+  if (stZip) {
+    return {
+      address: parts[0],
+      city:    parts.length >= 3 ? parts.slice(1, -1).join(", ") : "",
+      state:   stZip[1].toUpperCase(),
+      zip:     stZip[2],
+    };
+  }
+  return { address: parts[0], city: parts.slice(1).join(", "), state: "", zip: "" };
+}
+
+// ── Undo (localStorage, per-browser) ─────────────────────────────
+let undoStack = [];
+try {
+  const stored = localStorage.getItem("harris_leads_undo");
+  if (stored) undoStack = JSON.parse(stored);
+} catch(e) { undoStack = []; }
+
+function saveUndoToStorage() {
+  if (undoStack.length > 50) undoStack = undoStack.slice(-50);
+  try { localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack)); } catch(e) {}
+}
+
+function pushUndo(docNum, field, oldVal, newVal) {
+  const user = currentProfile?.display_name || "Unknown";
+  undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now(), user });
+  saveUndoToStorage();
+  updateUndoUI();
+}
+
+function updateUndoUI() {
+  const btn = document.getElementById("undoBtn");
+  const info = document.getElementById("undoInfo");
+  if (!btn) return;
+  if (undoStack.length === 0) {
+    btn.disabled = true;
+    if (info) info.textContent = "";
+  } else {
+    btn.disabled = false;
+    const last = undoStack[undoStack.length - 1];
+    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", grantor_name: "Grantor", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal", sale_date: "Sale Date" };
+    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum} by ${last.user}`;
+  }
+}
+
+async function undoLastEdit() {
+  if (undoStack.length === 0) return;
+  const entry = undoStack.pop();
+  saveUndoToStorage();
+  updateUndoUI();
+  const ok = await saveFieldToSupabase(entry.docNum, entry.field, entry.oldVal);
+  if (ok) { renderTable(); renderPagination(); }
+}
+
+function startEdit(docNum, field, cellEl) {
+  if (cellEl.classList.contains("editing")) return;
+  // Only editors and admins can edit
+  if (!currentProfile || (currentProfile.role !== "admin" && currentProfile.role !== "editor")) {
+    const status = document.getElementById("editSyncStatus");
+    if (status) { status.textContent = "Read-only — ask admin for editor access"; setTimeout(() => status.textContent = "", 3000); }
+    return;
+  }
+  cellEl.classList.add("editing");
+
+  const rec = DATA.records.find(r => r.doc_num === docNum);
+  if (!rec) return;
+
+  let currentVal = "";
+  if (field === "prop_address") {
+    currentVal = [rec.prop_address, rec.prop_city, rec.prop_state, rec.prop_zip].filter(Boolean).join(", ");
+  } else if (field === "mail_address") {
+    currentVal = [rec.mail_address, rec.mail_city, rec.mail_state, rec.mail_zip].filter(Boolean).join(", ");
+  } else {
+    currentVal = rec[field] || "";
+  }
+
+  // match_confidence uses a dropdown (fixed values: none / low / medium / high)
+  if (field === "match_confidence") {
+    const select = document.createElement("select");
+    select.style.cssText = "background:var(--surface2);color:var(--text);border:1px solid var(--accent);border-radius:4px;padding:3px 6px;font-size:0.75rem;outline:none;width:100%";
+    ["none", "low", "medium", "high"].forEach(opt => {
+      const o = document.createElement("option");
+      o.value = opt; o.textContent = opt;
+      if (opt === (currentVal || "none")) o.selected = true;
+      select.appendChild(o);
+    });
+    cellEl.innerHTML = "";
+    cellEl.appendChild(select);
+    select.focus();
+
+    let committed = false;
+    async function commitSelect() {
+      if (committed) return;
+      committed = true;
+      const val = select.value;
+      cellEl.classList.remove("editing");
+      if (val === (currentVal || "none")) {
+        cellEl.innerHTML = `<span class="conf-pill conf-${val}">${val}</span>`;
+        return;
+      }
+      pushUndo(docNum, field, currentVal || "none", val);
+      applyUpdateToRecord(rec, field, val);
+      cellEl.innerHTML = `<span class="conf-pill conf-${val}">${val}</span>`;
+      await saveFieldToSupabase(docNum, field, val);
+      cellEl.classList.add("edit-saved");
+      setTimeout(() => cellEl.classList.remove("edit-saved"), 700);
+    }
+
+    select.addEventListener("change", commitSelect);
+    select.addEventListener("blur", commitSelect);
+    select.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.preventDefault(); committed = true; cellEl.classList.remove("editing"); renderTable(); }
+    });
+    return;
+  }
+
+  const placeholders = {
+    owner: "Enter owner name…",
+    co_borrower: "Enter co-borrower name…",
+    grantor_name: "Enter grantor / deceased name…",
+    prop_address: "Enter address, city, ST zip…",
+    mail_address: "Enter address, city, ST zip…",
+    amount: "Enter amount (e.g. $250,000)…",
+    legal: "Enter legal description…",
+    sale_date: "YYYY-MM-DD",
+  };
+
+  const input = document.createElement("input");
+  input.type = field === "sale_date" ? "date" : "text";
+  input.value = currentVal;
+  input.placeholder = placeholders[field] || "Enter value…";
+
+  cellEl.innerHTML = "";
+  cellEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  async function commitEdit() {
+    const val = input.value.trim();
+    cellEl.classList.remove("editing");
+
+    if (val === currentVal) {
+      if (field === "prop_address" || field === "mail_address") {
+        const pfx = field === "prop_address" ? "prop" : "mail";
+        const disp = [rec[pfx+"_address"], rec[pfx+"_city"], rec[pfx+"_state"], rec[pfx+"_zip"]].filter(Boolean).join(", ");
+        cellEl.innerHTML = disp || '<span style="color:var(--text-muted)">--</span>';
+      } else {
+        cellEl.innerHTML = currentVal || '<span style="color:var(--text-muted)">--</span>';
+      }
+      return;
+    }
+
+    if (field === "prop_address" || field === "mail_address") {
+      const prefix = field === "prop_address" ? "prop" : "mail";
+      const oldAddr = {
+        address: rec[prefix + "_address"] || "",
+        city:    rec[prefix + "_city"]    || "",
+        state:   rec[prefix + "_state"]   || "",
+        zip:     rec[prefix + "_zip"]     || "",
+      };
+      const newAddr = parseAddress(val);
+      pushUndo(docNum, field, oldAddr, newAddr);
+      applyUpdateToRecord(rec, field, newAddr);
+      const display = [newAddr.address, newAddr.city, newAddr.state, newAddr.zip].filter(Boolean).join(", ");
+      cellEl.innerHTML = display || '<span style="color:var(--text-muted)">--</span>';
+      await saveFieldToSupabase(docNum, field, newAddr);
+    } else {
+      pushUndo(docNum, field, currentVal, val);
+      applyUpdateToRecord(rec, field, val);
+      cellEl.innerHTML = val || '<span style="color:var(--text-muted)">--</span>';
+      await saveFieldToSupabase(docNum, field, val);
+    }
+
+    cellEl.classList.add("edit-saved");
+    setTimeout(() => cellEl.classList.remove("edit-saved"), 700);
+  }
+
+  input.addEventListener("blur", commitEdit);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { e.preventDefault(); cellEl.classList.remove("editing"); renderTable(); }
+  });
+}
+
+const COLS = [
+  {key: "score", label: "Score", w: "55px"},
+  {key: "filed", label: "Filed", w: "90px"},
+  {key: "sale_date", label: "Sale Date", w: "90px"},
+  {key: "doc_type", label: "Type", w: "55px"},
+  {key: "cat_label", label: "Category", w: "160px"},
+  {key: "owner", label: "Owner / Contact", w: "200px"},
+  {key: "co_borrower", label: "Co-Borrower", w: "180px"},
+  {key: "grantor_name", label: "Grantor (Deceased)", w: "180px"},
+  {key: "flags", label: "Flags", w: "170px"},
+  {key: "legal", label: "Legal Description", w: "200px"},
+  {key: "prop_address", label: "Property Address", w: "170px"},
+  {key: "mail_address", label: "Mail Address", w: "150px"},
+  {key: "amount", label: "Amount", w: "100px"},
+  {key: "match_confidence", label: "Confidence", w: "80px"},
+  {key: "siftstack", label: "SIFTstack", w: "110px"},
+  {key: "doc_num", label: "Doc #", w: "100px"},
+  {key: "link", label: "Links", w: "80px"},
+];
+
+const CAT_COLORS = {
+  LP: "#ef4444", NOFC: "#f59e0b", TAXLIEN: "#f97316", LIEN: "#eab308",
+  AOJ: "#a855f7", LEVY: "#ec4899", PROBATE: "#06b6d4", FRCL: "#dc2626",
+};
+
+const DISTRESS_FLAGS = new Set([
+  "Lis pendens", "Pre-foreclosure / trustee sale", "Judgment lien",
+  "Federal tax lien", "Lien (HOA / state tax / other)", "Levy on real estate",
+  "Probate / estate", "Bankruptcy",
+]);
+
+// ── Normalize Supabase rows → dashboard shape ──────────────────────
+// Dashboard code expects `filed` and `legal`, Supabase stores `filed_date` and `legal_description`.
+// We aliass them after fetch so rendering/filtering code stays untouched.
+function normalizeFromDb(r) {
+  r.filed = r.filed_date || "";
+  r.legal = r.legal_description || "";
+  r._source = r.source === "estatetrace" ? "estatetrace"
+            : r.doc_type === "FRCL" ? "foreclosure"
+            : "clerk";
+  // Foreclosure stat card + filter lookups use short code "FRCL"
+  if (r.doc_type === "FRCL") r.cat = "FRCL";
+  if (!r.flags) r.flags = [];
+  return r;
+}
+
+// ── Central Time formatter (Houston operations) ────────────────────
+// Every timestamp shown on the dashboard MUST go through this helper.
+// Browser-locale defaults are wrong - viewers in other timezones see
+// shifted times that don't match what was logged.
+function formatCT(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d)) return "";
+  return d.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    year:  "numeric", month: "short", day:    "numeric",
+    hour:  "2-digit", minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+// ── Load Data ──────────────────────────────────────────────────────
+async function loadData() {
+  // Fetch in pages of 1000 (Supabase default max per request)
   const all = [];
   const PAGE = 1000;
   let from = 0;
   while (true) {
     const { data, error } = await sb
       .from("records")
-      .select("id, doc_num, source, doc_type, cat, cat_label, score, " +
-              "filed, sale_date, owner, co_borrower, grantor_name, grantee_names, " +
-              "prop_address, prop_city, prop_state, prop_zip, " +
-              "mail_address, mail_city, mail_state, mail_zip, " +
-              "amount, legal, flags, match_confidence, " +
-              "clerk_url, hcad_url, batch_id, " +
-              "verification_status, verified_at, " +
-              "siftstack_status, siftstack_completed_at, " +
-              "manual_submitted_at, manual_submitted_by, " +
-              "manual_overrides")
-      .in("source", ["clerk_lead", "clerk_foreclosure"])
-      .order("filed", { ascending: false, nullsFirst: false })
+      .select("*")
+      .order("score", { ascending: false, nullsFirst: false })
       .range(from, from + PAGE - 1);
-    if (error) {
-      meta.textContent = "Load failed: " + error.message;
-      console.error(error);
-      return;
-    }
+    if (error) { console.error(error); alert("Load failed: " + error.message); return; }
     if (!data || data.length === 0) break;
     all.push(...data);
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  DATA.records = all;
-  DATA.loaded = true;
+  all.forEach(normalizeFromDb);
 
-  await loadContactData();
-  populateTypeFilter();
-  populateSaleMonthFilter();
+  const frclCount = all.filter(r => r.doc_type === "FRCL").length;
+  const dates = all.map(r => r.filed_date).filter(Boolean).sort();
+  DATA = {
+    fetched_at: new Date().toISOString(),
+    source: "Supabase (live)",
+    date_range: { from: dates[0] || "", to: dates[dates.length - 1] || "" },
+    total: all.length,
+    records: all,
+  };
+  FRCL_DATA = { total: frclCount };   // kept for legacy meta display
 
-  meta.textContent = `${all.length.toLocaleString()} clerk records loaded`;
+  document.getElementById("meta").innerHTML =
+    `Updated: ${formatCT(DATA.fetched_at)}<br>${DATA.date_range.from} to ${DATA.date_range.to}<br>Foreclosures: ${frclCount} postings`;
+
+  buildStats();
+  buildCharts();
+  populateFilters();
+  await loadRuns();
+  applyFilters();
+}
+
+// ── Run-picker: load scraper_runs and populate the Run dropdown ────
+//
+// Fetches up to ~5,000 most recent runs (each scraper run is one row).
+// On select, queries scraper_run_records for that run, builds a Map of
+// record_id -> action, and applyFilters() narrows the table to those
+// records. Picking "All Runs" clears the filter.
+let RUNS = [];
+let SELECTED_RUN_RECORD_IDS = null;   // null = no run filter; Map otherwise
+
+async function loadRuns() {
+  try {
+    const { data, error } = await sb
+      .from("scraper_runs")
+      .select("id,run_id,gh_run_number,workflow_name,started_at,completed_at,status,total_seen,total_created,total_updated")
+      .order("id", { ascending: false })
+      .limit(5000);
+    if (error) { console.error("loadRuns failed:", error); return; }
+    RUNS = data || [];
+  } catch (e) {
+    console.error("loadRuns exception:", e);
+    RUNS = [];
+  }
+
+  const sel = document.getElementById("runPicker");
+  // Wipe any previously-built options except the leading "All Runs"
+  sel.innerHTML = '<option value="">All Runs</option>';
+
+  RUNS.forEach(r => {
+    const dtStr = formatCT(r.started_at);
+    const wf = (r.workflow_name || "").replace(/\.yml$/, "")
+      .replace("scrape-foreclosures", "Foreclosure")
+      .replace("scrape", "Lead");
+    const ghTag = r.gh_run_number ? `Run #${r.gh_run_number}` : (r.run_id || `id ${r.id}`);
+    const seen = r.total_seen ?? 0;
+    const created = r.total_created ?? 0;
+    const updated = r.total_updated ?? 0;
+    const stats = `seen ${seen} / new ${created} / upd ${updated}`;
+    const opt = document.createElement("option");
+    opt.value = String(r.id);
+    opt.textContent = `${ghTag} ${wf ? "- " + wf : ""} ${dtStr ? "- " + dtStr : ""}  (${stats})`;
+    sel.appendChild(opt);
+  });
+}
+
+// When the user picks a run, load the junction rows for that run and
+// build a Set of record_ids that the filter will use.
+async function applyRunPickerSelection(runIdStr) {
+  if (!runIdStr) {
+    SELECTED_RUN_RECORD_IDS = null;
+    return;
+  }
+  const runId = Number(runIdStr);
+  try {
+    // Pull the junction rows for this run, paginated (1000 cap per request)
+    const ids = new Map();   // record_id -> action
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await sb
+        .from("scraper_run_records")
+        .select("record_id,action")
+        .eq("run_id", runId)
+        .range(from, from + PAGE - 1);
+      if (error) { console.error("loadRunRecords failed:", error); break; }
+      if (!data || data.length === 0) break;
+      data.forEach(row => ids.set(row.record_id, row.action));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    SELECTED_RUN_RECORD_IDS = ids;
+  } catch (e) {
+    console.error("applyRunPickerSelection exception:", e);
+    SELECTED_RUN_RECORD_IDS = null;
+  }
+}
+
+// ── Realtime: live updates when anyone edits a record ──────────────
+function subscribeRealtime() {
+  if (realtimeChannel) return;
+  realtimeChannel = sb
+    .channel("records-changes")
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "records" }, (payload) => {
+      const updated = payload.new;
+      const rec = DATA?.records?.find(r => r.doc_num === updated.doc_num);
+      if (!rec) return;
+      const prevStatus = rec.siftstack_status || null;
+      Object.assign(rec, normalizeFromDb({ ...updated }));
+      renderTable();
+      // Refresh stat cards if siftstack_status changed (count could differ)
+      if (prevStatus !== (rec.siftstack_status || null)) buildStats();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "property_data" }, (payload) => {
+      const row = payload.new || payload.old;
+      if (!row || !row.parcel_acct) return;
+      if (row.parcel_acct === currentModalParcelAcct) {
+        loadHcadData(currentModalParcelAcct);
+      }
+    })
+    .subscribe();
+}
+
+// ── Stat Cards ─────────────────────────────────────────────────────
+function buildStats() {
+  // Stat cards represent the MAIN view (clerk + foreclosure). EstateTrace
+  // probates live in the /probate route and are excluded from these counts
+  // so the stat-card numbers always match what the main table actually shows.
+  const mainRecords = DATA.records.filter(r => r._source !== "estatetrace");
+  const mainTotal = mainRecords.length;
+  const estatetraceCount = DATA.records.length - mainTotal;
+
+  const cats = {};
+  mainRecords.forEach(r => { cats[r.cat] = (cats[r.cat] || 0) + 1; });
+
+  const withAddr = mainRecords.filter(r => r.prop_address && r.prop_address.trim()).length;
+  const pct = mainTotal ? Math.round(withAddr / mainTotal * 100) : 0;
+
+  const ssCompleted = mainRecords.filter(r => r.siftstack_status === "completed").length;
+  const ssQueued    = mainRecords.filter(r => r.siftstack_status === "queued").length;
+  const ssManual    = mainRecords.filter(r => {
+    if (r.siftstack_status) return false; // already submitted or in flight
+    const hasAddr = !!(r.prop_address && r.prop_address.trim());
+    const hasName = !!((r.owner || r.grantor_name || "").trim());
+    return !hasAddr || !hasName;
+  }).length;
+
+  let html = `
+    <div class="stat-card total" data-filter="all" onclick="toggleCardFilter('all')">
+      <div class="value">${mainTotal.toLocaleString()}</div>
+      <div class="label">Total Leads</div>
+    </div>
+    <div class="stat-card addr" data-filter="addr" onclick="toggleCardFilter('addr')">
+      <div class="value">${withAddr.toLocaleString()}</div>
+      <div class="label">With Address</div>
+      <div class="pct">${pct}%</div>
+    </div>
+    <div class="stat-card enriched" data-filter="ss:completed" onclick="toggleCardFilter('ss:completed')">
+      <div class="value">${ssCompleted.toLocaleString()}</div>
+      <div class="label">Enriched</div>
+    </div>
+    <div class="stat-card queued" data-filter="ss:queued" onclick="toggleCardFilter('ss:queued')">
+      <div class="value">${ssQueued.toLocaleString()}</div>
+      <div class="label">Queued</div>
+    </div>
+    <div class="stat-card manual" data-filter="ss:manual" onclick="toggleCardFilter('ss:manual')">
+      <div class="value">${ssManual.toLocaleString()}</div>
+      <div class="label">Needs Manual</div>
+    </div>`;
+
+  // Top categories as cards
+  const catOrder = ["FRCL","LP","NOFC","TAXLIEN","LIEN","AOJ","LEVY","PROBATE"];
+  const catLabels = {};
+  DATA.records.forEach(r => { catLabels[r.cat] = r.cat_label; });
+
+  catOrder.forEach(c => {
+    if (cats[c]) {
+      html += `
+        <div class="stat-card" data-filter="cat:${c}" onclick="toggleCardFilter('cat:${c}')">
+          <div class="value" style="color:${CAT_COLORS[c] || '#7c5cfc'}">${cats[c]}</div>
+          <div class="label">${catLabels[c] || c}</div>
+        </div>`;
+    }
+  });
+
+  // EstateTrace probates — separate card. Click navigates to the dedicated
+  // /probate workspace (verification queue + skip-trace UI). Source filter
+  // dropdown is still available in this main dashboard for in-place viewing.
+  if (estatetraceCount > 0) {
+    html += `
+      <div class="stat-card" onclick="goToProbateWorkspace()" title="Open the Probate Workspace — verification queue, skip-trace tools, county filters">
+        <div class="value" style="color:#10b981">${estatetraceCount.toLocaleString()}</div>
+        <div class="label">EstateTrace &rarr;</div>
+      </div>`;
+  }
+
+  document.getElementById("stats").innerHTML = html;
+}
+
+// Navigate to the dedicated probate workspace (separate page).
+function goToProbateWorkspace() {
+  window.location.href = "probate.html";
+}
+
+// Switches the source filter to EstateTrace in this main dashboard
+// (kept for backward compatibility with anyone using the dropdown directly).
+function showEstatetraceOnly() {
+  document.getElementById("sourceFilter").value = "estatetrace";
+  cardFilter = null;
+  currentPage = 1;
+  applyFilters();
+}
+
+function toggleCardFilter(filter) {
+  if (cardFilter === filter) {
+    cardFilter = null;
+  } else {
+    cardFilter = filter;
+  }
+  // Highlight active card
+  document.querySelectorAll(".stat-card").forEach(el => {
+    el.classList.toggle("active", el.dataset.filter === cardFilter);
+  });
+  currentPage = 1;
+  applyFilters();
+}
+
+// ── Charts ─────────────────────────────────────────────────────────
+function buildCharts() {
+  // Category bar chart
+  const cats = {};
+  const catLabels = {};
+  DATA.records.forEach(r => {
+    cats[r.cat] = (cats[r.cat] || 0) + 1;
+    catLabels[r.cat] = r.cat_label;
+  });
+  const maxCat = Math.max(...Object.values(cats));
+  const sortedCats = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+
+  let barHtml = "";
+  sortedCats.forEach(([cat, count]) => {
+    const pct = (count / maxCat * 100).toFixed(0);
+    const color = CAT_COLORS[cat] || "#7c5cfc";
+    const shortLabel = (catLabels[cat] || cat).replace(/ \/ /g, "/").substring(0, 20);
+    barHtml += `
+      <div class="bar-row">
+        <div class="bar-label" title="${catLabels[cat]}">${shortLabel}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}">${count > 5 ? count : ''}</div></div>
+        <div class="bar-count">${count}</div>
+      </div>`;
+  });
+  document.getElementById("catChart").innerHTML = barHtml;
+
+  // Score distribution
+  const buckets = {};
+  for (let i = 30; i <= 100; i += 5) buckets[i] = 0;
+  DATA.records.forEach(r => {
+    const b = Math.floor(r.score / 5) * 5;
+    const key = Math.max(30, Math.min(100, b));
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  const maxBucket = Math.max(...Object.values(buckets), 1);
+  let scoreHtml = "";
+  Object.entries(buckets).forEach(([score, count]) => {
+    const h = Math.max(2, (count / maxBucket * 100));
+    const color = score >= 70 ? "var(--green)" : score >= 50 ? "var(--orange)" : "var(--accent)";
+    scoreHtml += `<div class="score-bar" style="height:${h}%;background:${color}"><div class="tooltip">${score}-${parseInt(score)+4}: ${count}</div></div>`;
+  });
+  document.getElementById("scoreChart").innerHTML = scoreHtml;
+}
+
+// ── Filters ────────────────────────────────────────────────────────
+function populateFilters() {
+  const types = [...new Set(DATA.records.map(r => r.doc_type))].sort();
+  const sel = document.getElementById("typeFilter");
+  types.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t; opt.textContent = t;
+    sel.appendChild(opt);
+  });
+
+  const flags = new Set();
+  DATA.records.forEach(r => (r.flags || []).forEach(f => flags.add(f)));
+  const fsel = document.getElementById("flagFilter");
+  [...flags].sort().forEach(f => {
+    const opt = document.createElement("option");
+    opt.value = f; opt.textContent = f;
+    fsel.appendChild(opt);
+  });
+
+  // Populate sale month filter from sale_date field (auto-populates as new months are scraped)
+  const saleMonths = new Map();
+  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  DATA.records.forEach(r => {
+    if (r.sale_date) {
+      const d = new Date(r.sale_date);
+      if (!isNaN(d)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        if (!saleMonths.has(key)) saleMonths.set(key, 0);
+        saleMonths.set(key, saleMonths.get(key) + 1);
+      }
+    }
+  });
+  const smSel = document.getElementById("saleMonthFilter");
+  [...saleMonths.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([key, count]) => {
+    const [y, m] = key.split("-");
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = `${monthNames[parseInt(m)-1]} ${y} (${count})`;
+    smSel.appendChild(opt);
+  });
+
+  // Per-page selector
+  document.getElementById("perpageSelect").addEventListener("change", function() {
+    perPage = this.value === "all" ? Infinity : parseInt(this.value);
+    currentPage = 1;
+    applyFilters();
+  });
+
+  // Live filtering
+  document.getElementById("searchInput").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("typeFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreMin").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("scoreMax").addEventListener("input", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("flagFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("addrFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("confFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("sourceFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("batchFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("runPicker").addEventListener("change", async (e) => {
+    currentPage = 1;
+    await applyRunPickerSelection(e.target.value);
+    applyFilters();
+  });
+  document.getElementById("saleMonthFilter").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("filedFrom").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+  document.getElementById("filedTo").addEventListener("change", () => { currentPage = 1; applyFilters(); });
+
+  // Populate batch filter dropdown from foreclosure records
+  const batchMap = new Map();  // batch_id → { label, count }
+  DATA.records.forEach(r => {
+    if (r.batch_id) {
+      if (!batchMap.has(r.batch_id)) {
+        batchMap.set(r.batch_id, { label: r.batch_label || r.batch_id, count: 0 });
+      }
+      batchMap.get(r.batch_id).count++;
+    }
+  });
+  const bsel = document.getElementById("batchFilter");
+  // Sort batches by batch number (B1, B2, B3...)
+  const sortedBatches = [...batchMap.entries()].sort((a, b) => {
+    const numA = parseInt(a[0].replace("B", "")) || 0;
+    const numB = parseInt(b[0].replace("B", "")) || 0;
+    return numB - numA;  // newest first
+  });
+  sortedBatches.forEach(([bid, info]) => {
+    const opt = document.createElement("option");
+    opt.value = bid;
+    opt.textContent = `${info.label} (${info.count})`;
+    bsel.appendChild(opt);
+  });
+}
+
+function getFiltered() {
+  const q     = document.getElementById("searchInput").value.toLowerCase();
+  const type  = document.getElementById("typeFilter").value;
+  const sMin  = parseInt(document.getElementById("scoreMin").value);
+  const sMax  = parseInt(document.getElementById("scoreMax").value);
+  const minScore = isNaN(sMin) ? 0 : sMin;
+  const maxScore = isNaN(sMax) ? 100 : sMax;
+  const flag  = document.getElementById("flagFilter").value;
+  const addr  = document.getElementById("addrFilter").value;
+  const conf  = document.getElementById("confFilter").value;
+  const src   = document.getElementById("sourceFilter").value;
+  const batch = document.getElementById("batchFilter").value;
+  const saleMonth = document.getElementById("saleMonthFilter").value;
+  const filedFrom = document.getElementById("filedFrom").value;
+  const filedTo   = document.getElementById("filedTo").value;
+
+  return DATA.records.filter(r => {
+    // Queue tab filter (added for /leads workspace) — must pass first
+    if (!recordInQueue(r, currentQueue)) return false;
+    // EstateTrace records are isolated from the main table by default.
+    // They live in the /probate route. Only surface them in the main view
+    // when the source filter is explicitly set to 'estatetrace'.
+    if (r._source === "estatetrace" && src !== "estatetrace") return false;
+    if (src && (r._source || "clerk") !== src) return false;
+    if (batch && (r.batch_id || "") !== batch) return false;
+    // Run-picker filter: SELECTED_RUN_RECORD_IDS is a Map(record_id -> action)
+    // populated when the user picks a run. Records not in the Map are excluded.
+    if (SELECTED_RUN_RECORD_IDS && !SELECTED_RUN_RECORD_IDS.has(r.id)) return false;
+    // Sale month filter (by sale_date)
+    if (saleMonth && r.sale_date) {
+      const d = new Date(r.sale_date);
+      if (!isNaN(d)) {
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        if (key !== saleMonth) return false;
+      } else return false;
+    } else if (saleMonth && !r.sale_date) return false;
+    // Filed date range filter
+    if (filedFrom && r.filed && r.filed < filedFrom) return false;
+    if (filedTo && r.filed && r.filed > filedTo) return false;
+    // Card filter
+    if (cardFilter) {
+      if (cardFilter === "addr") {
+        if (!r.prop_address || !r.prop_address.trim()) return false;
+      } else if (cardFilter.startsWith("cat:")) {
+        if (r.cat !== cardFilter.slice(4)) return false;
+      } else if (cardFilter === "ss:completed") {
+        if (r.siftstack_status !== "completed") return false;
+      } else if (cardFilter === "ss:queued") {
+        if (r.siftstack_status !== "queued") return false;
+      } else if (cardFilter === "ss:manual") {
+        if (r.siftstack_status) return false;
+        const hasAddr = !!(r.prop_address && r.prop_address.trim());
+        const hasName = !!((r.owner || r.grantor_name || "").trim());
+        if (hasAddr && hasName) return false; // has both → not manual
+      }
+      // "all" = no filter
+    }
+    if (type && r.doc_type !== type) return false;
+    if (r.score < minScore || r.score > maxScore) return false;
+    if (flag && !(r.flags || []).includes(flag)) return false;
+    if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
+    if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
+    if (conf && (r.match_confidence || "none") !== conf) return false;
+    if (q) {
+      const hay = [r.owner, r.grantor_name, r.grantee_names, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
+        .join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// =============================================================================
+// CARD VIEW + QUEUE TABS + SKIP-TRACE (added for /leads workspace)
+// =============================================================================
+
+// Recompute the per-tab badges. Counts are scoped to ALL active filters
+// EXCEPT the queue filter itself, so VAs see how many records are in
+// each tab given their current slice.
+function recomputeQueueCounts() {
+  if (!DATA?.records) return;
+  const src   = document.getElementById("sourceFilter").value;
+  const type  = document.getElementById("typeFilter").value;
+  const sMin  = parseInt(document.getElementById("scoreMin").value);
+  const sMax  = parseInt(document.getElementById("scoreMax").value);
+  const minScore = isNaN(sMin) ? 0 : sMin;
+  const maxScore = isNaN(sMax) ? 100 : sMax;
+  const flag  = document.getElementById("flagFilter").value;
+  const addr  = document.getElementById("addrFilter").value;
+  const conf  = document.getElementById("confFilter").value;
+  const batch = document.getElementById("batchFilter").value;
+  const saleMonth = document.getElementById("saleMonthFilter").value;
+  const filedFrom = document.getElementById("filedFrom").value;
+  const filedTo   = document.getElementById("filedTo").value;
+  const q     = (document.getElementById("searchInput").value || "").toLowerCase();
+
+  const baseScope = (r) => {
+    if (r._source === "estatetrace" && src !== "estatetrace") return false;
+    if (src && (r._source || "clerk") !== src) return false;
+    if (batch && (r.batch_id || "") !== batch) return false;
+    if (SELECTED_RUN_RECORD_IDS && !SELECTED_RUN_RECORD_IDS.has(r.id)) return false;
+    if (saleMonth) {
+      if (!r.sale_date) return false;
+      const d = new Date(r.sale_date);
+      if (isNaN(d)) return false;
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (key !== saleMonth) return false;
+    }
+    if (filedFrom && r.filed && r.filed < filedFrom) return false;
+    if (filedTo && r.filed && r.filed > filedTo) return false;
+    if (type && r.doc_type !== type) return false;
+    if (r.score < minScore || r.score > maxScore) return false;
+    if (flag && !(r.flags || []).includes(flag)) return false;
+    if (addr === "with" && (!r.prop_address || !r.prop_address.trim())) return false;
+    if (addr === "without" && r.prop_address && r.prop_address.trim()) return false;
+    if (conf && (r.match_confidence || "none") !== conf) return false;
+    if (q) {
+      const hay = [r.owner, r.grantor_name, r.grantee_names, r.legal, r.doc_num, r.cat_label, r.prop_address, r.mail_address]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  };
+
+  const scoped = DATA.records.filter(baseScope);
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val.toLocaleString(); };
+  setText("verifyCount",    scoped.filter(r => recordInQueue(r, "verify")).length);
+  setText("activeCount",    scoped.filter(r => recordInQueue(r, "active")).length);
+  setText("archiveCount",   scoped.filter(r => recordInQueue(r, "archive")).length);
+  setText("researchCount",  scoped.filter(r => recordInQueue(r, "research")).length);
+  setText("siftstackQCount", scoped.filter(r => recordInQueue(r, "siftstack")).length);
+  setText("autoqCount",     scoped.filter(r => recordInQueue(r, "autoq")).length);
 }
 
 async function loadContactData() {
-  // Load ALL phones / emails / skip-trace jobs into in-memory maps.
-  // Refreshed after every save to stay in sync. Filters by record_id at
-  // query time, not by role — we want all phones for the Auto-Q tab too.
   phonesByRecord.clear();
   emailsByRecord.clear();
-  jobsByRecord.clear();
-
   try {
-    const [pRes, eRes, jRes] = await Promise.all([
+    const [pRes, eRes] = await Promise.all([
       sb.from("contact_phones").select("*").limit(50000),
       sb.from("contact_emails").select("*").limit(50000),
-      sb.from("skip_trace_jobs").select("*").limit(50000),
     ]);
     (pRes.data || []).forEach(p => {
       if (!phonesByRecord.has(p.record_id)) phonesByRecord.set(p.record_id, []);
@@ -838,136 +1914,24 @@ async function loadContactData() {
       if (!emailsByRecord.has(e.record_id)) emailsByRecord.set(e.record_id, []);
       emailsByRecord.get(e.record_id).push(e);
     });
-    (jRes.data || []).forEach(j => {
-      const key = `${j.record_id}::${j.service}`;
-      jobsByRecord.set(key, j);
-    });
-  } catch (e) {
-    console.warn("loadContactData failed:", e);
-  }
+  } catch (e) { console.warn("loadContactData failed:", e); }
 }
 
-// ── Filter setup ──────────────────────────────────────────────────
-function populateTypeFilter() {
-  const sel = document.getElementById("typeFilter");
-  const types = new Set(DATA.records.map(r => r.doc_type).filter(Boolean));
-  Array.from(types).sort().forEach(t => {
-    const opt = document.createElement("option");
-    opt.value = t; opt.textContent = t;
-    sel.appendChild(opt);
-  });
+async function refreshContactDataForRecord(recordId) {
+  try {
+    const [pRes, eRes] = await Promise.all([
+      sb.from("contact_phones").select("*").eq("record_id", recordId),
+      sb.from("contact_emails").select("*").eq("record_id", recordId),
+    ]);
+    phonesByRecord.set(recordId, pRes.data || []);
+    emailsByRecord.set(recordId, eRes.data || []);
+  } catch (e) { console.warn("refreshContactDataForRecord failed:", e); }
 }
 
-function populateSaleMonthFilter() {
-  const sel = document.getElementById("saleMonthFilter");
-  const months = new Set();
-  DATA.records.forEach(r => {
-    if (!r.sale_date) return;
-    const d = new Date(r.sale_date);
-    if (isNaN(d)) return;
-    months.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
-  });
-  Array.from(months).sort().reverse().forEach(m => {
-    const opt = document.createElement("option");
-    opt.value = m; opt.textContent = m;
-    sel.appendChild(opt);
-  });
-}
-
-function resetFilters() {
-  document.getElementById("sourceFilter").value = "";
-  document.getElementById("typeFilter").value = "";
-  document.getElementById("saleMonthFilter").value = "";
-  document.getElementById("filedFrom").value = "";
-  document.getElementById("filedTo").value = "";
-  document.getElementById("searchInput").value = "";
-  currentPage = 1;
-  render();
-}
-
-// ── Filters & counts ──────────────────────────────────────────────
-function applyFilters(records) {
-  const src   = document.getElementById("sourceFilter").value;
-  const type  = document.getElementById("typeFilter").value;
-  const sm    = document.getElementById("saleMonthFilter").value;
-  const ff    = document.getElementById("filedFrom").value;
-  const ft    = document.getElementById("filedTo").value;
-  const q     = document.getElementById("searchInput").value.trim().toLowerCase();
-
-  return records.filter(r => {
-    if (!recordInQueue(r, currentQueue)) return false;
-    if (src && r.source !== src) return false;
-    if (type && r.doc_type !== type) return false;
-    if (ff && r.filed && r.filed < ff) return false;
-    if (ft && r.filed && r.filed > ft) return false;
-    if (sm) {
-      if (!r.sale_date) return false;
-      const d = new Date(r.sale_date);
-      if (isNaN(d)) return false;
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      if (key !== sm) return false;
-    }
-    if (q) {
-      const hay = [r.doc_num, r.owner, r.co_borrower, r.grantor_name,
-                   r.legal, r.prop_address, r.mail_address, r.cat_label]
-        .filter(Boolean).join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-}
-
-function recomputeCounts() {
-  // Count per queue across the OTHER active filters (excluding the queue
-  // filter itself), so VAs see the size of each tab given their slice.
-  const baseScope = (r) => {
-    const src   = document.getElementById("sourceFilter").value;
-    const type  = document.getElementById("typeFilter").value;
-    const sm    = document.getElementById("saleMonthFilter").value;
-    const ff    = document.getElementById("filedFrom").value;
-    const ft    = document.getElementById("filedTo").value;
-    const q     = document.getElementById("searchInput").value.trim().toLowerCase();
-    if (src && r.source !== src) return false;
-    if (type && r.doc_type !== type) return false;
-    if (ff && r.filed && r.filed < ff) return false;
-    if (ft && r.filed && r.filed > ft) return false;
-    if (sm) {
-      if (!r.sale_date) return false;
-      const d = new Date(r.sale_date);
-      if (isNaN(d)) return false;
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      if (key !== sm) return false;
-    }
-    if (q) {
-      const hay = [r.doc_num, r.owner, r.co_borrower, r.grantor_name,
-                   r.legal, r.prop_address, r.mail_address, r.cat_label]
-        .filter(Boolean).join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  };
-  const scoped = DATA.records.filter(baseScope);
-  document.getElementById("verifyCount").textContent    = scoped.filter(r => recordInQueue(r, "verify")).length;
-  document.getElementById("activeCount").textContent    = scoped.filter(r => recordInQueue(r, "active")).length;
-  document.getElementById("archiveCount").textContent   = scoped.filter(r => recordInQueue(r, "archive")).length;
-  document.getElementById("researchCount").textContent  = scoped.filter(r => recordInQueue(r, "research")).length;
-  document.getElementById("siftstackCount").textContent = scoped.filter(r => recordInQueue(r, "siftstack")).length;
-  document.getElementById("autoqCount").textContent     = scoped.filter(r => recordInQueue(r, "autoq")).length;
-}
-
-// ── Render ────────────────────────────────────────────────────────
-function render() {
-  if (!DATA.loaded) return;
-  recomputeCounts();
-  const filtered = applyFilters(DATA.records);
-  renderRecordList(filtered);
-  renderPagination(filtered.length);
-  updateBulkUI();
-}
-
-function renderRecordList(records) {
+function renderRecordList() {
   const container = document.getElementById("records");
-  if (records.length === 0) {
+  if (!container) return;
+  if (filtered.length === 0) {
     const labels = {verify:"Verify",active:"Active",archive:"Archive",research:"Research",siftstack:"Sent to SIFTstack",autoq:"Auto-Q"};
     container.innerHTML = `
       <div class="empty-state">
@@ -976,20 +1940,18 @@ function renderRecordList(records) {
       </div>`;
     return;
   }
-  const pp = effPP(records.length);
-  const pageStart = (currentPage - 1) * pp;
-  const pageEnd = Math.min(pageStart + pp, records.length);
-  const page = records.slice(pageStart, pageEnd);
+  const effectivePP = perPage === Infinity ? filtered.length : perPage;
+  const pageStart = (currentPage - 1) * effectivePP;
+  const pageEnd = Math.min(pageStart + effectivePP, filtered.length);
+  const page = filtered.slice(pageStart, pageEnd);
   container.innerHTML = page.map(renderRecordCard).join("");
 }
 
 function renderRecordCard(r) {
-  const isSelected = selectedRecords.has(r.id);
+  const isSelected = selectedRows.has(r.doc_num);
   const selectedCls = isSelected ? " selected" : "";
-
   const scoreCls = (r.score || 0) >= 70 ? "score-high" : (r.score || 0) >= 50 ? "score-med" : "score-low";
 
-  // Flags
   let flagsHtml = "";
   (r.flags || []).forEach(f => {
     const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
@@ -999,80 +1961,54 @@ function renderRecordCard(r) {
   const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
   const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
 
-  // SIFTstack pill
   let ssPill = "";
   if (r.manual_submitted_at) {
-    ssPill = `<span class="siftstack-pill manual">Manual ${r.siftstack_status || "submitted"}</span>`;
+    ssPill = `<span class="siftstack-pill-card manual">Manual ${r.siftstack_status || "submitted"}</span>`;
   } else if (r.siftstack_status) {
-    ssPill = `<span class="siftstack-pill ${r.siftstack_status}">Auto ${r.siftstack_status}</span>`;
+    ssPill = `<span class="siftstack-pill-card ${r.siftstack_status}">Auto ${r.siftstack_status}</span>`;
   }
 
+  const docNumEsc = escapeHtml(r.doc_num || "");
+
   return `
-    <div class="record-card${selectedCls}" data-record-id="${escapeHtml(r.id)}">
+    <div class="record-card${selectedCls}" data-doc-num="${docNumEsc}">
       <div class="record-row">
         <div class="record-cb-cell">
-          <input type="checkbox" class="record-cb" ${isSelected ? "checked" : ""} onchange="toggleRecord('${escapeHtml(r.id)}', this.checked)">
+          <input type="checkbox" class="record-cb" ${isSelected ? "checked" : ""} onchange="toggleRecordCard('${docNumEsc}', this.checked)">
         </div>
-
-        <!-- Score + dates + type -->
         <div class="record-field">
           <span class="score-pill ${scoreCls}">${r.score || 0}</span>
           <div class="field-value dim" style="margin-top:6px"><strong>Filed</strong> ${r.filed || "—"}</div>
           ${r.sale_date ? `<div class="field-value dim"><strong>Sale</strong> ${r.sale_date}</div>` : ""}
-          <div style="margin-top:4px">
-            <span class="type-badge">${escapeHtml(r.doc_type || "")}</span>
-          </div>
+          <div style="margin-top:4px"><span class="type-badge">${escapeHtml(r.doc_type || "")}</span></div>
           ${r.cat_label ? `<div class="field-value dim" style="margin-top:4px">${escapeHtml(r.cat_label)}</div>` : ""}
           ${ssPill ? `<div style="margin-top:4px">${ssPill}</div>` : ""}
         </div>
-
-        <!-- People -->
         <div class="record-field">
           <div class="field-label">Owner</div>
           <div class="field-value">${escapeHtml(r.owner || "—")}</div>
-          ${r.co_borrower ? `
-            <div class="field-label" style="margin-top:6px">Co-Borrower</div>
-            <div class="field-value">${escapeHtml(r.co_borrower)}</div>
-          ` : ""}
-          ${r.grantor_name ? `
-            <div class="field-label" style="margin-top:6px">Grantor</div>
-            <div class="field-value">${escapeHtml(r.grantor_name)}</div>
-          ` : ""}
+          ${r.co_borrower ? `<div class="field-label" style="margin-top:6px">Co-Borrower</div><div class="field-value">${escapeHtml(r.co_borrower)}</div>` : ""}
+          ${r.grantor_name ? `<div class="field-label" style="margin-top:6px">Grantor</div><div class="field-value">${escapeHtml(r.grantor_name)}</div>` : ""}
         </div>
-
-        <!-- Property + Mailing -->
         <div class="record-field">
           <div class="field-label">Property Address</div>
           <div class="field-value">${escapeHtml(propAddr || "—")}</div>
-          ${mailAddr ? `
-            <div class="field-label" style="margin-top:6px">Mailing</div>
-            <div class="field-value dim">${escapeHtml(mailAddr)}</div>
-          ` : ""}
-          ${r.legal ? `
-            <div class="field-label" style="margin-top:6px">Legal</div>
-            <div class="field-value dim">${escapeHtml(r.legal)}</div>
-          ` : ""}
+          ${mailAddr ? `<div class="field-label" style="margin-top:6px">Mailing</div><div class="field-value dim">${escapeHtml(mailAddr)}</div>` : ""}
+          ${r.legal ? `<div class="field-label" style="margin-top:6px">Legal</div><div class="field-value dim">${escapeHtml(r.legal)}</div>` : ""}
         </div>
-
-        <!-- Amount + flags + confidence + doc# + links -->
         <div class="record-field">
-          ${r.amount ? `
-            <div class="field-label">Amount</div>
-            <div class="field-value">${escapeHtml(r.amount)}</div>
-          ` : ""}
+          ${r.amount ? `<div class="field-label">Amount</div><div class="field-value">${escapeHtml(r.amount)}</div>` : ""}
           ${flagsHtml ? `<div style="margin-top:6px">${flagsHtml}</div>` : ""}
           <div class="field-label" style="margin-top:8px">Confidence / Doc#</div>
           <div class="field-value">
             <span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span>
-            <span class="field-value dim" style="margin-left:6px">${escapeHtml(r.doc_num || "")}</span>
+            <span class="field-value dim" style="margin-left:6px">${docNumEsc}</span>
           </div>
           <div style="margin-top:6px">
-            ${r.clerk_url ? `<a class="ext-link" href="${escapeHtml(r.clerk_url)}" target="_blank" rel="noopener">Clerk &#8599;</a>` : ""}
-            ${r.hcad_url ? `<a class="ext-link" href="${escapeHtml(r.hcad_url)}" target="_blank" rel="noopener" style="color:var(--green)">HCAD &#8599;</a>` : ""}
+            ${r.clerk_url ? `<a class="ext-link-card" href="${escapeHtml(r.clerk_url)}" target="_blank" rel="noopener">Clerk &#8599;</a>` : ""}
+            ${r.hcad_url ? `<a class="ext-link-card" href="${escapeHtml(r.hcad_url)}" target="_blank" rel="noopener" style="color:var(--green)">HCAD &#8599;</a>` : ""}
           </div>
         </div>
-
-        <!-- Actions -->
         <div class="actions-col">
           <div class="field-label">Actions</div>
           ${renderActionsForRecord(r)}
@@ -1086,68 +2022,51 @@ function renderRecordCard(r) {
 function renderActionsForRecord(r) {
   const role = currentProfile?.role;
   const canEdit = role === "admin" || role === "editor";
-  if (!canEdit) {
-    return `<div class="field-value dim">Read-only</div>`;
-  }
+  if (!canEdit) return `<div class="field-value dim">Read-only</div>`;
   const status = r.verification_status;
   const id = escapeHtml(r.id);
-
-  // Each queue gets contextually appropriate buttons.
-  // Backwards re-verify is always allowed (no destructive flips).
   if (status === "pending" || status == null) {
     return `
-      <button class="action-btn confirm" onclick="flipStatus('${id}','verified_owns', this)">Confirm Owns</button>
-      <button class="action-btn archive" onclick="flipStatus('${id}','verified_no_owns', this)">No Property</button>
-      <button class="action-btn research" onclick="flipStatus('${id}','needs_research', this)">Research</button>
-    `;
+      <button class="action-btn confirm" onclick="flipStatusCard('${id}','verified_owns', this)">Confirm Owns</button>
+      <button class="action-btn archive" onclick="flipStatusCard('${id}','verified_no_owns', this)">No Property</button>
+      <button class="action-btn research" onclick="flipStatusCard('${id}','needs_research', this)">Research</button>`;
   }
   if (status === "verified_owns") {
     return `
-      <button class="action-btn reverify" onclick="flipStatus('${id}','pending', this)">Re-verify</button>
-      <button class="action-btn archive" onclick="flipStatus('${id}','verified_no_owns', this)">No Property</button>
-      <button class="action-btn research" onclick="flipStatus('${id}','needs_research', this)">Research</button>
-    `;
+      <button class="action-btn reverify" onclick="flipStatusCard('${id}','pending', this)">Re-verify</button>
+      <button class="action-btn archive" onclick="flipStatusCard('${id}','verified_no_owns', this)">No Property</button>
+      <button class="action-btn research" onclick="flipStatusCard('${id}','needs_research', this)">Research</button>`;
   }
   if (status === "verified_no_owns") {
     return `
-      <button class="action-btn reverify" onclick="flipStatus('${id}','pending', this)">Re-verify</button>
-      <button class="action-btn confirm" onclick="flipStatus('${id}','verified_owns', this)">Confirm Owns</button>
-    `;
+      <button class="action-btn reverify" onclick="flipStatusCard('${id}','pending', this)">Re-verify</button>
+      <button class="action-btn confirm" onclick="flipStatusCard('${id}','verified_owns', this)">Confirm Owns</button>`;
   }
   if (status === "needs_research") {
     return `
-      <button class="action-btn confirm" onclick="flipStatus('${id}','verified_owns', this)">Confirm Owns</button>
-      <button class="action-btn archive" onclick="flipStatus('${id}','verified_no_owns', this)">No Property</button>
-      <button class="action-btn reverify" onclick="flipStatus('${id}','pending', this)">Re-verify</button>
-    `;
+      <button class="action-btn confirm" onclick="flipStatusCard('${id}','verified_owns', this)">Confirm Owns</button>
+      <button class="action-btn archive" onclick="flipStatusCard('${id}','verified_no_owns', this)">No Property</button>
+      <button class="action-btn reverify" onclick="flipStatusCard('${id}','pending', this)">Re-verify</button>`;
   }
   return `<div class="field-value dim">—</div>`;
 }
 
 function renderSkipTraceSection(r) {
-  // Only show skip-trace UI in the Active queue (records ready for outreach).
+  // Skip-trace UI only on Active queue (verified records ready for outreach)
   if (!recordInQueue(r, "active")) return "";
-
   const id = escapeHtml(r.id);
   const phones = phonesByRecord.get(r.id) || [];
   const phoneCount = phones.length;
   const badgeCls = phoneCount > 0 ? "phone-count-badge has-phones" : "phone-count-badge";
-  const badgeText = phoneCount === 0
-    ? "(no phones yet)"
-    : `(${phoneCount} ${phoneCount === 1 ? "phone" : "phones"})`;
-
+  const badgeText = phoneCount === 0 ? "(no phones yet)" : `(${phoneCount} ${phoneCount === 1 ? "phone" : "phones"})`;
   return `
     <div class="skip-trace-toggle-row">
-      <button class="skip-trace-toggle-btn" onclick="togglePanel('${id}', this)">
-        &#9660; Open Skip Trace
-      </button>
+      <button class="skip-trace-toggle-btn" onclick="togglePanel('${id}', this)">&#9660; Open Skip Trace</button>
       <span class="${badgeCls}">${badgeText}</span>
     </div>
-    <div class="skip-trace-panel" id="panel-${id}" style="display:none"></div>
-  `;
+    <div class="skip-trace-panel" id="panel-${id}" style="display:none"></div>`;
 }
 
-// ── Skip-trace panel (owner + co-borrower side-by-side) ───────────
 function togglePanel(recordId, btnEl) {
   const panel = document.getElementById(`panel-${recordId}`);
   if (!panel) return;
@@ -1167,7 +2086,7 @@ function renderPanelForm(recordId) {
   if (!r) return "<p>Record not found</p>";
   const phones = phonesByRecord.get(recordId) || [];
   const ownerPhones = phones.filter(p => p.role === "owner");
-  const coBorrowerPhones = phones.filter(p => p.role === "co_borrower");
+  const cobPhones   = phones.filter(p => p.role === "co_borrower");
   const owner = r.owner || "(no owner)";
   const cob = r.co_borrower || "";
 
@@ -1186,25 +2105,18 @@ function renderPanelForm(recordId) {
         <div class="stp-row">
           <label>${label}</label>
           <input class="stp-input" data-role="${role}" data-slot="${slot}" type="text" value="${escapeHtml(val)}" placeholder="(xxx) xxx-xxxx">
-          <button type="button" class="stp-star ${isBest ? "active" : ""}" data-role="${role}" data-slot="${slot}" onclick="toggleStar(this)" title="Mark as best phone for SMS">&#9733;</button>
-        </div>
-      `;
+          <button type="button" class="stp-star ${isBest ? "active" : ""}" data-role="${role}" data-slot="${slot}" onclick="toggleStarCard(this)" title="Mark as best phone">&#9733;</button>
+        </div>`;
     };
     return `
       <div class="stp-section">
         <h4>${escapeHtml(name)} <span class="role-tag">${role.replace("_", " ")}</span> ${tpsLink(name)}</h4>
-        ${cell(1, "Cell 1")}
-        ${cell(2, "Cell 2")}
-        ${cell(3, "Cell 3")}
-        ${cell(4, "Land 1")}
-      </div>
-    `;
+        ${cell(1, "Cell 1")}${cell(2, "Cell 2")}${cell(3, "Cell 3")}${cell(4, "Land 1")}
+      </div>`;
   };
 
   const sections = [sectionFor("owner", owner, ownerPhones)];
-  if (cob) {
-    sections.push(sectionFor("co_borrower", cob, coBorrowerPhones));
-  }
+  if (cob) sections.push(sectionFor("co_borrower", cob, cobPhones));
 
   return `
     <div class="stp-sections" style="${cob ? '' : 'grid-template-columns:1fr'}">
@@ -1212,13 +2124,11 @@ function renderPanelForm(recordId) {
     </div>
     <div class="stp-actions">
       <button class="stp-btn cancel" onclick="togglePanel('${recordId}', this.closest('.record-card').querySelector('.skip-trace-toggle-btn'))">Cancel</button>
-      <button class="stp-btn" onclick="savePanelData('${recordId}', this)">Save Phones</button>
-    </div>
-  `;
+      <button class="stp-btn" onclick="savePanelDataCard('${recordId}', this)">Save Phones</button>
+    </div>`;
 }
 
-function toggleStar(btn) {
-  // Within a single role, only one phone can be is_best at a time.
+function toggleStarCard(btn) {
   const role = btn.dataset.role;
   const card = btn.closest(".record-card");
   card.querySelectorAll(`.stp-star[data-role="${role}"]`).forEach(b => {
@@ -1227,35 +2137,31 @@ function toggleStar(btn) {
   btn.classList.toggle("active");
 }
 
-async function savePanelData(recordId, btnEl) {
+async function savePanelDataCard(recordId, btnEl) {
   const role = currentProfile?.role;
   if (role !== "admin" && role !== "editor") {
-    toast("Only editors can save phones", "error");
+    leadsToast("Only editors can save phones", "error");
     return;
   }
-
   const card = btnEl.closest(".record-card");
   if (!card) return;
   btnEl.disabled = true;
   btnEl.textContent = "Saving...";
 
-  // Collect all rows from the form
   const rows = [];
   card.querySelectorAll(".stp-input").forEach(input => {
     const r = input.dataset.role;
     const slot = parseInt(input.dataset.slot, 10);
     const raw = input.value.trim();
     if (!raw) return;
-    const e164 = toE164(raw);
+    const e164 = toE164Card(raw);
     if (!e164) return;
-    const display = formatPhoneDisplay(e164);
+    const display = formatPhoneDisplayCard(e164);
     const star = card.querySelector(`.stp-star[data-role="${r}"][data-slot="${slot}"]`);
     rows.push({
-      record_id: recordId,
-      role: r,
-      phone_e164: e164,
-      phone_display: display,
-      phone_type: "wireless",  // default; VA can refine later
+      record_id: recordId, role: r,
+      phone_e164: e164, phone_display: display,
+      phone_type: "wireless",
       priority: slot,
       is_best: star ? star.classList.contains("active") : false,
       source: "truepeoplesearch_manual",
@@ -1264,65 +2170,42 @@ async function savePanelData(recordId, btnEl) {
     });
   });
 
-  // Delete-then-insert pattern (simpler than upsert with the unique
-  // constraint on record_id+role+is_best=true)
   try {
-    await sb.from("contact_phones")
-      .delete()
-      .eq("record_id", recordId)
-      .in("role", ["owner", "co_borrower"]);
-
+    await sb.from("contact_phones").delete().eq("record_id", recordId).in("role", ["owner", "co_borrower"]);
     if (rows.length > 0) {
       const { error } = await sb.from("contact_phones").insert(rows);
       if (error) throw error;
     }
-    toast("Phones saved", "success");
+    leadsToast("Phones saved", "success");
     await refreshContactDataForRecord(recordId);
-    render();
+    applyFilters();
   } catch (e) {
-    toast("Save failed: " + (e.message || e), "error");
+    leadsToast("Save failed: " + (e.message || e), "error");
     btnEl.disabled = false;
     btnEl.textContent = "Save Phones";
   }
 }
 
-async function refreshContactDataForRecord(recordId) {
-  try {
-    const [pRes, eRes] = await Promise.all([
-      sb.from("contact_phones").select("*").eq("record_id", recordId),
-      sb.from("contact_emails").select("*").eq("record_id", recordId),
-    ]);
-    phonesByRecord.set(recordId, pRes.data || []);
-    emailsByRecord.set(recordId, eRes.data || []);
-  } catch (e) {
-    console.warn("refreshContactDataForRecord failed:", e);
-  }
-}
-
-function toE164(raw) {
-  // Strip non-digits, take last 10 (US-only), prepend +1
+function toE164Card(raw) {
   const digits = raw.replace(/\D+/g, "");
   if (digits.length < 10) return null;
-  const last10 = digits.slice(-10);
-  return "+1" + last10;
+  return "+1" + digits.slice(-10);
 }
 
-function formatPhoneDisplay(e164) {
+function formatPhoneDisplayCard(e164) {
   const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
 }
 
-// ── Verification action ───────────────────────────────────────────
-async function flipStatus(recordId, newStatus, btnEl) {
-  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
+async function flipStatusCard(recordId, newStatus, btnEl) {
+  if (!currentSession?.user?.id) { leadsToast("Sign in required", "error"); return; }
   const role = currentProfile?.role;
   if (role !== "admin" && role !== "editor") {
-    toast("Only editors can verify records", "error");
+    leadsToast("Only editors can verify records", "error");
     return;
   }
   const card = btnEl?.closest(".record-card");
   if (card) { card.style.opacity = "0.5"; card.style.pointerEvents = "none"; }
-
   try {
     const { data, error } = await sb
       .from("records")
@@ -1331,341 +2214,743 @@ async function flipStatus(recordId, newStatus, btnEl) {
       .select("verification_status, verified_by, verified_at, manual_overrides")
       .single();
     if (error) {
-      toast("Update failed: " + error.message, "error");
+      leadsToast("Update failed: " + error.message, "error");
       return;
     }
     const rec = DATA.records.find(r => r.id === recordId);
     if (rec && data) Object.assign(rec, data);
-    render();
-    toast(`Status changed to ${newStatus.replace(/_/g, " ")}`, "success");
+    applyFilters();
+    leadsToast(`Status changed to ${newStatus.replace(/_/g, " ")}`, "success");
   } catch (e) {
-    toast("Update crashed: " + (e.message || e), "error");
+    leadsToast("Update crashed: " + (e.message || e), "error");
   } finally {
     if (card) { card.style.opacity = "1"; card.style.pointerEvents = ""; }
   }
 }
 
-// ── Selection ─────────────────────────────────────────────────────
-function toggleRecord(id, checked) {
-  if (checked) selectedRecords.add(id);
-  else selectedRecords.delete(id);
-  const card = document.querySelector(`.record-card[data-record-id="${id}"]`);
+function toggleRecordCard(docNum, checked) {
+  if (checked) selectedRows.add(docNum);
+  else selectedRows.delete(docNum);
+  const card = document.querySelector(`.record-card[data-doc-num="${docNum}"]`);
   if (card) card.classList.toggle("selected", checked);
-  updateBulkUI();
+  updateSelectionUI();
+}
+
+let leadsToastEl = null;
+let leadsToastTimer = null;
+function leadsToast(message, type = "info") {
+  if (leadsToastEl) leadsToastEl.remove();
+  if (leadsToastTimer) clearTimeout(leadsToastTimer);
+  leadsToastEl = document.createElement("div");
+  leadsToastEl.className = `toast ${type}`;
+  leadsToastEl.textContent = message;
+  document.body.appendChild(leadsToastEl);
+  leadsToastTimer = setTimeout(() => {
+    if (leadsToastEl) leadsToastEl.remove();
+    leadsToastEl = null;
+  }, 3500);
+}
+
+function applyFilters() {
+  recomputeQueueCounts();
+  filtered = getFiltered();
+  sortData();
+  renderRecordList();
+  renderPagination();
+
+  // Active filter tag
+  let tag = "";
+  if (cardFilter && cardFilter !== "all") {
+    const label =
+      cardFilter === "addr" ? "With Address" :
+      cardFilter === "ss:completed" ? "SIFTstack Enriched" :
+      cardFilter === "ss:queued" ? "SIFTstack Queued" :
+      cardFilter === "ss:manual" ? "Needs Manual Research" :
+      cardFilter.replace("cat:", "");
+    tag = `<span class="filter-tag">${label} <span class="x" onclick="toggleCardFilter('${cardFilter}')">&times;</span></span>`;
+  }
+  document.getElementById("activeFilter").innerHTML = tag;
+  document.getElementById("showingLabel").textContent = `Showing ${filtered.length} of ${DATA.total}`;
+}
+
+function resetFilters() {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("typeFilter").value = "";
+  document.getElementById("scoreMin").value = "";
+  document.getElementById("scoreMax").value = "";
+  document.getElementById("flagFilter").value = "";
+  document.getElementById("addrFilter").value = "";
+  document.getElementById("confFilter").value = "";
+  document.getElementById("sourceFilter").value = "";
+  document.getElementById("batchFilter").value = "";
+  document.getElementById("runPicker").value = "";
+  SELECTED_RUN_RECORD_IDS = null;
+  document.getElementById("saleMonthFilter").value = "";
+  document.getElementById("filedFrom").value = "";
+  document.getElementById("filedTo").value = "";
+  cardFilter = null;
+  selectedRows.clear();
+  updateSelectionUI();
+  document.querySelectorAll(".stat-card").forEach(el => el.classList.remove("active"));
+  currentPage = 1;
+  applyFilters();
+}
+
+// ── Sort ───────────────────────────────────────────────────────────
+function sortBy(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = col === "filed"; }
+  sortData();
+  renderTable();
+}
+
+function sortData() {
+  filtered.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === "score") { va = va || 0; vb = vb || 0; }
+    else if (sortCol === "flags") { va = (va||[]).length; vb = (vb||[]).length; }
+    else { va = (va || "").toString().toLowerCase(); vb = (vb || "").toString().toLowerCase(); }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+}
+
+// ── Table Render ───────────────────────────────────────────────────
+function renderTable() {
+  // /leads workspace: cards have replaced the table. Delegate to the
+  // card renderer so all existing call sites (inline edit, search,
+  // filters, pagination) keep working without modification.
+  renderRecordList();
+  return;
+
+  // ── Original table-render kept below as dead code for reference ────
+  // Header with checkbox
+  const effectivePP = perPage === Infinity ? filtered.length : perPage;
+  const pageData = filtered.slice((currentPage - 1) * effectivePP, (currentPage - 1) * effectivePP + effectivePP);
+  const allPageSelected = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
+
+  let thead = `<tr><th style="width:32px"><input type="checkbox" class="hdr-cb" ${allPageSelected ? 'checked' : ''} onchange="togglePageAll(this.checked)"></th>`;
+  COLS.forEach(c => {
+    const arrow = sortCol === c.key ? (sortAsc ? " &#9650;" : " &#9660;") : "";
+    thead += `<th style="width:${c.w}" onclick="sortBy('${c.key}')">${c.label}<span class="sort-arrow">${arrow}</span></th>`;
+  });
+  thead += "</tr>";
+  document.getElementById("thead").innerHTML = thead;
+
+  // Body (paginated)
+  let html = "";
+  pageData.forEach(r => {
+    const scoreCls = r.score >= 70 ? "score-high" : r.score >= 50 ? "score-med" : "score-low";
+    const isSelected = selectedRows.has(r.doc_num);
+
+    let flagsHtml = "";
+    (r.flags || []).forEach(f => {
+      const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
+      flagsHtml += `<span class="flag-pill ${cls}">${f}</span>`;
+    });
+
+    const propAddr = [r.prop_address, r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ");
+    const mailAddr = [r.mail_address, r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ");
+
+    const rowIdx = (currentPage - 1) * perPage + filtered.indexOf(r);
+    const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+    const hasEdits = (r.manual_overrides || []).length > 0;
+    const editMark = hasEdits ? '<span class="edit-dot" title="Manually edited"></span>' : '';
+    const mutedDash = '<span style="color:var(--text-muted)">--</span>';
+    const cell = (field, displayVal, extraStyle) => {
+      const content = displayVal || mutedDash;
+      const style = extraStyle ? ` style="${extraStyle}"` : "";
+      if (editable) {
+        return `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','${field}',this)" title="Double-click to edit"${style}>${content}</td>`;
+      }
+      return `<td onclick="openModal(${rowIdx})"${style}>${content}</td>`;
+    };
+
+    html += `<tr class="${isSelected ? 'selected' : ''}" data-idx="${rowIdx}">
+      <td><input type="checkbox" class="row-cb" ${isSelected ? 'checked' : ''} onchange="toggleRow('${r.doc_num}', this.checked)"></td>
+      <td class="score-cell" onclick="openModal(${rowIdx})"><span class="score-pill ${scoreCls}">${r.score || 0}</span>${editMark}</td>
+      <td onclick="openModal(${rowIdx})">${r.filed || ""}</td>
+      ${cell("sale_date", r.sale_date)}
+      <td onclick="openModal(${rowIdx})"><span class="type-badge">${r.doc_type || ""}</span></td>
+      <td onclick="openModal(${rowIdx})">${r.cat_label || ""}</td>
+      ${cell("owner", r.owner)}
+      ${cell("co_borrower", r.co_borrower)}
+      ${cell("grantor_name", r.grantor_name)}
+      <td onclick="openModal(${rowIdx})">${flagsHtml}</td>
+      ${cell("legal", r.legal)}
+      ${cell("prop_address", propAddr)}
+      ${cell("mail_address", mailAddr)}
+      ${cell("amount", r.amount, "font-size:0.78rem")}
+      ${editable
+        ? `<td class="editable-cell" ondblclick="startEdit('${r.doc_num}','match_confidence',this)" title="Double-click to edit"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>`
+        : `<td onclick="openModal(${rowIdx})"><span class="conf-pill conf-${r.match_confidence || 'none'}">${r.match_confidence || 'none'}</span></td>`}
+      <td onclick="openModal(${rowIdx})">${renderSiftstackPill(r)}</td>
+      <td style="font-size:0.7rem" onclick="openModal(${rowIdx})">${r.doc_num}</td>
+      <td style="font-size:0.7rem">${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk</a>' : ''}${r.hcad_url ? ' <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD</a>' : ''}</td>
+    </tr>`;
+  });
+  document.getElementById("tbody").innerHTML = html || '<tr><td colspan="18" style="text-align:center;padding:32px;color:var(--text-muted)">No records match your filters</td></tr>';
+}
+
+// ── Row Selection ─────────────────────────────────────────────────
+function toggleRow(docNum, checked) {
+  if (checked) selectedRows.add(docNum);
+  else selectedRows.delete(docNum);
+  updateSelectionUI();
+  // Update the row highlight without full re-render
+  const rows = document.querySelectorAll("tbody tr");
+  rows.forEach(tr => {
+    const cb = tr.querySelector(".row-cb");
+    if (cb) tr.classList.toggle("selected", cb.checked);
+  });
+  // Update header checkbox
+  const ePP2 = perPage === Infinity ? filtered.length : perPage;
+  const pageData = filtered.slice((currentPage - 1) * ePP2, (currentPage - 1) * ePP2 + ePP2);
+  const hdrCb = document.querySelector(".hdr-cb");
+  if (hdrCb) hdrCb.checked = pageData.length > 0 && pageData.every(r => selectedRows.has(r.doc_num));
 }
 
 function togglePageAll(checked) {
-  const filtered = applyFilters(DATA.records);
-  const pp = effPP(filtered.length);
-  const pageStart = (currentPage - 1) * pp;
-  const pageEnd = Math.min(pageStart + pp, filtered.length);
-  for (let i = pageStart; i < pageEnd; i++) {
-    if (checked) selectedRecords.add(filtered[i].id);
-    else selectedRecords.delete(filtered[i].id);
-  }
-  render();
-}
-
-function selectAllFiltered() {
-  const filtered = applyFilters(DATA.records);
-  if (filtered.length === 0) return;
-  if (filtered.length > 500) {
-    if (!confirm(`Select all ${filtered.length.toLocaleString()} filtered records?`)) return;
-  }
-  filtered.forEach(r => selectedRecords.add(r.id));
-  render();
-}
-
-function clearSelection() {
-  if (selectedRecords.size === 0) return;
-  selectedRecords.clear();
-  render();
-}
-
-function updateBulkUI() {
-  const count = selectedRecords.size;
-  const exportBtn = document.getElementById("exportSelectedBtn");
-  const submitBtn = document.getElementById("submitSiftstackBtn");
-  const clearBtn = document.getElementById("clearSelectionBtn");
-  const label = document.getElementById("selCountLabel");
-  const pageCb = document.getElementById("pageSelectAll");
-
-  if (label) label.textContent = `${count.toLocaleString()} selected`;
-  if (clearBtn) clearBtn.disabled = count === 0;
-  if (exportBtn) {
-    exportBtn.disabled = count === 0;
-    exportBtn.textContent = count === 0 ? "Export Selected to CSV" : `Export Selected to CSV (${count.toLocaleString()})`;
-  }
-  if (submitBtn) {
-    submitBtn.disabled = count === 0;
-    submitBtn.textContent = count === 0 ? "Submit to SIFTstack" : `Submit to SIFTstack (${count.toLocaleString()})`;
-  }
-  if (pageCb) {
-    const filtered = applyFilters(DATA.records);
-    const pp = effPP(filtered.length);
-    const pageStart = (currentPage - 1) * pp;
-    const pageEnd = Math.min(pageStart + pp, filtered.length);
-    const pageRows = filtered.slice(pageStart, pageEnd);
-    pageCb.checked = pageRows.length > 0 && pageRows.every(r => selectedRecords.has(r.id));
-    pageCb.indeterminate = !pageCb.checked && pageRows.some(r => selectedRecords.has(r.id));
-  }
-}
-
-// ── Submit to SIFTstack ───────────────────────────────────────────
-async function submitToSiftstack() {
-  if (!currentSession?.user?.id) { toast("Sign in required", "error"); return; }
-  const role = currentProfile?.role;
-  if (role !== "admin" && role !== "editor") {
-    toast("Only editors can submit to SIFTstack", "error");
-    return;
-  }
-  if (selectedRecords.size === 0) return;
-
-  const byId = new Map();
-  DATA.records.forEach(r => byId.set(r.id, r));
-  const selected = [];
-  selectedRecords.forEach(id => {
-    const r = byId.get(id);
-    if (r) selected.push(r);
+  const ePP3 = perPage === Infinity ? filtered.length : perPage;
+  const pageData = filtered.slice((currentPage - 1) * ePP3, (currentPage - 1) * ePP3 + ePP3);
+  pageData.forEach(r => {
+    if (checked) selectedRows.add(r.doc_num);
+    else selectedRows.delete(r.doc_num);
   });
-  if (selected.length === 0) {
-    toast("Selected records no longer in dataset. Clear and re-select.", "error");
+  updateSelectionUI();
+  renderTable();
+}
+
+function updateSelectionUI() {
+  const count = selectedRows.size;
+  const btn = document.getElementById("exportSelBtn");
+  const badge = document.getElementById("selCount");
+  btn.disabled = count === 0;
+  badge.textContent = count > 0 ? `(${count})` : "";
+
+  const ssBtn = document.getElementById("siftstackBtn");
+  const ssBadge = document.getElementById("siftstackCount");
+  if (ssBtn && ssBadge) {
+    const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+    ssBtn.disabled = count === 0 || !editable;
+    ssBadge.textContent = count > 0 ? `(${count})` : "";
+  }
+}
+
+// ── SIFTstack submission pill + queue button ─────────────────────
+function renderSiftstackPill(r) {
+  const status = r.siftstack_status || "none";
+  const ts = r.siftstack_completed_at;
+  const labels = {
+    completed: "✓ Enriched",
+    queued:    "⏳ Queued",
+    failed:    "✗ Failed",
+    none:      "—",
+  };
+  const label = labels[status] || "—";
+  let title = "Not yet submitted";
+  if (status === "completed")
+    title = ts ? "Enriched " + formatCT(ts) : "Enriched";
+  else if (status === "failed")
+    title = ts ? "Failed " + formatCT(ts) : "Failed";
+  else if (status === "queued")
+    title = "Queued — awaiting SIFTstack worker";
+  // Escape quotes for safe HTML attribute
+  const safeTitle = String(title).replace(/"/g, "&quot;");
+  return `<span class="siftstack-pill ss-${status}" title="${safeTitle}">${label}</span>`;
+}
+
+// ── Sync Probates (manual trigger, server-side via Edge Function) ──
+// Calls supabase/functions/trigger-probate-sync which:
+//   1. Verifies the caller is admin or editor
+//   2. Calls GitHub workflow_dispatch via a server-side PAT
+//   3. Returns the run URL so the user can watch progress
+// VAs never see GitHub or the PAT — everything happens server-side.
+async function handleSyncProbates() {
+  if (!currentSession?.user?.id) { alert("Not signed in."); return; }
+  const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+  if (!editable) { alert("Only editors can sync probates."); return; }
+
+  const btn = document.getElementById("syncProbatesBtn");
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = "&#x21bb; Syncing...";
+
+  try {
+    const { data, error } = await sb.functions.invoke("trigger-probate-sync", {
+      body: { dry_run: false },
+    });
+
+    if (error) {
+      // sb.functions.invoke surfaces non-2xx as an error with the response in context
+      const detail = (error.context && typeof error.context.json === "function")
+        ? await error.context.json().catch(() => null)
+        : null;
+      const msg = (detail && detail.error) || error.message || "Sync trigger failed";
+      alert(`Sync failed: ${msg}`);
+      return;
+    }
+
+    if (!data || !data.ok) {
+      alert(`Sync failed: ${(data && data.error) || "Unknown error"}`);
+      return;
+    }
+
+    // Success — show a toast-like alert with the run link
+    const runUrl = data.run_url || "";
+    const proceed = confirm(
+      `${data.message || "Sync started."}\n\n` +
+      `New probates will appear in this dashboard within ~30-60 seconds.\n\n` +
+      `Click OK to open the live workflow status, or Cancel to stay here.`
+    );
+    if (proceed && runUrl) {
+      window.open(runUrl, "_blank", "noopener");
+    }
+  } catch (e) {
+    alert(`Sync failed: ${e.message || e}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+async function handleSiftstackButton() {
+  if (!currentSession?.user?.id) { alert("Not signed in."); return; }
+  const editable = currentProfile && (currentProfile.role === "admin" || currentProfile.role === "editor");
+  if (!editable) { alert("Only editors can queue records."); return; }
+  if (selectedRows.size === 0) return;
+
+  const selected    = DATA.records.filter(r => selectedRows.has(r.doc_num));
+  const completedL  = selected.filter(r => r.siftstack_status === "completed");
+  const queuedL     = selected.filter(r => r.siftstack_status === "queued");
+  const freshL      = selected.filter(r => !r.siftstack_status || r.siftstack_status === "failed");
+
+  let toQueue;
+  if (completedL.length > 0) {
+    const choice = await showSiftstackConfirm(selected.length, completedL.length, queuedL.length, freshL.length);
+    if (choice === "cancel") return;
+    if (choice === "reenrich") toQueue = [...freshL, ...completedL];
+    else if (choice === "skip") toQueue = freshL;
+  } else {
+    toQueue = freshL;
+    if (queuedL.length > 0 && freshL.length === 0) {
+      alert(`All ${queuedL.length} selected records are already queued. Nothing to do.`);
+      return;
+    }
+  }
+
+  if (!toQueue || toQueue.length === 0) {
+    alert("No records to submit.");
     return;
   }
 
-  // Bucket: skip records already manually-submitted unless user confirms
-  const alreadyManual = selected.filter(r => r.manual_submitted_at);
-  const fresh = selected.filter(r => !r.manual_submitted_at);
-  let toSubmit = fresh;
+  const batchId = (crypto.randomUUID && crypto.randomUUID()) ||
+    "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
 
-  if (alreadyManual.length > 0) {
-    const msg = `${selected.length} selected:\n` +
-      `  - ${fresh.length} new (will be queued)\n` +
-      `  - ${alreadyManual.length} already submitted\n\n` +
-      `Re-submit the ${alreadyManual.length} already-submitted? OK = yes, Cancel = only push the new ones.`;
-    if (confirm(msg)) toSubmit = [...fresh, ...alreadyManual];
-  }
-  if (toSubmit.length === 0) {
-    toast("No records to submit", "info");
-    return;
-  }
+  const rows = toQueue.map(r => ({
+    record_id: r.id,
+    batch_id:  batchId,
+    queued_by: currentSession.user.id,
+    status:    "pending",
+  }));
 
-  const submitBtn = document.getElementById("submitSiftstackBtn");
-  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Queueing..."; }
-
-  // Two-step: (1) update records.manual_submitted_at to mark them as
-  // manually submitted, (2) insert into siftstack_queue. Order matters
-  // so the dashboard reflects the manual submission immediately.
+  // Step 1: mark records as VA-submitted so they move out of Active and into
+  // the Sent-to-SIFTstack tab immediately, even before the worker runs.
   const now = new Date().toISOString();
-  const ids = toSubmit.map(r => r.id);
-
+  const ids = toQueue.map(r => r.id);
   try {
     const { error: updErr } = await sb
       .from("records")
       .update({ manual_submitted_at: now, manual_submitted_by: currentSession.user.id })
       .in("id", ids);
     if (updErr) {
-      toast("Failed to mark records: " + updErr.message, "error");
-      if (submitBtn) submitBtn.disabled = false;
-      updateBulkUI();
+      alert("Failed to mark records as submitted: " + updErr.message);
       return;
     }
-
-    const batchId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
-      "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
-        const r = Math.random() * 16 | 0;
-        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-      });
-
-    const queueRows = toSubmit.map(r => ({
-      record_id: r.id,
-      batch_id:  batchId,
-      queued_by: currentSession.user.id,
-      status:    "pending",
-    }));
-    const { error: qErr } = await sb.from("siftstack_queue").insert(queueRows);
-    if (qErr) {
-      toast("Queue insert failed: " + qErr.message + " (records were marked but not queued)", "error");
-      if (submitBtn) submitBtn.disabled = false;
-      updateBulkUI();
-      return;
-    }
-
-    // Patch local state so UI updates immediately
-    toSubmit.forEach(r => {
-      r.manual_submitted_at = now;
-      r.manual_submitted_by = currentSession.user.id;
-      if (!r.siftstack_status) r.siftstack_status = "queued";
-    });
-    toast(`Submitted ${toSubmit.length} record(s) to SIFTstack. Worker runs every 5 min.`, "success");
-    selectedRecords.clear();
-    render();
   } catch (e) {
-    toast("Submit crashed: " + (e.message || e), "error");
-    if (submitBtn) submitBtn.disabled = false;
-    updateBulkUI();
-  }
-}
-
-// ── CSV export ────────────────────────────────────────────────────
-function csvCell(v) {
-  if (v === null || v === undefined) return "";
-  const s = String(v);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function splitName(full) {
-  if (!full) return { first: "", middle: "", last: "" };
-  const clean = full.trim().replace(/\s+/g, " ");
-  if (!clean) return { first: "", middle: "", last: "" };
-  if (clean.includes(",")) {
-    const [last, rest = ""] = clean.split(",").map(s => s.trim());
-    const restParts = rest.split(" ");
-    return { first: restParts[0] || "", middle: restParts.slice(1).join(" "), last: last };
-  }
-  const parts = clean.split(" ");
-  if (parts.length === 1) return { first: "", middle: "", last: parts[0] };
-  if (parts.length === 2) return { first: parts[0], middle: "", last: parts[1] };
-  return { first: parts[0], middle: parts.slice(1, -1).join(" "), last: parts[parts.length - 1] };
-}
-
-function exportLeadsCSV() {
-  if (selectedRecords.size === 0) return;
-  const byId = new Map();
-  DATA.records.forEach(r => byId.set(r.id, r));
-  const rows = [];
-  selectedRecords.forEach(id => {
-    const r = byId.get(id);
-    if (r) rows.push(r);
-  });
-  if (rows.length === 0) {
-    toast("Selected records no longer in dataset.", "error");
+    alert("Submit-stamp crashed: " + (e.message || e));
     return;
   }
-  rows.sort((a, b) => (b.filed || "").localeCompare(a.filed || ""));
 
-  const headers = [
-    "Score","Filed","Sale Date","Type","Category",
-    "Owner First","Owner Middle","Owner Last",
-    "Co-Borrower First","Co-Borrower Middle","Co-Borrower Last",
-    "Grantor First","Grantor Middle","Grantor Last",
-    "Property Address","Property City","Property State","Property Zip",
-    "Mailing Address","Mailing City","Mailing State","Mailing Zip",
-    "Flags","Legal","Amount",
-    "Match Confidence","Doc #","Source","Verification Status",
-    "Clerk URL","HCAD URL","Record ID"
-  ];
-  let csv = headers.join(",") + "\n";
-  rows.forEach(r => {
-    const o = splitName(r.owner);
-    const cb = splitName(r.co_borrower);
-    const g = splitName(r.grantor_name);
-    csv += [
-      r.score, r.filed || "", r.sale_date || "", r.doc_type || "", csvCell(r.cat_label),
-      csvCell(o.first), csvCell(o.middle), csvCell(o.last),
-      csvCell(cb.first), csvCell(cb.middle), csvCell(cb.last),
-      csvCell(g.first), csvCell(g.middle), csvCell(g.last),
-      csvCell(r.prop_address), csvCell(r.prop_city), csvCell(r.prop_state), csvCell(r.prop_zip),
-      csvCell(r.mail_address), csvCell(r.mail_city), csvCell(r.mail_state), csvCell(r.mail_zip),
-      csvCell((r.flags || []).join("; ")),
-      csvCell(r.legal), csvCell(r.amount),
-      r.match_confidence || "none", csvCell(r.doc_num), r.source, r.verification_status || "",
-      csvCell(r.clerk_url), csvCell(r.hcad_url), csvCell(r.id),
-    ].join(",") + "\n";
+  // Step 2: insert into siftstack_queue so the worker picks them up.
+  const { error } = await sb.from("siftstack_queue").insert(rows);
+  if (error) {
+    alert("Records were marked but queue insert failed: " + error.message);
+    return;
+  }
+
+  // Patch local state so cards refresh immediately
+  toQueue.forEach(r => {
+    r.manual_submitted_at = now;
+    r.manual_submitted_by = currentSession.user.id;
+    if (!r.siftstack_status) r.siftstack_status = "queued";
   });
 
-  const datePart = new Date().toISOString().slice(0,10);
-  const queueLabel = ({verify:"verify",active:"active",archive:"archive",research:"research",siftstack:"sent_siftstack",autoq:"auto_queued"})[currentQueue] || "all";
-  const filename = `harris_leads_${queueLabel}_selected-${rows.length}_${datePart}.csv`
-    .replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
-
-  const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  alert(`Submitted ${rows.length} record(s) to SIFTstack. Worker runs every 5 min.`);
+  selectedRows.clear();
+  applyFilters();
+  updateSelectionUI();
 }
 
-// ── Pagination ────────────────────────────────────────────────────
-function renderPagination(total) {
-  const pp = effPP(total);
-  const totalPages = Math.max(1, Math.ceil(total / pp));
-  if (currentPage > totalPages) currentPage = totalPages;
-  const showStart = total === 0 ? 0 : (currentPage - 1) * pp + 1;
-  const showEnd = Math.min(currentPage * pp, total);
-  const html = `
-    <button onclick="goPage(1)" ${currentPage === 1 ? "disabled" : ""}>First</button>
-    <button onclick="goPage(${currentPage - 1})" ${currentPage === 1 ? "disabled" : ""}>Prev</button>
-    <span class="page-info">${showStart.toLocaleString()}–${showEnd.toLocaleString()} of ${total.toLocaleString()} (page ${currentPage}/${totalPages})</span>
-    <button onclick="goPage(${currentPage + 1})" ${currentPage === totalPages ? "disabled" : ""}>Next</button>
-    <button onclick="goPage(${totalPages})" ${currentPage === totalPages ? "disabled" : ""}>Last</button>
-  `;
+function showSiftstackConfirm(total, completedN, queuedN, freshN) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.className = "siftstack-confirm-overlay";
+    overlay.innerHTML = `
+      <div class="siftstack-confirm">
+        <h3>SIFTstack Queue</h3>
+        <p>You selected <b>${total}</b> record(s).</p>
+        <ul>
+          ${completedN ? `<li><b>${completedN}</b> already enriched</li>` : ""}
+          ${queuedN    ? `<li><b>${queuedN}</b> already queued (will be skipped either way)</li>` : ""}
+          ${freshN     ? `<li><b>${freshN}</b> not yet submitted</li>` : ""}
+        </ul>
+        <p>What would you like to do?</p>
+        <div class="siftstack-confirm-buttons">
+          <button class="btn btn-siftstack" id="ss-reenrich">Re-enrich enriched + queue fresh (${completedN + freshN})</button>
+          <button class="btn btn-green" id="ss-skip">Skip enriched, queue only fresh (${freshN})</button>
+          <button class="btn" id="ss-cancel">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = (result) => { overlay.remove(); resolve(result); };
+    overlay.querySelector("#ss-reenrich").onclick = () => close("reenrich");
+    overlay.querySelector("#ss-skip").onclick     = () => close("skip");
+    overlay.querySelector("#ss-cancel").onclick   = () => close("cancel");
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close("cancel"); });
+  });
+}
+
+// ── Pagination ─────────────────────────────────────────────────────
+function renderPagination() {
+  const ePP = perPage === Infinity ? filtered.length : perPage;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ePP));
+  if (totalPages <= 1) { document.getElementById("pagination").innerHTML = ""; return; }
+
+  let html = `<button ${currentPage === 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">&laquo; Prev</button>`;
+  const start = Math.max(1, currentPage - 3);
+  const end = Math.min(totalPages, currentPage + 3);
+  if (start > 1) html += `<button onclick="goPage(1)">1</button><span class="page-info">...</span>`;
+  for (let i = start; i <= end; i++) {
+    html += `<button class="${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  if (end < totalPages) html += `<span class="page-info">...</span><button onclick="goPage(${totalPages})">${totalPages}</button>`;
+  html += `<button ${currentPage === totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">Next &raquo;</button>`;
+  html += `<span class="page-info" style="margin-left:8px">Page ${currentPage} of ${totalPages}</span>`;
   document.getElementById("pagination").innerHTML = html;
 }
 
-function goPage(n) {
-  currentPage = Math.max(1, n);
-  render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+function goPage(p) {
+  currentPage = p;
+  renderTable();
+  renderPagination();
+  document.querySelector(".table-wrap").scrollIntoView({behavior: "smooth"});
 }
 
-function setPerPage(v) {
-  PER_PAGE = (v === "all") ? Infinity : parseInt(v, 10);
-  currentPage = 1;
-  render();
+// ── Name Splitting ────────────────────────────────────────────────
+// Suffixes that stay with last name
+const NAME_SUFFIXES = new Set(["sr","jr","ii","iii","iv","v","esq","md","phd","dds","dvm"]);
+
+function splitName(fullName) {
+  if (!fullName) return { first: "", middle: "", last: "" };
+  // Strip leading "by " prefix (common in foreclosure grantor fields)
+  let name = fullName.replace(/^by\s+/i, "").trim();
+  if (!name) return { first: "", middle: "", last: "" };
+
+  // Split into parts, handling commas for suffixes like ", Sr" or ", Jr"
+  // First check if there's a suffix after a comma
+  let suffix = "";
+  const commaMatch = name.match(/^(.+?),\s*(Sr|Jr|II|III|IV|V|Esq|MD|PhD|DDS|DVM)\.?$/i);
+  if (commaMatch) {
+    name = commaMatch[1].trim();
+    suffix = ", " + commaMatch[2];
+  }
+
+  const parts = name.split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) return { first: "", middle: "", last: "" };
+  if (parts.length === 1) return { first: toTitleCase(parts[0]), middle: "", last: "" };
+
+  // Check if last word is a suffix without comma (e.g. "John Smith Jr")
+  if (parts.length >= 3 && NAME_SUFFIXES.has(parts[parts.length - 1].toLowerCase().replace(/\.$/,""))) {
+    suffix = ", " + parts.pop();
+  }
+
+  if (parts.length === 2) {
+    return { first: toTitleCase(parts[0]), middle: "", last: toTitleCase(parts[1]) + suffix };
+  }
+
+  // 3+ parts: first word = first, last word = last, everything in between = middle
+  const first = toTitleCase(parts[0]);
+  const last = toTitleCase(parts[parts.length - 1]) + suffix;
+  const middle = parts.slice(1, -1).map(toTitleCase).join(" ");
+  return { first, middle, last };
 }
 
-// ── Tab switching ─────────────────────────────────────────────────
-function setQueue(q) {
-  currentQueue = q;
-  currentPage = 1;
-  document.querySelectorAll(".queue-tab").forEach(b => {
-    b.classList.toggle("active", b.dataset.queue === q);
+function toTitleCase(s) {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+// ── CSV Export ─────────────────────────────────────────────────────
+function exportCSV(mode) {
+  let rows;
+  if (mode === "selected") {
+    rows = getFiltered().filter(r => selectedRows.has(r.doc_num));
+    if (rows.length === 0) return;
+  } else {
+    rows = getFiltered();
+  }
+  const headers = [
+    "Score","Filed","Sale Date","Date Scraped","Type","Category",
+    "Owner First Name","Owner Middle Name","Owner Last Name",
+    "Co-Borrower First Name","Co-Borrower Middle Name","Co-Borrower Last Name",
+    "Grantor First Name","Grantor Middle Name","Grantor Last Name",
+    "Grantee (Heirs)",
+    "Property Address","Property City","Property State","Property Zip",
+    "Mail Address","Mail City","Mail State","Mail Zip",
+    "Flags","Legal Description","Amount",
+    "Match Confidence","Doc #","Batch","Source","Clerk URL","HCAD URL"
+  ];
+  let csv = headers.join(",") + "\n";
+  rows.forEach(r => {
+    const owner = splitName(r.owner);
+    const coBorrower = splitName(r.co_borrower);
+    const grantor = splitName(r.grantor_name);
+    csv += [
+      r.score, r.filed, r.sale_date||"", r.date_scraped||"",
+      r.doc_type, `"${(r.cat_label||'').replace(/"/g,'""')}"`,
+      `"${owner.first}"`, `"${owner.middle}"`, `"${owner.last}"`,
+      `"${coBorrower.first}"`, `"${coBorrower.middle}"`, `"${coBorrower.last}"`,
+      `"${grantor.first}"`, `"${grantor.middle}"`, `"${grantor.last}"`,
+      `"${(r.grantee_names||'').replace(/"/g,'""')}"`,
+      `"${(r.prop_address||'').replace(/"/g,'""')}"`, r.prop_city||"", r.prop_state||"", r.prop_zip||"",
+      `"${(r.mail_address||'').replace(/"/g,'""')}"`, r.mail_city||"", r.mail_state||"", r.mail_zip||"",
+      `"${(r.flags||[]).join('; ')}"`,
+      `"${(r.legal||'').replace(/"/g,'""')}"`,
+      `"${(r.amount||'').replace(/"/g,'""')}"`,
+      r.match_confidence||"none", r.doc_num, r.batch_id||"", r._source||"clerk", r.clerk_url||"", r.hcad_url||""
+    ].join(",") + "\n";
   });
-  render();
+  // Smart filename based on active filters
+  const fParts = [];
+  const _src = document.getElementById("sourceFilter").value;
+  const _sm = document.getElementById("saleMonthFilter").value;
+  const _batch = document.getElementById("batchFilter").value;
+  const _type = document.getElementById("typeFilter").value;
+  const _ff = document.getElementById("filedFrom").value;
+  const _ft = document.getElementById("filedTo").value;
+  if (_src) fParts.push(_src);
+  if (_sm) fParts.push("sale-" + _sm);
+  if (_batch) fParts.push(_batch);
+  if (_type) fParts.push(_type.toLowerCase());
+  if (_ff || _ft) fParts.push("filed-" + (_ff||"start") + "-to-" + (_ft||"end"));
+  if (cardFilter && cardFilter !== "all") fParts.push(cardFilter === "addr" ? "with-addr" : cardFilter.replace("cat:","").toLowerCase());
+  if (mode === "selected") fParts.push("selected-" + rows.length);
+  const datePart = new Date().toISOString().slice(0,10);
+  let filename = "harris_leads";
+  if (fParts.length > 0) filename += "_" + fParts.join("_");
+  filename += "_" + datePart + ".csv";
+  filename = filename.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+  const blob = new Blob([csv], {type: "text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
 }
 
-// ── Toast ─────────────────────────────────────────────────────────
-let toastEl = null;
-let toastTimer = null;
-function toast(message, type = "info") {
-  if (toastEl) toastEl.remove();
-  if (toastTimer) clearTimeout(toastTimer);
-  toastEl = document.createElement("div");
-  toastEl.className = `toast ${type}`;
-  toastEl.textContent = message;
-  document.body.appendChild(toastEl);
-  toastTimer = setTimeout(() => {
-    if (toastEl) toastEl.remove();
-    toastEl = null;
-  }, 3500);
+// ── Detail Modal ──────────────────────────────────────────────────
+function openModal(idx) {
+  const r = filtered[idx];
+  if (!r) return;
+
+  const scoreCls = r.score >= 70 ? "var(--green)" : r.score >= 50 ? "var(--orange)" : "var(--accent)";
+
+  let flagsHtml = "";
+  (r.flags || []).forEach(f => {
+    const cls = f === "New this week" ? "fresh" : DISTRESS_FLAGS.has(f) ? "distress" : "info";
+    flagsHtml += `<span class="flag-pill ${cls}">${f}</span>`;
+  });
+
+  const confColor = {high: "var(--green)", medium: "var(--orange)", low: "var(--red)", none: "var(--text-muted)"}[r.match_confidence || "none"];
+
+  let html = `
+    <div class="modal-header">
+      <div>
+        <h2>${r.owner || r.grantor_name || "Unknown"} - ${r.cat_label || ""}</h2>
+        <div class="cat-label">${r.doc_type} | ${r.doc_num}</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+
+    <div class="modal-score-row">
+      <div>
+        <div class="modal-field-label">Seller Score</div>
+        <div class="modal-score" style="color:${scoreCls}">${r.score}/100</div>
+      </div>
+      <div style="flex:1">
+        <div class="modal-score-bar">
+          <div class="modal-score-fill" style="width:${r.score}%;background:${scoreCls}"></div>
+        </div>
+      </div>
+      <div class="modal-flags">${flagsHtml}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Document Type</div>
+          <div class="modal-field-value">${r.doc_type}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Date Filed</div>
+          <div class="modal-field-value">${r.filed || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Document Number</div>
+          <div class="modal-field-value">${r.doc_num || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Amount</div>
+          <div class="modal-field-value">${r.amount || "--"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Owner / Grantor</div>
+          <div class="modal-field-value">${r.owner || r.grantor_name || "--"}</div>
+        </div>
+        <div>
+          <div class="modal-field-label">Grantee</div>
+          <div class="modal-field-value">${r.grantee_names || "--"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Property Address</div>
+          <div class="modal-addr-block">
+            <div class="addr-line">${r.prop_address || "Not found"}</div>
+            <div class="addr-city">${[r.prop_city, r.prop_state, r.prop_zip].filter(Boolean).join(", ") || ""}</div>
+          </div>
+        </div>
+        <div>
+          <div class="modal-field-label">Mailing Address</div>
+          <div class="modal-addr-block">
+            <div class="addr-line">${r.mail_address || "--"}</div>
+            <div class="addr-city">${[r.mail_city, r.mail_state, r.mail_zip].filter(Boolean).join(", ") || ""}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-field-label">Legal Description</div>
+      <div class="modal-field-value" style="margin-top:4px">${r.legal || "--"}</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-field-label" style="margin-bottom:8px;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.05em">HCAD Property Data</div>
+      <div id="hcadContent" style="color:var(--text-muted);font-size:0.85rem">Loading...</div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-grid">
+        <div>
+          <div class="modal-field-label">Match Confidence</div>
+          <div class="modal-field-value"><span class="conf-pill conf-${r.match_confidence || 'none'}" style="font-size:0.75rem">${r.match_confidence || 'none'}</span></div>
+        </div>
+        <div>
+          <div class="modal-field-label">Links</div>
+          <div class="modal-field-value">
+            ${r.clerk_url ? '<a href="' + r.clerk_url + '" target="_blank" rel="noopener">Clerk Record</a>' : '--'}
+            ${r.hcad_url ? ' &nbsp;|&nbsp; <a href="' + r.hcad_url + '" target="_blank" rel="noopener" style="color:var(--green)">HCAD Record</a>' : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  if (r.sale_date || r.date_scraped || r._source === "foreclosure") {
+    html += `<div class="modal-section">
+      <div class="modal-grid">
+        ${r.sale_date ? '<div><div class="modal-field-label">Foreclosure Sale Date</div><div class="modal-field-value" style="color:var(--red);font-weight:700">' + r.sale_date + '</div></div>' : ''}
+        ${r.file_date ? '<div><div class="modal-field-label">File Date</div><div class="modal-field-value">' + r.file_date + '</div></div>' : ''}
+        ${r.date_scraped ? '<div><div class="modal-field-label">Date Scraped</div><div class="modal-field-value">' + r.date_scraped + '</div></div>' : ''}
+        ${r._source === "foreclosure" ? '<div><div class="modal-field-label">Source</div><div class="modal-field-value"><span class="flag-pill distress">Foreclosure Posting</span></div></div>' : ''}
+      </div>
+    </div>`;
+  }
+
+  document.getElementById("modalContent").innerHTML = html;
+  document.getElementById("modalOverlay").classList.add("active");
+  document.body.style.overflow = "hidden";
+
+  currentModalParcelAcct = r.parcel_acct || null;
+  loadHcadData(r.parcel_acct);
 }
 
-// ── Utils ─────────────────────────────────────────────────────────
-function escapeHtml(s) {
-  if (s === null || s === undefined) return "";
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+async function loadHcadData(parcelAcct) {
+  const el = document.getElementById("hcadContent");
+  if (!el) return;
+  if (!parcelAcct) {
+    el.innerHTML = '<span style="font-style:italic">No parcel account linked to this record</span>';
+    return;
+  }
+  const { data, error } = await sb.from("property_data").select("*").eq("parcel_acct", parcelAcct).maybeSingle();
+  if (!document.getElementById("hcadContent")) return; // modal closed during fetch
+  if (error) {
+    el.innerHTML = '<span style="color:var(--red)">Error loading HCAD data: ' + error.message + '</span>';
+    return;
+  }
+  if (!data) {
+    el.innerHTML = '<span style="font-style:italic">Data not yet captured &mdash; run HCAD extension</span>';
+    return;
+  }
+  const fmt = v => (v === null || v === undefined || v === "") ? "--" : v;
+  const fmtNum = v => (v === null || v === undefined) ? "--" : Number(v).toLocaleString();
+  const fmtMoney = v => (v === null || v === undefined) ? "--" : "$" + Number(v).toLocaleString();
+  el.innerHTML = `
+    <div class="modal-grid">
+      <div><div class="modal-field-label">Bedrooms</div><div class="modal-field-value">${fmt(data.bedrooms)}</div></div>
+      <div><div class="modal-field-label">Bathrooms</div><div class="modal-field-value">${fmt(data.bathrooms)}</div></div>
+      <div><div class="modal-field-label">Square Feet</div><div class="modal-field-value">${fmtNum(data.sqft)}</div></div>
+      <div><div class="modal-field-label">Year Built</div><div class="modal-field-value">${fmt(data.year_built)}</div></div>
+      <div><div class="modal-field-label">Lot Size (sqft)</div><div class="modal-field-value">${fmtNum(data.lot_size_sqft)}</div></div>
+      <div><div class="modal-field-label">Market Value</div><div class="modal-field-value" style="color:var(--green);font-weight:700">${fmtMoney(data.market_value)}</div></div>
+      <div><div class="modal-field-label">Appraised Value</div><div class="modal-field-value">${fmtMoney(data.appraised_value)}</div></div>
+      <div><div class="modal-field-label">Structure Type</div><div class="modal-field-value">${fmt(data.structure_type)}</div></div>
+      <div><div class="modal-field-label">Parcel ID</div><div class="modal-field-value" style="font-family:monospace;font-size:0.75rem">${parcelAcct}</div></div>
+    </div>
+  `;
 }
 
-// ── Init ──────────────────────────────────────────────────────────
-async function init() {
-  const authed = await checkAuth();
-  if (!authed) return;
-  hideLogin();
-  await loadData();
-  render();
+function closeModal() {
+  document.getElementById("modalOverlay").classList.remove("active");
+  document.body.style.overflow = "";
+  currentModalParcelAcct = null;
 }
 
-init();
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+// ── Init ───────────────────────────────────────────────────────────
+(async () => {
+  updateUndoUI();
+  const ok = await checkAuth();
+  if (ok) {
+    await loadData();
+    await loadContactData();
+    subscribeRealtime();
+  }
+})();
 </script>
 </body>
 </html>
