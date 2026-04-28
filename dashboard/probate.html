@@ -239,6 +239,16 @@
     background: var(--accent-light, #9d7eff);
     border-color: var(--accent-light, #9d7eff);
   }
+  .select-bar button.btn-siftstack {
+    background: var(--estatetrace);
+    border-color: var(--estatetrace);
+    color: #fff;
+    font-weight: 600;
+  }
+  .select-bar button.btn-siftstack:hover:not(:disabled) {
+    background: #0ea372;
+    border-color: #0ea372;
+  }
   .select-bar .sel-spacer { flex: 1; }
   .record-field { display: flex; flex-direction: column; gap: 2px; }
   .field-label {
@@ -747,6 +757,7 @@
       <option value="all">All</option>
     </select>
     <button class="btn-export" id="exportSelectedBtn" onclick="exportProbateCSV()" disabled title="Download selected records as CSV — formatted for skip-trace vendors (xLeads, Deal Machine, Smart Skip, DataSift)">Export Selected to CSV</button>
+    <button class="btn-siftstack" id="submitSiftstackBtn" onclick="submitToSiftstack()" disabled title="Queue selected records for automatic upload to DataSift. Worker pulls phones from contact_phones, builds CSV, uploads via Playwright. Runs every 5 min.">Submit to SIFTstack</button>
   </div>
 
   <!-- Records list -->
@@ -872,7 +883,8 @@ async function loadData() {
       .select("id, doc_num, county, state, filed_date, case_status, sheet_tab_name, " +
               "owner, grantor_name, prop_address, prop_city, prop_state, prop_zip, " +
               "mail_address, mail_city, mail_state, mail_zip, " +
-              "verification_status, verified_by, verified_at, additional_applicants")
+              "verification_status, verified_by, verified_at, additional_applicants, " +
+              "probate_campaign_status, probate_campaign_completed_at")
       .eq("source", "estatetrace")
       .order("filed_date", { ascending: false, nullsFirst: false })
       .range(from, from + PAGE - 1);
@@ -2037,11 +2049,18 @@ function clearSelection() {
 function updateBulkUI() {
   const count = selectedRecords.size;
   const exportBtn = document.getElementById("exportSelectedBtn");
+  const submitBtn = document.getElementById("submitSiftstackBtn");
   const clearBtn = document.getElementById("clearSelectionBtn");
   const label = document.getElementById("selCountLabel");
   const pageCb = document.getElementById("pageSelectAll");
 
   if (label) label.textContent = `${count.toLocaleString()} selected`;
+  if (submitBtn) {
+    submitBtn.disabled = count === 0;
+    submitBtn.textContent = count === 0
+      ? "Submit to SIFTstack"
+      : `Submit to SIFTstack (${count.toLocaleString()})`;
+  }
   if (exportBtn) {
     exportBtn.disabled = count === 0;
     exportBtn.textContent = count === 0
@@ -2166,6 +2185,109 @@ function exportProbateCSV() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ── Submit to SIFTstack (probate -> DataSift automation) ──────────
+// Queues selected records into probate_campaign_queue. The
+// probate-datasift-worker GitHub Action drains the queue every 5 min:
+// pulls phones from contact_phones, builds DataSift CSV, uploads via
+// Playwright. Trigger on the queue table flips records.probate_campaign_status
+// to 'queued' -> 'completed' / 'failed' which the dashboard reads.
+
+async function submitToSiftstack() {
+  if (!currentSession?.user?.id) {
+    toast("Sign in required", "error");
+    return;
+  }
+  const role = currentProfile?.role;
+  if (role !== "admin" && role !== "editor") {
+    toast("Only editors can submit records to SIFTstack", "error");
+    return;
+  }
+  if (selectedRecords.size === 0) return;
+
+  // Pull selected records from the in-memory dataset
+  const byId = new Map();
+  DATA.records.forEach(r => byId.set(r.id, r));
+  const selected = [];
+  selectedRecords.forEach(id => {
+    const r = byId.get(id);
+    if (r) selected.push(r);
+  });
+
+  if (selected.length === 0) {
+    toast("Selected records are no longer in the dataset. Clear and re-select.", "error");
+    return;
+  }
+
+  // Bucket by current campaign status: skip records already queued/completed
+  // unless the user explicitly confirms re-submit (mirrors the main dashboard's
+  // re-enrich pattern).
+  const completedL = selected.filter(r => r.probate_campaign_status === "completed");
+  const queuedL    = selected.filter(r => r.probate_campaign_status === "queued");
+  const freshL     = selected.filter(r =>
+    !r.probate_campaign_status || r.probate_campaign_status === "failed");
+
+  let toQueue = freshL;
+
+  if (completedL.length > 0) {
+    const msg = `${selected.length} records selected:\n` +
+      `  - ${freshL.length} new (will be queued)\n` +
+      `  - ${queuedL.length} already in queue (will be skipped)\n` +
+      `  - ${completedL.length} already pushed to DataSift\n\n` +
+      `Re-submit the ${completedL.length} already-pushed records too?\n` +
+      `OK = re-submit them, Cancel = only push the ${freshL.length} new ones.`;
+    if (confirm(msg)) {
+      toQueue = [...freshL, ...completedL];
+    }
+  } else if (queuedL.length > 0 && freshL.length === 0) {
+    toast(`All ${queuedL.length} selected records are already queued. Nothing to do.`, "info");
+    return;
+  }
+
+  if (toQueue.length === 0) {
+    toast("No records to submit.", "info");
+    return;
+  }
+
+  // Generate batch UUID. crypto.randomUUID is available in modern browsers.
+  const batchId = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+
+  const rows = toQueue.map(r => ({
+    record_id: r.id,
+    batch_id:  batchId,
+    queued_by: currentSession.user.id,
+    status:    "pending",
+  }));
+
+  const submitBtn = document.getElementById("submitSiftstackBtn");
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Queueing...";
+  }
+
+  const { error } = await sb.from("probate_campaign_queue").insert(rows);
+
+  if (error) {
+    toast("Failed to queue: " + error.message, "error");
+    if (submitBtn) submitBtn.disabled = false;
+    updateBulkUI();
+    return;
+  }
+
+  // Patch local state so the UI reflects 'queued' immediately, before the
+  // trigger result round-trips. The DB trigger sets the same value
+  // server-side, so this stays in sync.
+  toQueue.forEach(r => { r.probate_campaign_status = "queued"; });
+
+  toast(`Queued ${rows.length} record(s) for SIFTstack. Worker runs every 5 min.`, "success");
+  selectedRecords.clear();
+  render();
 }
 
 // ── Initialize ────────────────────────────────────────────────────
