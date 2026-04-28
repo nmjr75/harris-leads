@@ -957,7 +957,9 @@
     <button class="btn btn-green" id="exportSelBtn" onclick="exportCSV('selected')" disabled>Export Selected <span class="selected-count" id="selCount"></span></button>
     <button class="btn btn-siftstack" id="siftstackBtn" onclick="handleSiftstackButton()" disabled title="Queue selected records for SIFTstack enrichment">SIFTstack <span class="selected-count" id="siftstackCount"></span></button>
     <button class="btn" id="syncProbatesBtn" onclick="handleSyncProbates()" title="Pull latest probate data from the EstateTrace Google Sheet (read-only)">&#x21bb; Sync Probates</button>
-    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button><span class="undo-info" id="undoInfo"></span>
+    <button class="btn-undo" id="undoBtn" onclick="undoLastEdit()" disabled>&#8630; Undo</button>
+    <button class="btn-undo" id="redoBtn" onclick="redoLastEdit()" disabled title="Redo a previously undone edit">&#8631; Redo</button>
+    <span class="undo-info" id="undoInfo"></span>
   </div>
   <span id="activeFilter"></span>
   <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
@@ -1239,46 +1241,106 @@ function parseAddress(val) {
   return { address: parts[0], city: parts.slice(1).join(", "), state: "", zip: "" };
 }
 
-// ── Undo (localStorage, per-browser) ─────────────────────────────
+// ── Undo / Redo (localStorage, per-browser) ──────────────────────
 let undoStack = [];
+let redoStack = [];
 try {
   const stored = localStorage.getItem("harris_leads_undo");
   if (stored) undoStack = JSON.parse(stored);
-} catch(e) { undoStack = []; }
+  const storedRedo = localStorage.getItem("harris_leads_redo");
+  if (storedRedo) redoStack = JSON.parse(storedRedo);
+} catch(e) { undoStack = []; redoStack = []; }
+
+const FIELD_LABELS = { owner: "Owner", co_borrower: "Co-Borrower", grantor_name: "Grantor", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal", sale_date: "Sale Date", match_confidence: "Confidence" };
 
 function saveUndoToStorage() {
   if (undoStack.length > 50) undoStack = undoStack.slice(-50);
-  try { localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack)); } catch(e) {}
+  if (redoStack.length > 50) redoStack = redoStack.slice(-50);
+  try {
+    localStorage.setItem("harris_leads_undo", JSON.stringify(undoStack));
+    localStorage.setItem("harris_leads_redo", JSON.stringify(redoStack));
+  } catch(e) {}
 }
 
 function pushUndo(docNum, field, oldVal, newVal) {
   const user = currentProfile?.display_name || "Unknown";
   undoStack.push({ docNum, field, oldVal, newVal, ts: Date.now(), user });
+  // Any new edit invalidates the redo history (user took a new branch)
+  redoStack = [];
   saveUndoToStorage();
   updateUndoUI();
 }
 
 function updateUndoUI() {
   const btn = document.getElementById("undoBtn");
+  const redoBtn = document.getElementById("redoBtn");
   const info = document.getElementById("undoInfo");
-  if (!btn) return;
-  if (undoStack.length === 0) {
-    btn.disabled = true;
-    if (info) info.textContent = "";
-  } else {
-    btn.disabled = false;
-    const last = undoStack[undoStack.length - 1];
-    const fieldLabels = { owner: "Owner", co_borrower: "Co-Borrower", grantor_name: "Grantor", prop_address: "Prop Addr", mail_address: "Mail Addr", amount: "Amount", legal: "Legal", sale_date: "Sale Date" };
-    if (info) info.textContent = `${fieldLabels[last.field] || last.field} on ${last.docNum} by ${last.user}`;
+  if (btn) {
+    btn.disabled = undoStack.length === 0;
+    btn.title = undoStack.length === 0
+      ? "Nothing to undo"
+      : `Undo last edit (${undoStack.length} edit${undoStack.length > 1 ? "s" : ""} in history)`;
+  }
+  if (redoBtn) {
+    redoBtn.disabled = redoStack.length === 0;
+    redoBtn.title = redoStack.length === 0
+      ? "Nothing to redo"
+      : `Redo (${redoStack.length} undone edit${redoStack.length > 1 ? "s" : ""} ready to restore)`;
+  }
+  if (info) {
+    if (undoStack.length === 0 && redoStack.length === 0) {
+      info.textContent = "";
+    } else if (undoStack.length > 0) {
+      const last = undoStack[undoStack.length - 1];
+      info.textContent = `Last edit: ${FIELD_LABELS[last.field] || last.field} on ${last.docNum} by ${last.user}`;
+    } else {
+      const next = redoStack[redoStack.length - 1];
+      info.textContent = `Next redo: ${FIELD_LABELS[next.field] || next.field} on ${next.docNum}`;
+    }
   }
 }
 
 async function undoLastEdit() {
   if (undoStack.length === 0) return;
-  const entry = undoStack.pop();
+  const entry = undoStack[undoStack.length - 1];
+  const fieldLabel = FIELD_LABELS[entry.field] || entry.field;
+  const oldDisplay = entry.oldVal || "(empty)";
+  const newDisplay = entry.newVal || "(empty)";
+  // Confirm so accidental clicks don't blow through edits silently
+  const confirmed = confirm(
+    `Undo this edit?\n\n` +
+    `Record: ${entry.docNum}\n` +
+    `Field: ${fieldLabel}\n` +
+    `Edited by: ${entry.user}\n\n` +
+    `Will revert from "${newDisplay}" back to "${oldDisplay}"`
+  );
+  if (!confirmed) return;
+  undoStack.pop();
+  redoStack.push(entry);
   saveUndoToStorage();
   updateUndoUI();
   const ok = await saveFieldToSupabase(entry.docNum, entry.field, entry.oldVal);
+  if (ok) { renderTable(); renderPagination(); }
+}
+
+async function redoLastEdit() {
+  if (redoStack.length === 0) return;
+  const entry = redoStack[redoStack.length - 1];
+  const fieldLabel = FIELD_LABELS[entry.field] || entry.field;
+  const oldDisplay = entry.oldVal || "(empty)";
+  const newDisplay = entry.newVal || "(empty)";
+  const confirmed = confirm(
+    `Redo this edit?\n\n` +
+    `Record: ${entry.docNum}\n` +
+    `Field: ${fieldLabel}\n\n` +
+    `Will re-apply: "${oldDisplay}" -> "${newDisplay}"`
+  );
+  if (!confirmed) return;
+  redoStack.pop();
+  undoStack.push(entry);
+  saveUndoToStorage();
+  updateUndoUI();
+  const ok = await saveFieldToSupabase(entry.docNum, entry.field, entry.newVal);
   if (ok) { renderTable(); renderPagination(); }
 }
 
