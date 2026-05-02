@@ -919,6 +919,10 @@ let DATA = {
   // (most recent outbound message's `from` field, populated via the
   // ghl_latest_outbound_from view from migration 004).
   outboundFrom: {},
+  // conversation_id -> { address, city, state, postal_code } — full canonical
+  // address pulled from the GHL contact record (migration 006). Preferred
+  // over the LLM-extracted texted_property_address when available.
+  contactAddress: {},
 };
 // One inline-expanded detail at a time. type is "history" (score timeline,
 // triggered by clicking the contact name) or "notes" (notes panel,
@@ -1064,6 +1068,34 @@ async function loadOutboundNumbers() {
   }
 }
 
+async function loadContactAddresses() {
+  const { data, error } = await sb.from("ghl_latest_contact_address").select("*");
+  if (error) { console.error("loadContactAddresses:", error); return; }
+  DATA.contactAddress = {};
+  for (const r of (data || [])) {
+    DATA.contactAddress[r.conversation_id] = {
+      address: r.contact_address || null,
+      city: r.contact_city || null,
+      state: r.contact_state || null,
+      postal_code: r.contact_postal_code || null,
+    };
+  }
+}
+
+// Build a single-line full address from the structured contact fields,
+// falling back to the LLM-extracted texted_property_address when the
+// structured fields aren't yet populated (e.g. older snapshots that
+// pre-date migration 006 and haven't been backfilled).
+function fullAddressFor(row) {
+  const a = DATA.contactAddress[row.conversation_id];
+  if (a && (a.address || a.city || a.state || a.postal_code)) {
+    const cityState = [a.city, a.state].filter(Boolean).join(", ");
+    const tail = [cityState, a.postal_code].filter(Boolean).join(" ");
+    return [a.address, tail].filter(Boolean).join(", ");
+  }
+  return row.texted_property_address || null;
+}
+
 async function loadNotesCounts() {
   const { data, error } = await sb.from("ghl_notes_count").select("*");
   if (error) { console.error("loadNotesCounts:", error); return; }
@@ -1107,6 +1139,7 @@ async function loadAll() {
     loadStages(),
     loadNotesCounts(),
     loadOutboundNumbers(),
+    loadContactAddresses(),
   ]);
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
@@ -1405,11 +1438,14 @@ function renderLeads() {
         <td class="col-time" title="${escapeHtml(absTime(r.scored_at))}">${relTime(r.scored_at)}</td>
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
-          ${r.texted_property_address ? `
-            <div>
-              <a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(r.texted_property_address).replace(/'/g, "\\'")}')" title="Open in REI AI Leads (address also copied to clipboard)">🏠 ${escapeHtml(r.texted_property_address)}</a>
-            </div>
-          ` : ""}
+          ${(() => {
+            const fullAddr = fullAddressFor(r);
+            return fullAddr ? `
+              <div>
+                <a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(fullAddr).replace(/'/g, "\\'")}')" title="Open in REI AI Leads (address copied to clipboard — paste into search box)">🏠 ${escapeHtml(fullAddr)}</a>
+              </div>
+            ` : "";
+          })()}
           <div class="signal-chips">${renderSignals(r)}</div>
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
         </td>
