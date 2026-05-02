@@ -1348,10 +1348,10 @@ function renderLeads() {
         <td class="col-phone">
           ${r.phone ? `
             <div class="phone-stack">
-              <span class="phone-primary" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(formatPhone(r.phone))}')" title="Click to copy homeowner number">${escapeHtml(formatPhone(r.phone))}</span>
+              <span class="phone-primary" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(r.phone)}')" title="Click to copy homeowner number">${escapeHtml(r.phone)}</span>
               ${DATA.outboundFrom[cid] ? `
                 <span class="phone-rei-label">via REI Reply</span>
-                <span class="phone-secondary" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(DATA.outboundFrom[cid])}', '${escapeHtml(formatPhone(DATA.outboundFrom[cid]))}')" title="REI Reply marketing number used to text this homeowner — click to copy">${escapeHtml(formatPhone(DATA.outboundFrom[cid]))}</span>
+                <span class="phone-secondary" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(DATA.outboundFrom[cid])}', '${escapeHtml(DATA.outboundFrom[cid])}')" title="REI Reply marketing number used to text this homeowner — click to copy">${escapeHtml(DATA.outboundFrom[cid])}</span>
               ` : ""}
             </div>
           ` : "—"}
@@ -1423,7 +1423,7 @@ function renderDeletions() {
       <tr data-id="${r.id}">
         <td class="col-name">${escapeHtml(r.contact_name || "(no name)")}</td>
         <td class="col-phone">
-          ${r.phone ? `<span class="phone-primary" onclick="copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(formatPhone(r.phone))}')" title="Click to copy">${escapeHtml(formatPhone(r.phone))}</span>` : "—"}
+          ${r.phone ? `<span class="phone-primary" onclick="copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(r.phone)}')" title="Click to copy">${escapeHtml(r.phone)}</span>` : "—"}
         </td>
         <td class="col-time" title="${escapeHtml(absTime(r.detected_at))}">${relTime(r.detected_at)}</td>
         <td>${r.last_known_score ? `<span class="score-badge score-${r.last_known_score}">${r.last_known_score}</span>` : '<span style="color:var(--text-muted)">unscored</span>'}</td>
