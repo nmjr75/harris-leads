@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REI Reply Lead Audit — Admin</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #23273a;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --text-muted: #8b8fa3;
+    --accent: #7c5cfc;
+    --accent-light: #9b82fc;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --blue: #3b82f6;
+    --cyan: #06b6d4;
+    --hot: #ef4444;
+    --warm: #f59e0b;
+    --cool: #06b6d4;
+    --cold: #3b82f6;
+    --dead: #6b7280;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    padding-bottom: 60px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 1.25rem; font-weight: 700; }
+  .header h1 span { color: var(--hot); }
+  .nav-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    transition: all 0.15s;
+  }
+  .nav-link:hover { color: var(--text); border-color: var(--accent); }
+  .header-meta { color: var(--text-muted); font-size: 0.8rem; }
+
+  /* Modal overlay (login) */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15, 17, 23, 0.92);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  /* Access denied */
+  .access-denied {
+    margin: 80px auto;
+    max-width: 520px;
+    padding: 40px;
+    background: var(--surface);
+    border: 1px solid var(--red);
+    border-radius: 12px;
+    text-align: center;
+  }
+  .access-denied h2 { font-size: 1.4rem; margin-bottom: 12px; color: var(--red); }
+  .access-denied p { color: var(--text-muted); }
+
+  /* Stats cards */
+  .stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    padding: 20px 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .stat-card.alert { border-color: var(--red); }
+  .stat-label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+  }
+  .stat-card.alert .stat-value { color: var(--red); }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 12px 18px;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 24px;
+    flex-wrap: wrap;
+  }
+  .filter-pill {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 14px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.15s;
+  }
+  .filter-pill:hover { border-color: var(--accent); }
+  .filter-pill.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .search-input {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    outline: none;
+    min-width: 240px;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .btn-refresh {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 14px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .btn-refresh:hover { border-color: var(--accent); color: var(--accent-light); }
+
+  /* Data table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .data-table thead {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table th {
+    text-align: left;
+    padding: 10px 24px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+  }
+  .data-table th.sortable:hover { color: var(--text); }
+  .data-table th .sort-arrow { opacity: 0.5; margin-left: 4px; }
+  .data-table th.sorted .sort-arrow { opacity: 1; color: var(--accent-light); }
+  .data-table td {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .data-table tr:hover td { background: rgba(124, 92, 252, 0.04); }
+  .data-table tr.expanded td { background: rgba(124, 92, 252, 0.08); }
+  .data-table .col-actions { white-space: nowrap; text-align: right; }
+
+  /* Score badges */
+  .score-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .score-HOT { background: var(--hot); color: #fff; }
+  .score-WARM { background: var(--warm); color: #1a1a1a; }
+  .score-COOL { background: var(--cool); color: #fff; }
+  .score-COLD { background: var(--cold); color: #fff; }
+  .score-DEAD { background: var(--dead); color: #fff; }
+
+  /* Signal chips */
+  .signal-chips {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 4px;
+  }
+  .signal-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    background: var(--surface2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+  .signal-chip.price { color: var(--green); border-color: var(--green); }
+  .signal-chip.distress { color: var(--orange); border-color: var(--orange); }
+  .signal-chip.agent { color: var(--cyan); border-color: var(--cyan); }
+  .signal-chip.dnc { color: var(--red); border-color: var(--red); }
+
+  /* Action buttons */
+  .btn-action {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.15s;
+  }
+  .btn-action:hover { border-color: var(--accent); color: var(--accent-light); }
+  .btn-action.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-action.primary:hover { background: var(--accent-light); }
+  .btn-action.success { background: var(--green); color: #fff; border-color: var(--green); }
+  .btn-action.success:hover { opacity: 0.9; }
+
+  /* Reasoning text + expanded detail */
+  .reasoning-text {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    margin-top: 4px;
+    max-width: 540px;
+  }
+  .detail-row td {
+    padding: 0 24px 16px 24px;
+  }
+  .detail-content {
+    background: var(--surface2);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-size: 0.82rem;
+  }
+  .detail-content h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .history-list { list-style: none; padding: 0; margin: 0; }
+  .history-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 0.8rem;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-time { color: var(--text-muted); font-size: 0.72rem; min-width: 140px; }
+
+  /* Empty state */
+  .empty-state {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+  .empty-state h3 { color: var(--text); margin-bottom: 8px; font-weight: 500; }
+
+  /* Footer status bar */
+  #userBar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 8px 24px;
+    display: none;
+    align-items: center;
+    gap: 16px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  #userBar button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  #userBar button:hover { border-color: var(--red); color: var(--red); }
+
+  /* Misc */
+  .col-name { font-weight: 600; }
+  .col-phone { font-family: ui-monospace, monospace; color: var(--text-muted); font-size: 0.8rem; }
+  .col-time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+  .clickable { cursor: pointer; }
+  .ack-note-input {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <h1>REI Reply <span>Lead Audit</span></h1>
+    <a href="index.html" class="nav-link">&larr; Main Dashboard</a>
+  </div>
+  <div class="header-meta" id="headerMeta"></div>
+</header>
+
+<!-- Login modal (visible if not signed in) -->
+<div class="modal-overlay" id="loginOverlay" style="display:none">
+  <div class="modal">
+    <h2 style="margin-bottom:4px;font-size:1.25rem;text-align:center">REI Reply <span style="color:var(--hot)">Lead Audit</span></h2>
+    <p style="color:var(--text-muted);font-size:0.78rem;margin-bottom:20px;text-align:center">Sign in to continue</p>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
+      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
+      <button type="submit" id="loginBtn" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Access denied (logged in but not Nelson) -->
+<div class="access-denied" id="accessDenied" style="display:none">
+  <h2>🔒 Access denied</h2>
+  <p>This dashboard is restricted to authorized administrators. If you believe you should have access, contact Nelson.</p>
+  <p style="margin-top:16px;font-size:0.85rem">
+    <a href="index.html" style="color:var(--accent-light);text-decoration:none">← Back to main dashboard</a>
+  </p>
+</div>
+
+<!-- Main UI (shown only to Nelson) -->
+<div id="mainUI" style="display:none">
+
+  <!-- Stats cards -->
+  <div class="stats-cards" id="statsCards">
+    <div class="stat-card">
+      <span class="stat-label">🔥 HOT leads</span>
+      <span class="stat-value" id="statHot">—</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">☀️ WARM leads</span>
+      <span class="stat-value" id="statWarm">—</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Promotions (24h)</span>
+      <span class="stat-value" id="statPromos">—</span>
+    </div>
+    <div class="stat-card alert" id="pendingDelCard">
+      <span class="stat-label">⚠️ Pending deletions</span>
+      <span class="stat-value" id="statPendingDel">—</span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="leads" onclick="setTab('leads')">Hot/Warm Leads</button>
+    <button class="tab" data-tab="deletions" onclick="setTab('deletions')">Deletion Audits</button>
+  </div>
+
+  <!-- Leads tab -->
+  <div id="tabLeads" class="tab-content active">
+    <div class="filter-bar">
+      <span class="filter-pill active" data-score="all" onclick="setScoreFilter('all')">All</span>
+      <span class="filter-pill" data-score="HOT" onclick="setScoreFilter('HOT')">HOT</span>
+      <span class="filter-pill" data-score="WARM" onclick="setScoreFilter('WARM')">WARM</span>
+      <input type="search" class="search-input" id="leadsSearch" placeholder="Search name or phone..." oninput="renderLeads()">
+      <button class="btn-refresh" onclick="loadAll()">↻ Refresh</button>
+    </div>
+    <table class="data-table" id="leadsTable">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="setSort('contact_name')">Contact <span class="sort-arrow"></span></th>
+          <th class="sortable" onclick="setSort('phone')">Phone</th>
+          <th class="sortable sorted" onclick="setSort('scored_at')">Scored <span class="sort-arrow">↓</span></th>
+          <th>Score</th>
+          <th>Signals + Reasoning</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="leadsBody">
+        <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Deletions tab -->
+  <div id="tabDeletions" class="tab-content">
+    <div class="filter-bar">
+      <span class="filter-pill active" data-ack="pending" onclick="setAckFilter('pending')">Pending</span>
+      <span class="filter-pill" data-ack="acknowledged" onclick="setAckFilter('acknowledged')">Acknowledged</span>
+      <span class="filter-pill" data-ack="all" onclick="setAckFilter('all')">All</span>
+      <button class="btn-refresh" style="margin-left:auto" onclick="loadAll()">↻ Refresh</button>
+    </div>
+    <table class="data-table" id="deletionsTable">
+      <thead>
+        <tr>
+          <th>Contact</th>
+          <th>Phone</th>
+          <th>Detected</th>
+          <th>Last score</th>
+          <th>Last reasoning</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="deletionsBody">
+        <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Footer status bar -->
+<div id="userBar">
+  <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
+  <span style="margin-left:auto" id="syncStatus"></span>
+  <button onclick="handleSignOut()">Sign Out</button>
+</div>
+
+<script>
+// ── Supabase Client ────────────────────────────────────────────────
+const SUPABASE_URL = "https://oqkcmysnhgorjkinfamu.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_XfR5NTuo1LYF8p73_cqQ7w_Ug4LDl3_";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+// REI Reply deep-link base (location ID is hardcoded — same as in slack_alerter.py).
+const REI_REPLY_LOCATION = "HaGbJzmrP46CRtD4oTEE";
+const REI_REPLY_BASE = `https://app.reireply.com/v2/location/${REI_REPLY_LOCATION}`;
+
+// Nelson's known emails — RLS already enforces this server-side via is_nelson(),
+// but we also gate the UI client-side so non-Nelson users see access-denied
+// instead of an empty dashboard.
+const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
+
+// ── State ─────────────────────────────────────────────────────────
+let currentSession = null;
+let currentTab = "leads";
+let currentScoreFilter = "all";
+let currentAckFilter = "pending";
+let currentSort = { field: "scored_at", desc: true };
+let DATA = {
+  leads: [],
+  deletions: [],
+  promotions24h: 0,
+};
+let expandedRowId = null;
+let scoreHistoryCache = {}; // conversation_id -> array of past scores
+
+// ── Auth ──────────────────────────────────────────────────────────
+function isNelson() {
+  const email = (currentSession?.user?.email || "").toLowerCase();
+  return NELSON_EMAILS.includes(email);
+}
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); return false; }
+  currentSession = session;
+  document.getElementById("currentUserLabel").textContent = session.user.email;
+  return true;
+}
+
+function showLogin() {
+  document.getElementById("loginOverlay").style.display = "flex";
+  document.getElementById("mainUI").style.display = "none";
+  document.getElementById("accessDenied").style.display = "none";
+  document.getElementById("userBar").style.display = "none";
+}
+
+function hideLogin() {
+  document.getElementById("loginOverlay").style.display = "none";
+}
+
+function showAccessDenied() {
+  hideLogin();
+  document.getElementById("mainUI").style.display = "none";
+  document.getElementById("accessDenied").style.display = "block";
+  document.getElementById("userBar").style.display = "flex";
+}
+
+function showMainUI() {
+  hideLogin();
+  document.getElementById("accessDenied").style.display = "none";
+  document.getElementById("mainUI").style.display = "block";
+  document.getElementById("userBar").style.display = "flex";
+}
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.textContent = "";
+  const btn = document.getElementById("loginBtn");
+  btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { errEl.textContent = error.message; return; }
+    currentSession = data.session;
+    document.getElementById("currentUserLabel").textContent = data.session.user.email;
+    if (!isNelson()) { showAccessDenied(); return; }
+    showMainUI();
+    await loadAll();
+  } catch (e) {
+    errEl.textContent = e.message || "Sign-in failed";
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign In";
+  }
+});
+
+async function handleSignOut() {
+  await sb.auth.signOut();
+  currentSession = null;
+  showLogin();
+}
+
+// ── Data loaders ──────────────────────────────────────────────────
+async function loadStats() {
+  // ghl_latest_scores already deduplicates per conversation
+  const { data: latest, error: e1 } = await sb
+    .from("ghl_latest_scores")
+    .select("score");
+  if (e1) { console.error("loadStats ghl_latest_scores:", e1); return; }
+  const counts = { HOT: 0, WARM: 0, COOL: 0, COLD: 0, DEAD: 0 };
+  for (const r of (latest || [])) counts[r.score] = (counts[r.score] || 0) + 1;
+  document.getElementById("statHot").textContent = counts.HOT;
+  document.getElementById("statWarm").textContent = counts.WARM;
+
+  // Promotions in last 24h
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count, error: e2 } = await sb
+    .from("ghl_motivation_scores")
+    .select("id", { count: "exact", head: true })
+    .gte("scored_at", since)
+    .eq("is_promotion", true);
+  if (!e2) document.getElementById("statPromos").textContent = (count ?? 0);
+
+  // Pending deletion audits
+  const { count: delCount, error: e3 } = await sb
+    .from("ghl_deletion_audits")
+    .select("id", { count: "exact", head: true })
+    .eq("acknowledged", false);
+  if (!e3) {
+    const n = delCount ?? 0;
+    document.getElementById("statPendingDel").textContent = n;
+    document.getElementById("pendingDelCard").classList.toggle("alert", n > 0);
+  }
+}
+
+async function loadLeads() {
+  const { data, error } = await sb
+    .from("ghl_latest_scores")
+    .select("*")
+    .in("score", ["HOT", "WARM"])
+    .order("scored_at", { ascending: false });
+  if (error) { console.error("loadLeads:", error); return; }
+  DATA.leads = data || [];
+  renderLeads();
+}
+
+async function loadDeletions() {
+  const { data, error } = await sb
+    .from("ghl_deletion_audits")
+    .select("*")
+    .order("detected_at", { ascending: false });
+  if (error) { console.error("loadDeletions:", error); return; }
+  DATA.deletions = data || [];
+  renderDeletions();
+}
+
+async function loadAll() {
+  document.getElementById("syncStatus").textContent = "Syncing...";
+  await Promise.all([loadStats(), loadLeads(), loadDeletions()]);
+  document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+}
+
+async function loadScoreHistory(conversationId) {
+  if (scoreHistoryCache[conversationId]) return scoreHistoryCache[conversationId];
+  const { data, error } = await sb
+    .from("ghl_motivation_scores")
+    .select("scored_at, score, asking_price, distress_signals, has_agent, reasoning")
+    .eq("conversation_id", conversationId)
+    .order("scored_at", { ascending: true });
+  if (error) { console.error("loadScoreHistory:", error); return []; }
+  scoreHistoryCache[conversationId] = data || [];
+  return scoreHistoryCache[conversationId];
+}
+
+// ── Renderers ─────────────────────────────────────────────────────
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function relTime(iso) {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  const diff = Date.now() - t;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function contactUrl(contactId) {
+  if (!contactId) return null;
+  return `${REI_REPLY_BASE}/contacts/detail/${contactId}`;
+}
+
+function renderSignals(row) {
+  const chips = [];
+  if (row.asking_price) chips.push(`<span class="signal-chip price">💰 ${escapeHtml(row.asking_price)}</span>`);
+  for (const d of (row.distress_signals || [])) {
+    chips.push(`<span class="signal-chip distress">${escapeHtml(d)}</span>`);
+  }
+  if (row.has_agent) chips.push(`<span class="signal-chip agent">has agent</span>`);
+  if (row.has_dnc) chips.push(`<span class="signal-chip dnc">DNC</span>`);
+  if (row.alternate_property_mentioned) {
+    chips.push(`<span class="signal-chip">alt: ${escapeHtml(row.alternate_property_mentioned)}</span>`);
+  }
+  return chips.join("");
+}
+
+function sortLeads(rows) {
+  const f = currentSort.field;
+  const dir = currentSort.desc ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const av = a[f] ?? "";
+    const bv = b[f] ?? "";
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+}
+
+function renderLeads() {
+  const search = (document.getElementById("leadsSearch")?.value || "").toLowerCase();
+  let rows = DATA.leads;
+  if (currentScoreFilter !== "all") rows = rows.filter(r => r.score === currentScoreFilter);
+  if (search) {
+    rows = rows.filter(r =>
+      (r.contact_name || "").toLowerCase().includes(search) ||
+      (r.phone || "").toLowerCase().includes(search)
+    );
+  }
+  rows = sortLeads(rows);
+
+  const body = document.getElementById("leadsBody");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try clearing the search or switching to "All".</p></td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rows.map(r => {
+    const url = contactUrl(r.contact_id);
+    const isExpanded = expandedRowId === r.conversation_id;
+    return `
+      <tr data-cid="${escapeHtml(r.conversation_id)}" class="${isExpanded ? 'expanded' : ''}">
+        <td class="col-name clickable" onclick="toggleExpand('${escapeHtml(r.conversation_id)}')">${escapeHtml(r.contact_name || "(no name)")}</td>
+        <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
+        <td class="col-time">${relTime(r.scored_at)}</td>
+        <td><span class="score-badge score-${r.score}">${r.score}</span></td>
+        <td>
+          <div class="signal-chips">${renderSignals(r)}</div>
+          <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
+        </td>
+        <td class="col-actions">
+          ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open in REI Reply →</a>` : ""}
+        </td>
+      </tr>
+      ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${escapeHtml(r.conversation_id)}"><div class="detail-content">Loading score history…</div></td></tr>` : ""}
+    `;
+  }).join("");
+
+  if (expandedRowId) {
+    renderScoreHistory(expandedRowId);
+  }
+}
+
+async function renderScoreHistory(conversationId) {
+  const cell = document.getElementById(`detail-${conversationId}`);
+  if (!cell) return;
+  const history = await loadScoreHistory(conversationId);
+  if (!history.length) {
+    cell.innerHTML = `<div class="detail-content"><em style="color:var(--text-muted)">No history available.</em></div>`;
+    return;
+  }
+  const items = history.map(h => `
+    <li class="history-item">
+      <span class="history-time">${new Date(h.scored_at).toLocaleString()}</span>
+      <span class="score-badge score-${h.score}">${h.score}</span>
+      <span style="color:var(--text-muted);font-size:0.78rem;flex:1">${escapeHtml(h.reasoning || "")}</span>
+    </li>
+  `).join("");
+  cell.innerHTML = `
+    <div class="detail-content">
+      <h4>Score history (${history.length} scoring${history.length !== 1 ? 's' : ''})</h4>
+      <ul class="history-list">${items}</ul>
+    </div>
+  `;
+}
+
+function renderDeletions() {
+  let rows = DATA.deletions;
+  if (currentAckFilter === "pending") rows = rows.filter(r => !r.acknowledged);
+  else if (currentAckFilter === "acknowledged") rows = rows.filter(r => r.acknowledged);
+
+  const body = document.getElementById("deletionsBody");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty-state"><h3>No deletion audits ${currentAckFilter !== "all" ? "in this category" : ""}</h3><p>${currentAckFilter === "pending" ? "Nothing pending review — clean inbox." : "Switch the filter to see other states."}</p></td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rows.map(r => {
+    const url = contactUrl(r.contact_id);
+    return `
+      <tr data-id="${r.id}">
+        <td class="col-name">${escapeHtml(r.contact_name || "(no name)")}</td>
+        <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
+        <td class="col-time">${relTime(r.detected_at)}</td>
+        <td>${r.last_known_score ? `<span class="score-badge score-${r.last_known_score}">${r.last_known_score}</span>` : '<span style="color:var(--text-muted)">unscored</span>'}</td>
+        <td><div class="reasoning-text">${escapeHtml(r.last_known_reasoning || "—")}</div></td>
+        <td class="col-actions">
+          ${url ? `<a class="btn-action" href="${url}" target="_blank">Open →</a> ` : ""}
+          ${r.acknowledged
+            ? `<span style="color:var(--green);font-size:0.78rem">✓ acknowledged ${relTime(r.acknowledged_at)}</span>`
+            : `<button class="btn-action success" onclick="acknowledgeDeletion(${r.id})">Acknowledge</button>`
+          }
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// ── Interactions ──────────────────────────────────────────────────
+function setTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab").forEach(el => el.classList.toggle("active", el.dataset.tab === tab));
+  document.querySelectorAll(".tab-content").forEach(el => el.classList.toggle("active", el.id === `tab${tab[0].toUpperCase() + tab.slice(1)}`));
+}
+
+function setScoreFilter(s) {
+  currentScoreFilter = s;
+  document.querySelectorAll('.filter-pill[data-score]').forEach(el => el.classList.toggle("active", el.dataset.score === s));
+  expandedRowId = null;
+  renderLeads();
+}
+
+function setAckFilter(s) {
+  currentAckFilter = s;
+  document.querySelectorAll('.filter-pill[data-ack]').forEach(el => el.classList.toggle("active", el.dataset.ack === s));
+  renderDeletions();
+}
+
+function setSort(field) {
+  if (currentSort.field === field) {
+    currentSort.desc = !currentSort.desc;
+  } else {
+    currentSort.field = field;
+    currentSort.desc = true;
+  }
+  // Update arrow indicators
+  document.querySelectorAll("th.sortable").forEach(th => {
+    th.classList.remove("sorted");
+    const arrow = th.querySelector(".sort-arrow");
+    if (arrow) arrow.textContent = "";
+  });
+  const activeTh = [...document.querySelectorAll("th.sortable")].find(th => th.getAttribute("onclick")?.includes(`'${field}'`));
+  if (activeTh) {
+    activeTh.classList.add("sorted");
+    const arrow = activeTh.querySelector(".sort-arrow");
+    if (arrow) arrow.textContent = currentSort.desc ? "↓" : "↑";
+  }
+  renderLeads();
+}
+
+function toggleExpand(conversationId) {
+  expandedRowId = expandedRowId === conversationId ? null : conversationId;
+  renderLeads();
+}
+
+async function acknowledgeDeletion(id) {
+  const note = prompt("Optional note (visible in audit log):") || "";
+  const { error } = await sb
+    .from("ghl_deletion_audits")
+    .update({
+      acknowledged: true,
+      acknowledged_at: new Date().toISOString(),
+      notes: note || null,
+    })
+    .eq("id", id);
+  if (error) { alert("Acknowledge failed: " + error.message); return; }
+  // Refresh the deletion data + stats
+  await Promise.all([loadDeletions(), loadStats()]);
+}
+
+// ── Realtime: live-update on new scores ───────────────────────────
+function subscribeToNewScores() {
+  sb.channel("ghl_motivation_scores_inserts")
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "ghl_motivation_scores",
+    }, (payload) => {
+      const row = payload.new;
+      if (row && (row.score === "HOT" || row.score === "WARM")) {
+        // Refresh the leads table so the new row appears at top.
+        // Cheap query — ghl_latest_scores already filters to most-recent.
+        loadLeads();
+        loadStats();
+      }
+    })
+    .subscribe();
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+async function init() {
+  const authed = await checkAuth();
+  if (!authed) return;
+  if (!isNelson()) { showAccessDenied(); return; }
+  showMainUI();
+  await loadAll();
+  subscribeToNewScores();
+  // Auto-refresh every 60s as a backup to realtime
+  setInterval(loadAll, 60000);
+}
+
+init();
+</script>
+</body>
+</html>
