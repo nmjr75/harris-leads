@@ -631,6 +631,62 @@
   td.signals-cell.clickable:hover .reasoning-text::after {
     opacity: 0.85;
   }
+
+  /* Phone stack — homeowner number on top + REI Reply marketing number below */
+  .phone-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+  .phone-primary, .phone-secondary {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+    user-select: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .phone-primary {
+    font-size: 0.86rem;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .phone-secondary {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+  }
+  .phone-primary:hover, .phone-secondary:hover {
+    background: rgba(124, 92, 252, 0.15);
+    color: var(--accent-light);
+  }
+  .phone-rei-label {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0 6px;
+    margin-top: 1px;
+  }
+
+  /* Copy-confirmation toast */
+  .copy-toast {
+    position: fixed;
+    bottom: 70px;
+    left: 50%;
+    background: var(--green);
+    color: #fff;
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.86rem;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+    z-index: 9999;
+    pointer-events: none;
+    animation: toast-flash 1.6s ease-in-out forwards;
+  }
+  @keyframes toast-flash {
+    0%   { opacity: 0; transform: translate(-50%, 12px); }
+    12%  { opacity: 1; transform: translate(-50%, 0); }
+    88%  { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -8px); }
+  }
 </style>
 </head>
 <body>
@@ -813,6 +869,10 @@ let DATA = {
   notes: {},
   // conversation_id -> most-recent snapshot row (lazy-loaded when transcript opens)
   transcripts: {},
+  // conversation_id -> REI Reply marketing number used to text this homeowner
+  // (most recent outbound message's `from` field, populated via the
+  // ghl_latest_outbound_from view from migration 004).
+  outboundFrom: {},
 };
 // One inline-expanded detail at a time. type is "history" (score timeline,
 // triggered by clicking the contact name) or "notes" (notes panel,
@@ -949,6 +1009,15 @@ async function loadStages() {
   for (const r of (data || [])) DATA.stages[r.conversation_id] = r;
 }
 
+async function loadOutboundNumbers() {
+  const { data, error } = await sb.from("ghl_latest_outbound_from").select("*");
+  if (error) { console.error("loadOutboundNumbers:", error); return; }
+  DATA.outboundFrom = {};
+  for (const r of (data || [])) {
+    if (r.outbound_from) DATA.outboundFrom[r.conversation_id] = r.outbound_from;
+  }
+}
+
 async function loadNotesCounts() {
   const { data, error } = await sb.from("ghl_notes_count").select("*");
   if (error) { console.error("loadNotesCounts:", error); return; }
@@ -991,6 +1060,7 @@ async function loadAll() {
     loadDeletions(),
     loadStages(),
     loadNotesCounts(),
+    loadOutboundNumbers(),
   ]);
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
@@ -1027,6 +1097,50 @@ function relTime(iso) {
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
   return new Date(iso).toLocaleDateString();
+}
+
+// Format a phone number for display: '+18325551234' → '(832) 555-1234'.
+// Anything we don't recognize falls back to the raw input so we never hide a value.
+function formatPhone(raw) {
+  if (!raw) return "";
+  const digits = String(raw).replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return String(raw);
+}
+
+// Copy a string to the clipboard and flash a confirmation toast.
+// Pasted value is the raw E.164 number (works in every dialer); the toast
+// shows the human-formatted version.
+async function copyToClipboard(text, label) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // Older browsers / insecure contexts — fall back to a temporary input.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch {}
+    ta.remove();
+  }
+  showToast("Copied: " + (label || formatPhone(text)));
+}
+
+function showToast(msg) {
+  const existing = document.querySelector(".copy-toast");
+  if (existing) existing.remove();
+  const t = document.createElement("div");
+  t.className = "copy-toast";
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { if (t.parentNode) t.remove(); }, 1700);
 }
 
 // Absolute timestamp for hover tooltips. Hardcoded to America/Chicago per
@@ -1231,7 +1345,17 @@ function renderLeads() {
     return `
       <tr data-cid="${cidEsc}" class="${isExpanded ? 'expanded' : ''}">
         <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">${escapeHtml(r.contact_name || "(no name)")}</td>
-        <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
+        <td class="col-phone">
+          ${r.phone ? `
+            <div class="phone-stack">
+              <span class="phone-primary" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(formatPhone(r.phone))}')" title="Click to copy homeowner number">${escapeHtml(formatPhone(r.phone))}</span>
+              ${DATA.outboundFrom[cid] ? `
+                <span class="phone-rei-label">via REI Reply</span>
+                <span class="phone-secondary" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(DATA.outboundFrom[cid])}', '${escapeHtml(formatPhone(DATA.outboundFrom[cid]))}')" title="REI Reply marketing number used to text this homeowner — click to copy">${escapeHtml(formatPhone(DATA.outboundFrom[cid]))}</span>
+              ` : ""}
+            </div>
+          ` : "—"}
+        </td>
         <td class="col-time" title="${escapeHtml(absTime(r.scored_at))}">${relTime(r.scored_at)}</td>
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
@@ -1298,7 +1422,9 @@ function renderDeletions() {
     return `
       <tr data-id="${r.id}">
         <td class="col-name">${escapeHtml(r.contact_name || "(no name)")}</td>
-        <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
+        <td class="col-phone">
+          ${r.phone ? `<span class="phone-primary" onclick="copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(formatPhone(r.phone))}')" title="Click to copy">${escapeHtml(formatPhone(r.phone))}</span>` : "—"}
+        </td>
         <td class="col-time" title="${escapeHtml(absTime(r.detected_at))}">${relTime(r.detected_at)}</td>
         <td>${r.last_known_score ? `<span class="score-badge score-${r.last_known_score}">${r.last_known_score}</span>` : '<span style="color:var(--text-muted)">unscored</span>'}</td>
         <td><div class="reasoning-text">${escapeHtml(r.last_known_reasoning || "—")}</div></td>
