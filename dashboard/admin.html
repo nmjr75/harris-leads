@@ -871,13 +871,12 @@ const REI_AI_LEADS_BASE = "https://app.reiaileads.com/Marketing/Leads/Index/Prop
 
 function openInReiAiLeads(address) {
   if (!address) return;
-  const leadSearch = JSON.stringify({
-    filterProperties: { places: [{ type: "address", text: address }] }
-  });
-  const url = `${REI_AI_LEADS_BASE}#/?leadSearch=${encodeURIComponent(leadSearch)}`;
-  // Belt-and-suspenders: clipboard fallback in case URL pre-fill doesn't take.
+  // Just open the bare search page — embedding leadSearch in the URL
+  // pre-fills as a "selected place" pill on REI AI Leads, which then
+  // refuses any paste with "please remove selection before adding a new
+  // location." Cleanest path: clipboard + empty search box.
   copyToClipboard(address, address);
-  window.open(url, "_blank", "noopener");
+  window.open(REI_AI_LEADS_BASE, "_blank", "noopener");
 }
 
 // Nelson's known emails — RLS already enforces this server-side via is_nelson(),
