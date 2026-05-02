@@ -665,6 +665,36 @@
     margin-top: 1px;
   }
 
+  /* Address chip — click to open in REI AI Leads */
+  .address-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    margin-bottom: 6px;
+    text-decoration: none;
+    transition: all 0.15s;
+    user-select: text;
+  }
+  .address-link:hover {
+    border-color: var(--accent);
+    color: var(--accent-light);
+    background: rgba(124, 92, 252, 0.08);
+  }
+  .address-link::after {
+    content: "→ REI AI Leads";
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+    opacity: 0.7;
+  }
+
   /* Copy-confirmation toast */
   .copy-toast {
     position: fixed;
@@ -832,6 +862,23 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, 
 // REI Reply deep-link base (location ID is hardcoded — same as in slack_alerter.py).
 const REI_REPLY_LOCATION = "HaGbJzmrP46CRtD4oTEE";
 const REI_REPLY_BASE = `https://app.reireply.com/v2/location/${REI_REPLY_LOCATION}`;
+
+// REI AI Leads base — best-effort URL with embedded search text.
+// If the SPA picks up leadSearch on load, the search auto-runs;
+// otherwise the user pastes into the visible search box (we also
+// copy the address to clipboard on click as a backup).
+const REI_AI_LEADS_BASE = "https://app.reiaileads.com/Marketing/Leads/Index/Property";
+
+function openInReiAiLeads(address) {
+  if (!address) return;
+  const leadSearch = JSON.stringify({
+    filterProperties: { places: [{ type: "address", text: address }] }
+  });
+  const url = `${REI_AI_LEADS_BASE}#/?leadSearch=${encodeURIComponent(leadSearch)}`;
+  // Belt-and-suspenders: clipboard fallback in case URL pre-fill doesn't take.
+  copyToClipboard(address, address);
+  window.open(url, "_blank", "noopener");
+}
 
 // Nelson's known emails — RLS already enforces this server-side via is_nelson(),
 // but we also gate the UI client-side so non-Nelson users see access-denied
@@ -1359,6 +1406,11 @@ function renderLeads() {
         <td class="col-time" title="${escapeHtml(absTime(r.scored_at))}">${relTime(r.scored_at)}</td>
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
+          ${r.texted_property_address ? `
+            <div>
+              <a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(r.texted_property_address).replace(/'/g, "\\'")}')" title="Open in REI AI Leads (address also copied to clipboard)">🏠 ${escapeHtml(r.texted_property_address)}</a>
+            </div>
+          ` : ""}
           <div class="signal-chips">${renderSignals(r)}</div>
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
         </td>
