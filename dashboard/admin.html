@@ -439,8 +439,8 @@
         <tr>
           <th class="sortable" onclick="setSort('contact_name')">Contact <span class="sort-arrow"></span></th>
           <th class="sortable" onclick="setSort('phone')">Phone</th>
-          <th class="sortable sorted" onclick="setSort('scored_at')" title="When this lead last replied (approx — actually when our AI last re-scored, which only happens after a new inbound message)">Last reply <span class="sort-arrow">↓</span></th>
-          <th>Score</th>
+          <th class="sortable sorted" onclick="setSort('scored_at')" title="When our system last pulled this lead from REI Reply (within 5 min of their last reply)">Pulled at <span class="sort-arrow">↓</span></th>
+          <th class="sortable" onclick="setSort('score')" title="Click once: HOT at top. Click again: WARM at top.">Score <span class="sort-arrow"></span></th>
           <th>Signals + Reasoning</th>
           <th class="col-actions"></th>
         </tr>
@@ -677,6 +677,18 @@ function relTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
+// Absolute timestamp for hover tooltips. Hardcoded to America/Chicago per
+// dashboard convention — see feedback_central_time memory.
+function absTime(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", second: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 function contactUrl(contactId) {
   if (!contactId) return null;
   return `${REI_REPLY_BASE}/contacts/detail/${contactId}`;
@@ -696,12 +708,23 @@ function renderSignals(row) {
   return chips.join("");
 }
 
+// Sort priority for score column: ascending = HOT first, descending = WARM first
+// (since this view filters to HOT/WARM only, "WARM first" is the practical
+// inverse). Lower number = higher priority.
+const SCORE_PRIORITY = { HOT: 0, WARM: 1, COOL: 2, COLD: 3, DEAD: 4 };
+
 function sortLeads(rows) {
   const f = currentSort.field;
   const dir = currentSort.desc ? -1 : 1;
   return [...rows].sort((a, b) => {
-    const av = a[f] ?? "";
-    const bv = b[f] ?? "";
+    let av, bv;
+    if (f === "score") {
+      av = SCORE_PRIORITY[a.score] ?? 99;
+      bv = SCORE_PRIORITY[b.score] ?? 99;
+    } else {
+      av = a[f] ?? "";
+      bv = b[f] ?? "";
+    }
     if (av < bv) return -1 * dir;
     if (av > bv) return 1 * dir;
     return 0;
@@ -733,8 +756,8 @@ function renderLeads() {
       <tr data-cid="${escapeHtml(r.conversation_id)}" class="${isExpanded ? 'expanded' : ''}">
         <td class="col-name clickable" onclick="toggleExpand('${escapeHtml(r.conversation_id)}')">${escapeHtml(r.contact_name || "(no name)")}</td>
         <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
-        <td class="col-time">${relTime(r.scored_at)}</td>
-        <td><span class="score-badge score-${r.score}">${r.score}</span></td>
+        <td class="col-time" title="${escapeHtml(absTime(r.scored_at))}">${relTime(r.scored_at)}</td>
+        <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
         <td>
           <div class="signal-chips">${renderSignals(r)}</div>
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
@@ -792,7 +815,7 @@ function renderDeletions() {
       <tr data-id="${r.id}">
         <td class="col-name">${escapeHtml(r.contact_name || "(no name)")}</td>
         <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
-        <td class="col-time">${relTime(r.detected_at)}</td>
+        <td class="col-time" title="${escapeHtml(absTime(r.detected_at))}">${relTime(r.detected_at)}</td>
         <td>${r.last_known_score ? `<span class="score-badge score-${r.last_known_score}">${r.last_known_score}</span>` : '<span style="color:var(--text-muted)">unscored</span>'}</td>
         <td><div class="reasoning-text">${escapeHtml(r.last_known_reasoning || "—")}</div></td>
         <td class="col-actions">
@@ -832,7 +855,9 @@ function setSort(field) {
     currentSort.desc = !currentSort.desc;
   } else {
     currentSort.field = field;
-    currentSort.desc = true;
+    // Score column defaults to ascending (HOT first) on first click.
+    // All other columns default to descending (most-recent / Z->A first).
+    currentSort.desc = field !== "score";
   }
   // Update arrow indicators
   document.querySelectorAll("th.sortable").forEach(th => {
