@@ -361,6 +361,172 @@
     font-size: 0.78rem;
     margin-bottom: 8px;
   }
+
+  /* Stage filter row (above the score filter pills) */
+  .stage-filter-row {
+    padding: 12px 24px 4px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .stage-filter-label {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 4px;
+  }
+
+  /* Stage badges (colored per pipeline stage) */
+  .stage-pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .stage-active  { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+  .stage-working { background: var(--blue);     color: #fff; }
+  .stage-won     { background: var(--green);    color: #fff; }
+  .stage-lost    { background: var(--red);      color: #fff; }
+  .stage-dnc     { background: #6b1620;         color: #fff; }
+
+  /* Inline action group (Open + Notes + Stage buttons in actions cell) */
+  .action-group {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .btn-notes, .btn-stage {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+  }
+  .btn-notes:hover, .btn-stage:hover { border-color: var(--accent); }
+  .btn-notes .badge {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  /* Notes panel (inline expanded under a row) */
+  .notes-panel {
+    background: var(--surface2);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 14px 18px;
+  }
+  .notes-panel h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .notes-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 12px 0;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .notes-list .note-item {
+    padding: 9px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .note-time {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    margin-bottom: 4px;
+  }
+  .notes-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.85rem;
+    padding: 8px 0 12px;
+  }
+  .notes-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .notes-input {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 56px;
+  }
+  .notes-input:focus { border-color: var(--accent); outline: none; }
+  .btn-save-note {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 8px 18px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    align-self: stretch;
+    font-family: inherit;
+  }
+  .btn-save-note:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-save-note:hover:not(:disabled) { background: var(--accent-light); }
+
+  /* Stage selection menu (floating dropdown) */
+  .stage-menu {
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    padding: 6px;
+    z-index: 200;
+    min-width: 180px;
+  }
+  .stage-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: var(--text);
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    font-family: inherit;
+  }
+  .stage-menu button:hover { background: var(--surface2); }
+  .stage-menu button .stage-pill { margin-right: 8px; }
 </style>
 </head>
 <body>
@@ -427,7 +593,17 @@
 
   <!-- Leads tab -->
   <div id="tabLeads" class="tab-content active">
+    <div class="stage-filter-row">
+      <span class="stage-filter-label">Stage:</span>
+      <span class="filter-pill active" data-stage="active" onclick="setStageFilter('active')">Active</span>
+      <span class="filter-pill" data-stage="working" onclick="setStageFilter('working')">Working</span>
+      <span class="filter-pill" data-stage="won" onclick="setStageFilter('won')">Won</span>
+      <span class="filter-pill" data-stage="lost" onclick="setStageFilter('lost')">Lost</span>
+      <span class="filter-pill" data-stage="dnc" onclick="setStageFilter('dnc')">DNC</span>
+      <span class="filter-pill" data-stage="all" onclick="setStageFilter('all')">All stages</span>
+    </div>
     <div class="filter-bar">
+      <span class="stage-filter-label">Score:</span>
       <span class="filter-pill active" data-score="all" onclick="setScoreFilter('all')">All</span>
       <span class="filter-pill" data-score="HOT" onclick="setScoreFilter('HOT')">HOT</span>
       <span class="filter-pill" data-score="WARM" onclick="setScoreFilter('WARM')">WARM</span>
@@ -501,18 +677,39 @@ const REI_REPLY_BASE = `https://app.reireply.com/v2/location/${REI_REPLY_LOCATIO
 // instead of an empty dashboard.
 const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
 
+// Pipeline stage definitions. The DB CHECK constraint is the source of
+// truth for valid stage keys (see migrations/002_contact_actions.sql);
+// changing a key here without updating the migration will produce 23514s.
+const STAGES = {
+  active:  { label: "Active",  className: "stage-active"  },
+  working: { label: "Working", className: "stage-working" },
+  won:     { label: "Won",     className: "stage-won"     },
+  lost:    { label: "Lost",    className: "stage-lost"    },
+  dnc:     { label: "DNC",     className: "stage-dnc"     },
+};
+
 // ── State ─────────────────────────────────────────────────────────
 let currentSession = null;
 let currentTab = "leads";
 let currentScoreFilter = "all";
+let currentStageFilter = "active"; // default: only show unworked pipeline
 let currentAckFilter = "pending";
 let currentSort = { field: "scored_at", desc: true };
 let DATA = {
   leads: [],
   deletions: [],
   promotions24h: 0,
+  // conversation_id -> integer count of notes (for the badge)
+  notesCount: {},
+  // conversation_id -> { stage, set_at, ... } from ghl_current_stage view
+  stages: {},
+  // conversation_id -> full notes array (lazy-loaded when panel opens)
+  notes: {},
 };
-let expandedRowId = null;
+// One inline-expanded detail at a time. type is "history" (score timeline,
+// triggered by clicking the contact name) or "notes" (notes panel,
+// triggered by clicking the Notes button).
+let expandedDetail = null; // { convId, type } | null
 let scoreHistoryCache = {}; // conversation_id -> array of past scores
 
 // ── Auth ──────────────────────────────────────────────────────────
@@ -637,9 +834,40 @@ async function loadDeletions() {
   renderDeletions();
 }
 
+async function loadStages() {
+  const { data, error } = await sb.from("ghl_current_stage").select("*");
+  if (error) { console.error("loadStages:", error); return; }
+  DATA.stages = {};
+  for (const r of (data || [])) DATA.stages[r.conversation_id] = r;
+}
+
+async function loadNotesCounts() {
+  const { data, error } = await sb.from("ghl_notes_count").select("*");
+  if (error) { console.error("loadNotesCounts:", error); return; }
+  DATA.notesCount = {};
+  for (const r of (data || [])) DATA.notesCount[r.conversation_id] = r.note_count;
+}
+
+async function loadNotesFor(conversationId) {
+  const { data, error } = await sb
+    .from("ghl_contact_notes")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false });
+  if (error) { console.error("loadNotesFor:", error); return []; }
+  DATA.notes[conversationId] = data || [];
+  return DATA.notes[conversationId];
+}
+
 async function loadAll() {
   document.getElementById("syncStatus").textContent = "Syncing...";
-  await Promise.all([loadStats(), loadLeads(), loadDeletions()]);
+  await Promise.all([
+    loadStats(),
+    loadLeads(),
+    loadDeletions(),
+    loadStages(),
+    loadNotesCounts(),
+  ]);
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
 
@@ -731,10 +959,53 @@ function sortLeads(rows) {
   });
 }
 
+function getStageKey(conversationId) {
+  const row = DATA.stages[conversationId];
+  return row ? row.stage : "active";
+}
+
+function renderStageBadge(stageKey) {
+  const def = STAGES[stageKey] || STAGES.active;
+  return `<span class="stage-pill ${def.className}">${def.label}</span>`;
+}
+
+function renderNotesPanel(row) {
+  const cid = row.conversation_id;
+  const cidEsc = escapeHtml(cid);
+  const notes = DATA.notes[cid];
+  let body;
+  if (notes === undefined) {
+    body = `<div class="notes-empty">Loading notes…</div>`;
+  } else if (notes.length === 0) {
+    body = `<div class="notes-empty">No notes yet — add the first one below.</div>`;
+  } else {
+    body = `<ul class="notes-list">${notes.map(n => `
+      <li class="note-item">
+        <div class="note-time">${escapeHtml(absTime(n.created_at))}${n.created_by_email ? ` &middot; ${escapeHtml(n.created_by_email)}` : ""}</div>
+        <div>${escapeHtml(n.body).replace(/\n/g, "<br>")}</div>
+      </li>
+    `).join("")}</ul>`;
+  }
+  return `
+    <div class="notes-panel">
+      <h4>Notes for ${escapeHtml(row.contact_name || "(no name)")}</h4>
+      ${body}
+      <div class="notes-input-row">
+        <textarea class="notes-input" id="noteInput-${cidEsc}" placeholder="Add a note about this lead… (Ctrl+Enter to save)"
+                  onkeydown="if(event.ctrlKey && event.key === 'Enter') { event.preventDefault(); saveNote('${cidEsc}'); }"></textarea>
+        <button class="btn-save-note" onclick="saveNote('${cidEsc}')">Save</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderLeads() {
   const search = (document.getElementById("leadsSearch")?.value || "").toLowerCase();
   let rows = DATA.leads;
   if (currentScoreFilter !== "all") rows = rows.filter(r => r.score === currentScoreFilter);
+  if (currentStageFilter !== "all") {
+    rows = rows.filter(r => getStageKey(r.conversation_id) === currentStageFilter);
+  }
   if (search) {
     rows = rows.filter(r =>
       (r.contact_name || "").toLowerCase().includes(search) ||
@@ -745,16 +1016,21 @@ function renderLeads() {
 
   const body = document.getElementById("leadsBody");
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try clearing the search or switching to "All".</p></td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try clearing the search, switching to "All stages", or change the score filter.</p></td></tr>`;
     return;
   }
 
   body.innerHTML = rows.map(r => {
+    const cid = r.conversation_id;
+    const cidEsc = escapeHtml(cid);
     const url = contactUrl(r.contact_id);
-    const isExpanded = expandedRowId === r.conversation_id;
+    const isExpanded = expandedDetail && expandedDetail.convId === cid;
+    const expandedType = isExpanded ? expandedDetail.type : null;
+    const stageKey = getStageKey(cid);
+    const noteCount = DATA.notesCount[cid] || 0;
     return `
-      <tr data-cid="${escapeHtml(r.conversation_id)}" class="${isExpanded ? 'expanded' : ''}">
-        <td class="col-name clickable" onclick="toggleExpand('${escapeHtml(r.conversation_id)}')">${escapeHtml(r.contact_name || "(no name)")}</td>
+      <tr data-cid="${cidEsc}" class="${isExpanded ? 'expanded' : ''}">
+        <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">${escapeHtml(r.contact_name || "(no name)")}</td>
         <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
         <td class="col-time" title="${escapeHtml(absTime(r.scored_at))}">${relTime(r.scored_at)}</td>
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
@@ -763,15 +1039,19 @@ function renderLeads() {
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
         </td>
         <td class="col-actions">
-          ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open in REI Reply →</a>` : ""}
+          <div class="action-group">
+            ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
+            <button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${cidEsc}')" title="View / add notes">📝 Notes${noteCount ? ` <span class="badge">${noteCount}</span>` : ""}</button>
+            <button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${cidEsc}')" title="Change pipeline stage">${renderStageBadge(stageKey)} ▾</button>
+          </div>
         </td>
       </tr>
-      ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${escapeHtml(r.conversation_id)}"><div class="detail-content">Loading score history…</div></td></tr>` : ""}
+      ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${cidEsc}">${expandedType === 'notes' ? renderNotesPanel(r) : '<div class="detail-content">Loading score history…</div>'}</td></tr>` : ""}
     `;
   }).join("");
 
-  if (expandedRowId) {
-    renderScoreHistory(expandedRowId);
+  if (expandedDetail && expandedDetail.type === "history") {
+    renderScoreHistory(expandedDetail.convId);
   }
 }
 
@@ -840,7 +1120,16 @@ function setTab(tab) {
 function setScoreFilter(s) {
   currentScoreFilter = s;
   document.querySelectorAll('.filter-pill[data-score]').forEach(el => el.classList.toggle("active", el.dataset.score === s));
-  expandedRowId = null;
+  expandedDetail = null;
+  closeStageMenu();
+  renderLeads();
+}
+
+function setStageFilter(s) {
+  currentStageFilter = s;
+  document.querySelectorAll('.filter-pill[data-stage]').forEach(el => el.classList.toggle("active", el.dataset.stage === s));
+  expandedDetail = null;
+  closeStageMenu();
   renderLeads();
 }
 
@@ -875,7 +1164,93 @@ function setSort(field) {
 }
 
 function toggleExpand(conversationId) {
-  expandedRowId = expandedRowId === conversationId ? null : conversationId;
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "history") {
+    expandedDetail = null;
+  } else {
+    expandedDetail = { convId: conversationId, type: "history" };
+  }
+  closeStageMenu();
+  renderLeads();
+}
+
+async function toggleNotesPanel(conversationId) {
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "notes") {
+    expandedDetail = null;
+    renderLeads();
+    return;
+  }
+  closeStageMenu();
+  expandedDetail = { convId: conversationId, type: "notes" };
+  // Show panel immediately with "Loading…" placeholder, then fetch.
+  renderLeads();
+  await loadNotesFor(conversationId);
+  // Re-render only if this panel is still the one open (user may have clicked away)
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "notes") {
+    renderLeads();
+  }
+}
+
+async function saveNote(conversationId) {
+  const ta = document.getElementById(`noteInput-${conversationId}`);
+  const body = (ta?.value || "").trim();
+  if (!body) return;
+  const btn = ta?.parentElement?.querySelector(".btn-save-note");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
+  const { error } = await sb.from("ghl_contact_notes").insert({
+    conversation_id: conversationId,
+    contact_id: lead.contact_id || null,
+    body: body,
+    created_by_email: currentSession?.user?.email || null,
+  });
+  if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+  if (error) { alert("Save failed: " + error.message); return; }
+  // Refresh count + reopen panel with the new note visible
+  await Promise.all([loadNotesCounts(), loadNotesFor(conversationId)]);
+  renderLeads();
+}
+
+function openStageMenu(event, conversationId) {
+  event.preventDefault();
+  closeStageMenu();
+  const menu = document.createElement("div");
+  menu.className = "stage-menu";
+  menu.id = "stageMenu";
+  menu.innerHTML = Object.keys(STAGES).map(k => `
+    <button onclick="setStage('${escapeHtml(conversationId)}', '${k}')">
+      ${renderStageBadge(k)} ${STAGES[k].label}
+    </button>
+  `).join("");
+  // Position menu just below the button that triggered it
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  menu.style.left = `${rect.left + window.scrollX}px`;
+  document.body.appendChild(menu);
+  // Close on next outside click (delay so this click doesn't close it)
+  setTimeout(() => {
+    document.addEventListener("click", closeStageMenu, { once: true });
+  }, 0);
+}
+
+function closeStageMenu() {
+  const m = document.getElementById("stageMenu");
+  if (m) m.remove();
+}
+
+async function setStage(conversationId, stage) {
+  if (!STAGES[stage]) return;
+  closeStageMenu();
+  const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
+  const { error } = await sb.from("ghl_contact_lifecycle").insert({
+    conversation_id: conversationId,
+    contact_id: lead.contact_id || null,
+    contact_name: lead.contact_name || null,
+    phone: lead.phone || null,
+    stage: stage,
+    set_by_email: currentSession?.user?.email || null,
+  });
+  if (error) { alert("Stage update failed: " + error.message); return; }
+  await loadStages();
   renderLeads();
 }
 
