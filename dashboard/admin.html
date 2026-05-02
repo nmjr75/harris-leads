@@ -537,6 +537,100 @@
   }
   .stage-menu button:hover { background: var(--surface2); }
   .stage-menu button .stage-pill { margin-right: 8px; }
+
+  /* Conversation transcript panel (inline expanded under a row) */
+  .transcript-panel {
+    background: var(--surface2);
+    border-left: 3px solid var(--cyan);
+    border-radius: 4px;
+    padding: 14px 18px;
+  }
+  .transcript-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .transcript-panel-header h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+  }
+  .transcript-meta {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+  .transcript-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 460px;
+    overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .transcript-list .msg {
+    max-width: 78%;
+    padding: 8px 12px;
+    border-radius: 14px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+  .transcript-list .msg.outbound {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .transcript-list .msg.inbound {
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+  .transcript-list .msg-meta {
+    font-size: 0.66rem;
+    opacity: 0.65;
+    margin-top: 4px;
+  }
+  .transcript-list .system-event {
+    align-self: center;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-style: italic;
+    padding: 2px 8px;
+    max-width: 100%;
+  }
+  .transcript-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 12px 0;
+  }
+
+  /* Make the signals/reasoning cell visibly clickable */
+  td.signals-cell.clickable:hover {
+    background: rgba(6, 182, 212, 0.06);
+  }
+  td.signals-cell.clickable .reasoning-text::after {
+    content: " · click to view chat →";
+    color: var(--cyan);
+    font-size: 0.72rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  td.signals-cell.clickable:hover .reasoning-text::after {
+    opacity: 0.85;
+  }
 </style>
 </head>
 <body>
@@ -717,6 +811,8 @@ let DATA = {
   stages: {},
   // conversation_id -> full notes array (lazy-loaded when panel opens)
   notes: {},
+  // conversation_id -> most-recent snapshot row (lazy-loaded when transcript opens)
+  transcripts: {},
 };
 // One inline-expanded detail at a time. type is "history" (score timeline,
 // triggered by clicking the contact name) or "notes" (notes panel,
@@ -871,6 +967,22 @@ async function loadNotesFor(conversationId) {
   return DATA.notes[conversationId];
 }
 
+// Most recent snapshot (with full messages array) for one conversation.
+// Cached per conversation_id; refresh by calling with force=true.
+async function loadTranscriptFor(conversationId, force = false) {
+  if (!force && DATA.transcripts[conversationId]) return DATA.transcripts[conversationId];
+  const { data, error } = await sb
+    .from("ghl_conversation_snapshots")
+    .select("messages, pulled_at, message_count, inbound_count")
+    .eq("conversation_id", conversationId)
+    .order("pulled_at", { ascending: false })
+    .limit(1);
+  if (error) { console.error("loadTranscriptFor:", error); return null; }
+  const snap = (data && data[0]) || null;
+  DATA.transcripts[conversationId] = snap;
+  return snap;
+}
+
 async function loadAll() {
   document.getElementById("syncStatus").textContent = "Syncing...";
   await Promise.all([
@@ -981,6 +1093,53 @@ function renderStageBadge(stageKey) {
   return `<span class="stage-pill ${def.className}">${def.label}</span>`;
 }
 
+// Hide CRM activity-log noise the same way the scorer does (Opportunity created/updated/deleted).
+const _SYSTEM_EVENT_RE = /^opportunity\s+(created|updated|deleted)\s*$/i;
+
+function renderTranscriptPanel(row) {
+  const cid = row.conversation_id;
+  const cidEsc = escapeHtml(cid);
+  const snap = DATA.transcripts[cid];
+  let body;
+  if (snap === undefined) {
+    body = `<div class="transcript-empty">Loading conversation…</div>`;
+  } else if (!snap || !Array.isArray(snap.messages) || snap.messages.length === 0) {
+    body = `<div class="transcript-empty">No conversation snapshot stored yet — try refreshing.</div>`;
+  } else {
+    // GHL returns newest-first; reverse to chronological for natural reading order.
+    const chronological = [...snap.messages].reverse();
+    const items = chronological.map(m => {
+      const text = (m.body || "").trim();
+      if (!text) return "";
+      if (_SYSTEM_EVENT_RE.test(text)) {
+        return `<li class="msg system-event">— ${escapeHtml(text)} —</li>`;
+      }
+      const cls = m.direction === "inbound" ? "inbound" : "outbound";
+      const label = m.direction === "inbound" ? "Homeowner" : "You / Bot";
+      const time = m.dateAdded ? absTime(m.dateAdded) : "";
+      return `
+        <li class="msg ${cls}">
+          ${escapeHtml(text).replace(/\n/g, "<br>")}
+          <div class="msg-meta">${escapeHtml(label)}${time ? ` · ${escapeHtml(time)}` : ""}</div>
+        </li>
+      `;
+    }).filter(Boolean).join("");
+    body = `<ul class="transcript-list" id="transcriptList-${cidEsc}">${items}</ul>`;
+  }
+  const meta = snap
+    ? `${snap.message_count || 0} messages (${snap.inbound_count || 0} inbound) · pulled ${escapeHtml(absTime(snap.pulled_at))}`
+    : "";
+  return `
+    <div class="transcript-panel">
+      <div class="transcript-panel-header">
+        <h4>Conversation with ${escapeHtml(row.contact_name || "(no name)")}</h4>
+        <span class="transcript-meta">${meta}</span>
+      </div>
+      ${body}
+    </div>
+  `;
+}
+
 function renderNotesPanel(row) {
   const cid = row.conversation_id;
   const cidEsc = escapeHtml(cid);
@@ -1075,7 +1234,7 @@ function renderLeads() {
         <td class="col-phone">${escapeHtml(r.phone || "—")}</td>
         <td class="col-time" title="${escapeHtml(absTime(r.scored_at))}">${relTime(r.scored_at)}</td>
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
-        <td>
+        <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
           <div class="signal-chips">${renderSignals(r)}</div>
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
         </td>
@@ -1087,7 +1246,11 @@ function renderLeads() {
           </div>
         </td>
       </tr>
-      ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${cidEsc}">${expandedType === 'notes' ? renderNotesPanel(r) : '<div class="detail-content">Loading score history…</div>'}</td></tr>` : ""}
+      ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${cidEsc}">${
+        expandedType === 'notes' ? renderNotesPanel(r) :
+        expandedType === 'transcript' ? renderTranscriptPanel(r) :
+        '<div class="detail-content">Loading score history…</div>'
+      }</td></tr>` : ""}
     `;
   }).join("");
 
@@ -1212,6 +1375,23 @@ function toggleExpand(conversationId) {
   }
   closeStageMenu();
   renderLeads();
+}
+
+async function toggleTranscriptPanel(conversationId) {
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "transcript") {
+    expandedDetail = null;
+    renderLeads();
+    return;
+  }
+  closeStageMenu();
+  expandedDetail = { convId: conversationId, type: "transcript" };
+  renderLeads();
+  // Always force a fresh fetch so the latest snapshot is shown (the conversation
+  // grows over time as the bot/leads exchange messages).
+  await loadTranscriptFor(conversationId, true);
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "transcript") {
+    renderLeads();
+  }
 }
 
 async function toggleNotesPanel(conversationId) {
