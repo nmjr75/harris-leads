@@ -765,7 +765,7 @@
       <span class="stat-label">☀️ WARM leads</span>
       <span class="stat-value" id="statWarm">—</span>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" id="statPromosCard">
       <span class="stat-label">Promotions (24h)</span>
       <span class="stat-value" id="statPromos">—</span>
     </div>
@@ -778,7 +778,7 @@
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab active" data-tab="leads" onclick="setTab('leads')">Hot/Warm Leads</button>
-    <button class="tab" data-tab="deletions" onclick="setTab('deletions')">Deletion Audits</button>
+    <button class="tab" data-tab="deletions" onclick="setTab('deletions')" id="tabBtnDeletions">Deletion Audits</button>
   </div>
 
   <!-- Leads tab -->
@@ -879,10 +879,13 @@ function openInReiAiLeads(address) {
   window.open(REI_AI_LEADS_BASE, "_blank", "noopener");
 }
 
-// Nelson's known emails — RLS already enforces this server-side via is_nelson(),
-// but we also gate the UI client-side so non-Nelson users see access-denied
-// instead of an empty dashboard.
+// Email allowlists per role. RLS enforces these server-side via is_nelson()
+// and is_acquisitions() (see migrations 001 + 009); the client-side check
+// just routes the user to the right UI surface (or access-denied) instead
+// of showing an empty dashboard. Keep the email lists here in sync with
+// the SQL functions.
 const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
+const ACQUISITIONS_EMAILS = ["joseph.hhremodeling@gmail.com"];
 
 // Pipeline stage definitions. The DB CHECK constraint is the source of
 // truth for valid stage keys (see migrations/002_contact_actions.sql);
@@ -931,15 +934,37 @@ let expandedDetail = null; // { convId, type } | null
 let scoreHistoryCache = {}; // conversation_id -> array of past scores
 
 // ── Auth ──────────────────────────────────────────────────────────
-function isNelson() {
-  const email = (currentSession?.user?.email || "").toLowerCase();
-  return NELSON_EMAILS.includes(email);
+let currentRole = null; // "nelson" | "acquisitions" | null
+
+function userEmail() {
+  return (currentSession?.user?.email || "").toLowerCase();
+}
+function isNelson() { return NELSON_EMAILS.includes(userEmail()); }
+function isAcquisitions() { return ACQUISITIONS_EMAILS.includes(userEmail()); }
+function deriveRole() {
+  if (isNelson()) return "nelson";
+  if (isAcquisitions()) return "acquisitions";
+  return null;
+}
+
+// Hide deletion-audit surfaces + promotions counter for the acquisitions
+// role. RLS already denies the underlying queries; this just keeps the UI
+// from showing dashes / failing silently.
+function applyRoleVisibility() {
+  const acq = currentRole === "acquisitions";
+  const hide = (id) => { const el = document.getElementById(id); if (el) el.style.display = acq ? "none" : ""; };
+  hide("statPromosCard");
+  hide("pendingDelCard");
+  hide("tabBtnDeletions");
+  // If acquisitions somehow lands on the deletions tab, force back to leads.
+  if (acq && currentTab === "deletions") setTab("leads");
 }
 
 async function checkAuth() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { showLogin(); return false; }
   currentSession = session;
+  currentRole = deriveRole();
   document.getElementById("currentUserLabel").textContent = session.user.email;
   return true;
 }
@@ -981,9 +1006,11 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) { errEl.textContent = error.message; return; }
     currentSession = data.session;
+    currentRole = deriveRole();
     document.getElementById("currentUserLabel").textContent = data.session.user.email;
-    if (!isNelson()) { showAccessDenied(); return; }
+    if (!currentRole) { showAccessDenied(); return; }
     showMainUI();
+    applyRoleVisibility();
     await loadAll();
   } catch (e) {
     errEl.textContent = e.message || "Sign-in failed";
@@ -1009,6 +1036,11 @@ async function loadStats() {
   for (const r of (latest || [])) counts[r.score] = (counts[r.score] || 0) + 1;
   document.getElementById("statHot").textContent = counts.HOT;
   document.getElementById("statWarm").textContent = counts.WARM;
+
+  // Promotions + deletion stats are Nelson-only surfaces. Acquisitions
+  // role would just get RLS-empty results and a noisy console; skip the
+  // queries entirely (the cards are also display:none for that role).
+  if (currentRole !== "nelson") return;
 
   // Promotions in last 24h
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -1043,6 +1075,8 @@ async function loadLeads() {
 }
 
 async function loadDeletions() {
+  // Acquisitions role can't read this table (RLS denies); skip silently.
+  if (currentRole !== "nelson") { DATA.deletions = []; return; }
   const { data, error } = await sb
     .from("ghl_deletion_audits")
     .select("*")
@@ -1689,6 +1723,7 @@ async function setStage(conversationId, stage) {
 }
 
 async function acknowledgeDeletion(id) {
+  if (currentRole !== "nelson") return; // RLS would block too; defense-in-depth.
   const note = prompt("Optional note (visible in audit log):") || "";
   const { error } = await sb
     .from("ghl_deletion_audits")
@@ -1726,8 +1761,9 @@ function subscribeToNewScores() {
 async function init() {
   const authed = await checkAuth();
   if (!authed) return;
-  if (!isNelson()) { showAccessDenied(); return; }
+  if (!currentRole) { showAccessDenied(); return; }
   showMainUI();
+  applyRoleVisibility();
   await loadAll();
   subscribeToNewScores();
   // Auto-refresh every 60s as a backup to realtime
