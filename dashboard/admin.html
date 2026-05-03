@@ -472,6 +472,20 @@
     font-size: 0.72rem;
     margin-bottom: 4px;
   }
+  /* Stage-move entry — same row layout as a note but visually muted/italic
+     so it reads as an automatic system event rather than an authored note. */
+  .notes-list .note-item.note-system {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--border);
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .notes-list .note-item.note-system .note-system-action {
+    color: var(--text);
+    font-style: normal;
+    font-weight: 600;
+  }
   .notes-empty {
     color: var(--text-muted);
     font-style: italic;
@@ -916,6 +930,9 @@ let DATA = {
   stages: {},
   // conversation_id -> full notes array (lazy-loaded when panel opens)
   notes: {},
+  // conversation_id -> full stage-move history (lazy-loaded when panel opens).
+  // Rendered as italicized system entries interleaved with notes by timestamp.
+  stageHistory: {},
   // conversation_id -> most-recent snapshot row (lazy-loaded when transcript opens)
   transcripts: {},
   // conversation_id -> REI Reply marketing number used to text this homeowner
@@ -1148,6 +1165,20 @@ async function loadNotesFor(conversationId) {
   return DATA.notes[conversationId];
 }
 
+// Per-conversation stage-move history (every row in ghl_contact_lifecycle).
+// Rendered alongside notes in the panel as italicized system entries so
+// you can see at a glance who moved a lead between stages and when.
+async function loadStageHistoryFor(conversationId) {
+  const { data, error } = await sb
+    .from("ghl_contact_lifecycle")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("set_at", { ascending: false });
+  if (error) { console.error("loadStageHistoryFor:", error); return []; }
+  DATA.stageHistory[conversationId] = data || [];
+  return DATA.stageHistory[conversationId];
+}
+
 // Most recent snapshot (with full messages array) for one conversation.
 // Cached per conversation_id; refresh by calling with force=true.
 async function loadTranscriptFor(conversationId, force = false) {
@@ -1371,18 +1402,50 @@ function renderNotesPanel(row) {
   const cid = row.conversation_id;
   const cidEsc = escapeHtml(cid);
   const notes = DATA.notes[cid];
+  const stageHistory = DATA.stageHistory[cid];
   let body;
-  if (notes === undefined) {
+  if (notes === undefined || stageHistory === undefined) {
     body = `<div class="notes-empty">Loading notes…</div>`;
-  } else if (notes.length === 0) {
-    body = `<div class="notes-empty">No notes yet — add the first one below.</div>`;
+  } else if (notes.length === 0 && stageHistory.length === 0) {
+    body = `<div class="notes-empty">No notes or stage moves yet — add the first one below.</div>`;
   } else {
-    body = `<ul class="notes-list">${notes.map(n => `
-      <li class="note-item">
-        <div class="note-time">${escapeHtml(absTime(n.created_at))}${n.created_by_email ? ` &middot; ${escapeHtml(n.created_by_email)}` : ""}</div>
-        <div>${escapeHtml(n.body).replace(/\n/g, "<br>")}</div>
-      </li>
-    `).join("")}</ul>`;
+    // Merge user notes + stage-move events into a single timeline, newest
+    // first. Each item is rendered with its source-specific markup so you
+    // can tell stage moves (italic, dashed border) from authored notes
+    // (solid card) at a glance.
+    const items = [
+      ...notes.map(n => ({
+        ts: n.created_at,
+        kind: "note",
+        email: n.created_by_email,
+        body: n.body,
+      })),
+      ...stageHistory.map(s => ({
+        ts: s.set_at,
+        kind: "stage",
+        email: s.set_by_email,
+        stage: s.stage,
+      })),
+    ].sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+    body = `<ul class="notes-list">${items.map(it => {
+      const time = `<div class="note-time">${escapeHtml(absTime(it.ts))}${it.email ? ` &middot; ${escapeHtml(it.email)}` : ""}</div>`;
+      if (it.kind === "stage") {
+        const label = STAGES[it.stage]?.label || it.stage;
+        return `
+          <li class="note-item note-system">
+            ${time}
+            <div>moved stage to <span class="note-system-action">${escapeHtml(label)}</span></div>
+          </li>
+        `;
+      }
+      return `
+        <li class="note-item">
+          ${time}
+          <div>${escapeHtml(it.body).replace(/\n/g, "<br>")}</div>
+        </li>
+      `;
+    }).join("")}</ul>`;
   }
   return `
     <div class="notes-panel">
@@ -1651,7 +1714,10 @@ async function toggleNotesPanel(conversationId) {
   expandedDetail = { convId: conversationId, type: "notes" };
   // Show panel immediately with "Loading…" placeholder, then fetch.
   renderLeads();
-  await loadNotesFor(conversationId);
+  await Promise.all([
+    loadNotesFor(conversationId),
+    loadStageHistoryFor(conversationId),
+  ]);
   // Re-render only if this panel is still the one open (user may have clicked away)
   if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "notes") {
     renderLeads();
@@ -1719,6 +1785,11 @@ async function setStage(conversationId, stage) {
   });
   if (error) { alert("Stage update failed: " + error.message); return; }
   await loadStages();
+  // If the notes panel for this conversation is open, refresh its stage
+  // history so the new move appears immediately in the timeline.
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "notes") {
+    await loadStageHistoryFor(conversationId);
+  }
   renderLeads();
 }
 
@@ -1738,9 +1809,14 @@ async function acknowledgeDeletion(id) {
   await Promise.all([loadDeletions(), loadStats()]);
 }
 
-// ── Realtime: live-update on new scores ───────────────────────────
+// ── Realtime: live-update on new scores, notes, and stage moves ────
+// One channel handling INSERTs from the three tables that drive the
+// shared dashboard state. Goal: when Joseph saves a note or moves a
+// stage, Nelson's browser reflects it within ~1s without a manual
+// refresh, and vice versa.
 function subscribeToNewScores() {
-  sb.channel("ghl_motivation_scores_inserts")
+  sb.channel("ghl_admin_inserts")
+    // New scored leads from the cron — same behavior as before.
     .on("postgres_changes", {
       event: "INSERT",
       schema: "public",
@@ -1748,10 +1824,36 @@ function subscribeToNewScores() {
     }, (payload) => {
       const row = payload.new;
       if (row && (row.score === "HOT" || row.score === "WARM")) {
-        // Refresh the leads table so the new row appears at top.
-        // Cheap query — ghl_latest_scores already filters to most-recent.
         loadLeads();
         loadStats();
+      }
+    })
+    // New note (typed by either user). Refresh the count badges and, if
+    // the affected conversation has its panel open, reload its notes so
+    // the new entry appears in place.
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "ghl_contact_notes",
+    }, (payload) => {
+      const cid = payload.new?.conversation_id;
+      loadNotesCounts().then(renderLeads);
+      if (cid && expandedDetail && expandedDetail.convId === cid && expandedDetail.type === "notes") {
+        loadNotesFor(cid).then(renderLeads);
+      }
+    })
+    // New stage move (by either user). Refresh the row's stage badge and,
+    // if the panel is open, reload the stage history so the system-row
+    // entry appears in the timeline.
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "ghl_contact_lifecycle",
+    }, (payload) => {
+      const cid = payload.new?.conversation_id;
+      loadStages().then(renderLeads);
+      if (cid && expandedDetail && expandedDetail.convId === cid && expandedDetail.type === "notes") {
+        loadStageHistoryFor(cid).then(renderLeads);
       }
     })
     .subscribe();
