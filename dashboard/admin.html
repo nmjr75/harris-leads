@@ -2,8 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>REI Reply Lead Audit — Admin</title>
+
+<!-- PWA: installable on Android (Chrome) and iOS (Safari) home screen.
+     manifest.json + service-worker.js + icons live alongside this file. -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#7c5cfc">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lead Audit">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="favicon-32.png">
+
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
   :root {
@@ -749,6 +760,87 @@
     12%  { opacity: 1; transform: translate(-50%, 0); }
     88%  { opacity: 1; transform: translate(-50%, 0); }
     100% { opacity: 0; transform: translate(-50%, -8px); }
+  }
+
+  /* ─── Mobile / phone layout (PWA target) ──────────────────────────
+     Below 768px the 6-column data table is unusable. Collapse each row
+     into a stacked card showing the same data vertically: contact name
+     + meta on top, then phone, score, signals, address, action buttons
+     stacked underneath. Header row is hidden because the labels are
+     baked into the card content. */
+  @media (max-width: 768px) {
+    body { padding-bottom: 80px; }
+    .header { padding: 10px 14px; }
+    .header h1 { font-size: 1rem; }
+    .header-meta { display: none; }
+    .stats { grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 10px 14px; }
+    .stat-card { padding: 8px 10px; }
+    .stat-value { font-size: 1.1rem; }
+    .stat-label { font-size: 0.7rem; }
+
+    .tabs { padding: 0 10px; gap: 4px; }
+    .tab { padding: 8px 10px; font-size: 0.8rem; }
+
+    .stage-filter-row, .filter-row {
+      padding: 8px 10px;
+      gap: 4px;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-pill { white-space: nowrap; flex-shrink: 0; padding: 5px 10px; font-size: 0.75rem; }
+
+    /* Collapse the table to cards. Hide thead; each <tr> becomes a card. */
+    .data-table thead { display: none; }
+    .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+    .data-table tr {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 8px 10px;
+      padding: 12px 14px;
+      width: calc(100% - 20px);
+    }
+    .data-table tr.expanded {
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+    .data-table td {
+      border: none;
+      padding: 4px 0;
+      text-align: left;
+    }
+    .data-table tr:hover td { background: transparent; }
+
+    /* Per-cell prefix labels so each datum reads in context. */
+    .data-table .col-name {
+      font-size: 1rem;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border) !important;
+      margin-bottom: 6px;
+    }
+    .data-table .col-time::before  { content: "Pulled  "; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .data-table .col-phone::before { content: "Phone  ";  color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .data-table .signals-cell::before { content: "Signals  "; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-top: 6px; }
+    .data-table .col-time { font-size: 0.85rem; }
+
+    /* Action buttons stack horizontally but wrap if needed; full-width row. */
+    .data-table .col-actions {
+      text-align: left;
+      padding-top: 10px;
+      border-top: 1px solid var(--border) !important;
+      margin-top: 8px;
+    }
+    .action-group { flex-wrap: wrap; gap: 6px; }
+    .btn-action, .btn-notes, .btn-stage { font-size: 0.78rem; padding: 6px 10px; }
+
+    /* Notes panel + transcript panel: bigger touch targets, less padding */
+    .notes-panel { padding: 10px 12px; }
+    .notes-input { min-height: 80px; font-size: 0.9rem; }
+    .btn-save-note { padding: 10px 16px; font-size: 0.9rem; }
+
+    /* Bottom user bar: compact */
+    #userBar { padding: 6px 12px; font-size: 0.68rem; }
   }
 </style>
 </head>
@@ -1955,6 +2047,18 @@ async function init() {
 }
 
 init();
+
+// ── PWA service worker registration ───────────────────────────────
+// Required for installability ("Add to Home Screen"). Runs only when
+// served over HTTPS (GitHub Pages qualifies). Silent failure on local
+// file:// — that's fine; PWA install is a deploy-target feature.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch((err) => {
+      console.warn("SW registration failed:", err);
+    });
+  });
+}
 </script>
 </body>
 </html>
