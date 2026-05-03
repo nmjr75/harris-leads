@@ -405,12 +405,14 @@
     letter-spacing: 0.4px;
     text-transform: uppercase;
   }
-  .stage-active   { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
-  .stage-working  { background: var(--blue);     color: #fff; }
-  .stage-ghosting { background: var(--orange);   color: #1a1a1a; }
-  .stage-won      { background: var(--green);    color: #fff; }
-  .stage-lost     { background: var(--red);      color: #fff; }
-  .stage-dnc      { background: #6b1620;         color: #fff; }
+  .stage-active     { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+  .stage-working    { background: var(--blue);     color: #fff; }
+  .stage-run_comps  { background: var(--cyan);     color: #1a1a1a; }
+  .stage-offer_made { background: var(--accent);   color: #fff; }
+  .stage-ghosting   { background: var(--orange);   color: #1a1a1a; }
+  .stage-won        { background: var(--green);    color: #fff; }
+  .stage-lost       { background: var(--red);      color: #fff; }
+  .stage-dnc        { background: #6b1620;         color: #fff; }
 
   /* Per-pill count badge (next to label inside filter pills) */
   .filter-pill .count {
@@ -818,6 +820,8 @@
       <span class="stage-filter-label">Stage:</span>
       <span class="filter-pill active" data-stage="active" onclick="setStageFilter('active')">Active <span class="count" data-count-stage="active">0</span></span>
       <span class="filter-pill" data-stage="working" onclick="setStageFilter('working')">Working <span class="count" data-count-stage="working">0</span></span>
+      <span class="filter-pill" data-stage="run_comps" onclick="setStageFilter('run_comps')">Run Comps <span class="count" data-count-stage="run_comps">0</span></span>
+      <span class="filter-pill" data-stage="offer_made" onclick="setStageFilter('offer_made')">Offer Made <span class="count" data-count-stage="offer_made">0</span></span>
       <span class="filter-pill" data-stage="ghosting" onclick="setStageFilter('ghosting')">Ghosting <span class="count" data-count-stage="ghosting">0</span></span>
       <span class="filter-pill" data-stage="won" onclick="setStageFilter('won')">Won <span class="count" data-count-stage="won">0</span></span>
       <span class="filter-pill" data-stage="lost" onclick="setStageFilter('lost')">Lost <span class="count" data-count-stage="lost">0</span></span>
@@ -922,12 +926,14 @@ const ACQUISITIONS_EMAILS = ["joseph.hhremodeling@gmail.com"];
 // truth for valid stage keys (see migrations/002_contact_actions.sql);
 // changing a key here without updating the migration will produce 23514s.
 const STAGES = {
-  active:   { label: "Active",   className: "stage-active"   },
-  working:  { label: "Working",  className: "stage-working"  },
-  ghosting: { label: "Ghosting", className: "stage-ghosting" },
-  won:      { label: "Won",      className: "stage-won"      },
-  lost:     { label: "Lost",     className: "stage-lost"     },
-  dnc:      { label: "DNC",      className: "stage-dnc"      },
+  active:     { label: "Active",     className: "stage-active"     },
+  working:    { label: "Working",    className: "stage-working"    },
+  run_comps:  { label: "Run Comps",  className: "stage-run_comps"  },
+  offer_made: { label: "Offer Made", className: "stage-offer_made" },
+  ghosting:   { label: "Ghosting",   className: "stage-ghosting"   },
+  won:        { label: "Won",        className: "stage-won"        },
+  lost:       { label: "Lost",       className: "stage-lost"       },
+  dnc:        { label: "DNC",        className: "stage-dnc"        },
 };
 
 // ── State ─────────────────────────────────────────────────────────
@@ -1535,7 +1541,7 @@ function updateFilterCounts() {
     if (el) el.textContent = scoreCounts[k];
   }
   // Stage counts: bucket every lead by its current stage (default 'active')
-  const stageCounts = { all: all.length, active: 0, working: 0, ghosting: 0, won: 0, lost: 0, dnc: 0 };
+  const stageCounts = { all: all.length, active: 0, working: 0, run_comps: 0, offer_made: 0, ghosting: 0, won: 0, lost: 0, dnc: 0 };
   for (const r of all) {
     const k = getStageKey(r.conversation_id);
     if (stageCounts[k] !== undefined) stageCounts[k]++;
