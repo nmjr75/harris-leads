@@ -348,6 +348,23 @@
 
   /* Misc */
   .col-name { font-weight: 600; }
+  /* Stack of metadata lines under the contact name. Mirrors the phone
+     column's phone-stack/phone-rei-label/phone-secondary pattern so the
+     two columns read consistently. */
+  .name-stack { display: flex; flex-direction: column; gap: 1px; align-items: flex-start; margin-top: 4px; }
+  .name-meta-label {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .name-meta-value {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-bottom: 2px;
+  }
   .col-phone { font-family: ui-monospace, monospace; color: var(--text-muted); font-size: 0.8rem; }
   .col-time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
   .clickable { cursor: pointer; }
@@ -943,6 +960,9 @@ let DATA = {
   // address pulled from the GHL contact record (migration 006). Preferred
   // over the LLM-extracted texted_property_address when available.
   contactAddress: {},
+  // conversation_id -> { contact_created_at, last_activity_at } — surfaced
+  // under the contact name in the leads table (migration 011).
+  metadata: {},
 };
 // One inline-expanded detail at a time. type is "history" (score timeline,
 // triggered by clicking the contact name) or "notes" (notes panel,
@@ -1133,6 +1153,21 @@ async function loadContactAddresses() {
   }
 }
 
+// Per-conversation metadata (created date + last activity timestamp) from
+// the ghl_conversation_metadata view (migration 011). Rendered under the
+// contact name in the leads table.
+async function loadMetadata() {
+  const { data, error } = await sb.from("ghl_conversation_metadata").select("*");
+  if (error) { console.error("loadMetadata:", error); return; }
+  DATA.metadata = {};
+  for (const r of (data || [])) {
+    DATA.metadata[r.conversation_id] = {
+      contact_created_at: r.contact_created_at || null,
+      last_activity_at: r.last_activity_at || null,
+    };
+  }
+}
+
 // Build a single-line full address from the structured contact fields,
 // falling back to the LLM-extracted texted_property_address when the
 // structured fields aren't yet populated (e.g. older snapshots that
@@ -1205,6 +1240,7 @@ async function loadAll() {
     loadNotesCounts(),
     loadOutboundNumbers(),
     loadContactAddresses(),
+    loadMetadata(),
   ]);
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
@@ -1296,6 +1332,28 @@ function absTime(iso) {
     year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit", second: "2-digit",
     timeZoneName: "short",
+  });
+}
+
+// Compact "M/D/YY" — used under the contact name for the contact's
+// creation date. Always Central Time (per the dashboard standard).
+function shortDate(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    month: "numeric", day: "numeric", year: "2-digit",
+  });
+}
+
+// Compact "M/D HH:MM AM/PM" — used under the contact name for last
+// activity. Drops the year (recent activity by definition); keeps
+// time-of-day so you can see at a glance how stale the conversation is.
+function shortDateTime(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    month: "numeric", day: "numeric",
+    hour: "numeric", minute: "2-digit",
   });
 }
 
@@ -1520,7 +1578,25 @@ function renderLeads() {
     const noteCount = DATA.notesCount[cid] || 0;
     return `
       <tr data-cid="${cidEsc}" class="${isExpanded ? 'expanded' : ''}">
-        <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">${escapeHtml(r.contact_name || "(no name)")}</td>
+        <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">
+          ${escapeHtml(r.contact_name || "(no name)")}
+          ${(() => {
+            const meta = DATA.metadata[cid] || {};
+            if (!meta.contact_created_at && !meta.last_activity_at) return "";
+            return `
+              <div class="name-stack">
+                ${meta.contact_created_at ? `
+                  <span class="name-meta-label">created</span>
+                  <span class="name-meta-value" title="${escapeHtml(absTime(meta.contact_created_at))}">${escapeHtml(shortDate(meta.contact_created_at))}</span>
+                ` : ""}
+                ${meta.last_activity_at ? `
+                  <span class="name-meta-label">last activity</span>
+                  <span class="name-meta-value" title="${escapeHtml(absTime(meta.last_activity_at))}">${escapeHtml(shortDateTime(meta.last_activity_at))}</span>
+                ` : ""}
+              </div>
+            `;
+          })()}
+        </td>
         <td class="col-phone">
           ${r.phone ? `
             <div class="phone-stack">
