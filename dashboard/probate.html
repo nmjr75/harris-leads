@@ -849,6 +849,20 @@ async function loadProfile() {
   currentProfile = data;
   document.getElementById("currentUserLabel").textContent = `${currentProfile.display_name} (${currentProfile.role})`;
   document.getElementById("userBar").style.display = "flex";
+  maybeShowAdminLink();
+}
+
+const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
+function maybeShowAdminLink() {
+  const email = (currentSession?.user?.email || "").toLowerCase();
+  if (!NELSON_EMAILS.includes(email)) return;
+  if (document.getElementById("adminLink")) return;
+  const a = document.createElement("a");
+  a.id = "adminLink";
+  a.href = "admin.html";
+  a.textContent = "Lead Audit →";
+  a.style.cssText = "color:var(--accent-light);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:0.65rem";
+  document.getElementById("userBar").insertBefore(a, document.getElementById("syncStatus"));
 }
 
 function showLogin() {
