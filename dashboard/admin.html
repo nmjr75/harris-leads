@@ -918,6 +918,7 @@
       <span class="filter-pill" data-stage="won" onclick="setStageFilter('won')">Won <span class="count" data-count-stage="won">0</span></span>
       <span class="filter-pill" data-stage="lost" onclick="setStageFilter('lost')">Lost <span class="count" data-count-stage="lost">0</span></span>
       <span class="filter-pill" data-stage="dnc" onclick="setStageFilter('dnc')">DNC <span class="count" data-count-stage="dnc">0</span></span>
+      <span class="filter-pill" data-stage="hit_list" onclick="setStageFilter('hit_list')" title="Replied YES to initial blast but went silent on REBA AI follow-ups (REI Reply SELLER DISPOSITION pipeline → HIT LIST stage)">Hit List <span class="count" data-count-stage="hit_list">0</span></span>
       <span class="filter-pill" data-stage="all" onclick="setStageFilter('all')">All stages <span class="count" data-count-stage="all">0</span></span>
     </div>
     <div class="filter-bar">
@@ -1061,6 +1062,11 @@ let DATA = {
   // conversation_id -> { contact_created_at, last_activity_at } — surfaced
   // under the contact name in the leads table (migration 011).
   metadata: {},
+  // contact_id -> opportunity row from ghl_current_opportunity (migration 013).
+  // Populated for every contact at the SELLER DISPOSITION → HIT LIST stage in
+  // REI Reply. The Hit List filter pill renders these (joined with snapshot
+  // data when available; slim row otherwise).
+  hitList: {},
 };
 // One inline-expanded detail at a time. type is "history" (score timeline,
 // triggered by clicking the contact name) or "notes" (notes panel,
@@ -1266,6 +1272,23 @@ async function loadMetadata() {
   }
 }
 
+// Hit List opportunities — contacts at the SELLER DISPOSITION → HIT LIST stage
+// in REI Reply. Loaded from ghl_current_opportunity (migration 013) and
+// keyed by contact_id so the renderer can join with snapshot/score data
+// when available, or render a slim row when there's no recent conversation.
+const HIT_LIST_STAGE_ID = "8c02dadc-7d76-42f9-9ee0-17e13659a4fa";
+async function loadHitList() {
+  const { data, error } = await sb
+    .from("ghl_current_opportunity")
+    .select("*")
+    .eq("pipeline_stage_id", HIT_LIST_STAGE_ID);
+  if (error) { console.error("loadHitList:", error); return; }
+  DATA.hitList = {};
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.hitList[r.contact_id] = r;
+  }
+}
+
 // Build a single-line full address from the structured contact fields,
 // falling back to the LLM-extracted texted_property_address when the
 // structured fields aren't yet populated (e.g. older snapshots that
@@ -1339,6 +1362,7 @@ async function loadAll() {
     loadOutboundNumbers(),
     loadContactAddresses(),
     loadMetadata(),
+    loadHitList(),
   ]);
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
@@ -1638,18 +1662,56 @@ function updateFilterCounts() {
     const k = getStageKey(r.conversation_id);
     if (stageCounts[k] !== undefined) stageCounts[k]++;
   }
+  // Hit List count comes from DATA.hitList (contact_ids at SELLER DISPOSITION
+  // → HIT LIST stage), independent of internal lifecycle stage.
+  stageCounts.hit_list = Object.keys(DATA.hitList || {}).length;
   for (const k in stageCounts) {
     const el = document.querySelector(`[data-count-stage="${k}"]`);
     if (el) el.textContent = stageCounts[k];
   }
 }
 
+// Build the row set for the Hit List filter. Each contact at the HIT LIST
+// stage in REI Reply (DATA.hitList) becomes one row. If we already have a
+// scored snapshot for that contact, use the full lead data; otherwise
+// synthesize a slim row from the opportunity payload so the contact is
+// still visible (older Hit List contacts may have aged out of the 100-
+// most-recent conversation snapshot window).
+function getHitListRows() {
+  const leadsByContact = {};
+  for (const r of DATA.leads || []) {
+    if (r.contact_id) leadsByContact[r.contact_id] = r;
+  }
+  return Object.values(DATA.hitList || {}).map(opp => {
+    const matched = leadsByContact[opp.contact_id];
+    if (matched) return { ...matched, _hitListOpp: opp };
+    // Slim row — no snapshot, no score. Sort timestamp uses last stage change.
+    return {
+      conversation_id: null,
+      contact_id: opp.contact_id,
+      contact_name: opp.contact_name,
+      phone: opp.phone,
+      score: null,
+      reasoning: null,
+      scored_at: opp.last_stage_change_at,
+      _hitListSlim: true,
+      _hitListOpp: opp,
+    };
+  });
+}
+
 function renderLeads() {
   updateFilterCounts();
   const search = (document.getElementById("leadsSearch")?.value || "").toLowerCase();
-  let rows = DATA.leads;
-  if (currentScoreFilter !== "all") rows = rows.filter(r => r.score === currentScoreFilter);
-  if (currentStageFilter !== "all") {
+  const isHitList = currentStageFilter === "hit_list";
+  // Hit List filter pulls from a different source (REI Reply opportunity stage,
+  // not internal lifecycle stage) and ignores the score filter — Hit List
+  // contacts may not be scored at all.
+  let rows = isHitList ? getHitListRows() : DATA.leads;
+  if (!isHitList && currentScoreFilter !== "all") {
+    rows = rows.filter(r => r.score === currentScoreFilter);
+  }
+  if (!isHitList && currentStageFilter !== "all") {
     rows = rows.filter(r => getStageKey(r.conversation_id) === currentStageFilter);
   }
   if (search) {
@@ -1662,11 +1724,46 @@ function renderLeads() {
 
   const body = document.getElementById("leadsBody");
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try clearing the search, switching to "All stages", or change the score filter.</p></td></tr>`;
+    const empty = isHitList
+      ? `<tr><td colspan="6" class="empty-state"><h3>No contacts on the Hit List right now</h3><p>When a VA moves a contact to "HIT LIST" in REI Reply's SELLER DISPOSITION pipeline, they'll appear here within 10 minutes.</p></td></tr>`
+      : `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try clearing the search, switching to "All stages", or change the score filter.</p></td></tr>`;
+    body.innerHTML = empty;
     return;
   }
 
   body.innerHTML = rows.map(r => {
+    // Slim Hit List row — contact is at the HIT LIST stage in REI Reply but
+    // we have no scored snapshot for them (aged out of the most-recent-100
+    // conversation window). Render a stripped-down row with what we have:
+    // name, phone, "in Hit List since X", and an Open → button to REI Reply.
+    if (r._hitListSlim) {
+      const opp = r._hitListOpp || {};
+      const url = contactUrl(r.contact_id);
+      const sinceShort = opp.last_stage_change_at ? shortDateTime(opp.last_stage_change_at) : "—";
+      const sinceFull = opp.last_stage_change_at ? absTime(opp.last_stage_change_at) : "—";
+      return `
+        <tr class="hit-list-slim">
+          <td class="col-name">
+            ${escapeHtml(r.contact_name || "(no name)")}
+            <div class="name-stack">
+              <span class="name-meta-label">no recent conversation</span>
+              <span class="name-meta-value" style="font-style:italic">aged out of snapshot window</span>
+            </div>
+          </td>
+          <td class="col-phone">
+            ${r.phone ? `<span class="phone-primary" onclick="copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(r.phone)}')" title="Click to copy">${escapeHtml(r.phone)}</span>` : "—"}
+          </td>
+          <td class="col-time" title="In Hit List since ${escapeHtml(sinceFull)}">since ${escapeHtml(sinceShort)}</td>
+          <td title="No motivation score — not in our snapshot universe"><span class="score-badge" style="background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)">—</span></td>
+          <td class="signals-cell" style="color:var(--text-muted);font-style:italic">In REI Reply Hit List · No transcript captured · Use Open → to view conversation directly</td>
+          <td class="col-actions">
+            <div class="action-group">
+              ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
+            </div>
+          </td>
+        </tr>
+      `;
+    }
     const cid = r.conversation_id;
     const cidEsc = escapeHtml(cid);
     const url = contactUrl(r.contact_id);
@@ -2029,6 +2126,16 @@ function subscribeToNewScores() {
       if (cid && expandedDetail && expandedDetail.convId === cid && expandedDetail.type === "notes") {
         loadStageHistoryFor(cid).then(renderLeads);
       }
+    })
+    // New / updated opportunity from the Hit List pull cron. Refresh the
+    // Hit List bucket so contacts moved to or out of the HIT LIST stage
+    // in REI Reply reflect on the dashboard within ~1s.
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "ghl_opportunities",
+    }, () => {
+      loadHitList().then(renderLeads);
     })
     .subscribe();
 }
