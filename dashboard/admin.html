@@ -1013,7 +1013,10 @@ function openInReiAiLeads(address) {
 // of showing an empty dashboard. Keep the email lists here in sync with
 // the SQL functions.
 const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
-const ACQUISITIONS_EMAILS = ["joseph.hhremodeling@gmail.com"];
+const ACQUISITIONS_EMAILS = [
+  "joseph.hhremodeling@gmail.com",   // Joseph Castelan
+  "brian@htxpropertybuyers.com",     // Bernabé Sanchez
+];
 
 // Pipeline stage definitions. The DB CHECK constraint is the source of
 // truth for valid stage keys (see migrations/002_contact_actions.sql);
@@ -1364,6 +1367,12 @@ async function loadAll() {
     loadMetadata(),
     loadHitList(),
   ]);
+  // Final re-render after all parallel loads complete. loadLeads triggers an
+  // initial render the moment it finishes, but the metadata / outbound / hit
+  // list / contact-address / notes-count loaders may finish later — without
+  // this second render the count badges and the "created / last activity"
+  // stack appear empty until the next interaction forces a re-render.
+  renderLeads();
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
 

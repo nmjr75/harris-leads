@@ -1253,9 +1253,13 @@ async function loadProfile() {
 }
 
 const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
+const ACQUISITIONS_EMAILS = [
+  "joseph.hhremodeling@gmail.com",  // Joseph Castelan
+  "brian@htxpropertybuyers.com",    // Bernabé Sanchez
+];
 function maybeShowAdminLink() {
   const email = (currentSession?.user?.email || "").toLowerCase();
-  if (!NELSON_EMAILS.includes(email)) return;
+  if (!NELSON_EMAILS.includes(email) && !ACQUISITIONS_EMAILS.includes(email)) return;
   if (document.getElementById("adminLink")) return;
   const a = document.createElement("a");
   a.id = "adminLink";
