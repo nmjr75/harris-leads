@@ -516,6 +516,23 @@
     font-style: normal;
     font-weight: 600;
   }
+  /* GHL-sourced notes — a subtle inline badge that reads "from REI Reply".
+     Marks notes that were typed inside the GHL contact-detail page and
+     synced via the sync-ghl-note Edge Function (migration 015). */
+  .note-source-ghl {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--accent-light);
+    background: rgba(124, 92, 252, 0.12);
+    border: 1px solid rgba(124, 92, 252, 0.35);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-right: 6px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
   .notes-empty {
     color: var(--text-muted);
     font-style: italic;
@@ -1608,6 +1625,7 @@ function renderNotesPanel(row) {
         kind: "note",
         email: n.created_by_email,
         body: n.body,
+        source: n.source || "dashboard",
       })),
       ...stageHistory.map(s => ({
         ts: s.set_at,
@@ -1628,10 +1646,15 @@ function renderNotesPanel(row) {
           </li>
         `;
       }
+      // GHL-sourced notes get a small badge so admins can tell at a glance
+      // which notes were typed in REI Reply vs typed on the dashboard.
+      const ghlBadge = it.source === "ghl"
+        ? `<span class="note-source-ghl" title="Synced from REI Reply via webhook">📞 from REI Reply</span> `
+        : "";
       return `
         <li class="note-item">
           ${time}
-          <div>${escapeHtml(it.body).replace(/\n/g, "<br>")}</div>
+          <div>${ghlBadge}${escapeHtml(it.body).replace(/\n/g, "<br>")}</div>
         </li>
       `;
     }).join("")}</ul>`;
