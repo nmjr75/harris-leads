@@ -426,13 +426,13 @@
   .stage-dnc        { background: #6b1620;         color: #fff; }
 
   /* Per-pill count badge (next to label inside filter pills) */
-  .filter-pill .count {
+  .filter-pill .count, .assignment-pill .count {
     margin-left: 6px;
     font-size: 0.68rem;
     opacity: 0.85;
     font-weight: 600;
   }
-  .filter-pill.active .count { opacity: 1; }
+  .filter-pill.active .count, .assignment-pill.active .count { opacity: 1; }
 
   /* Inline action group (Open + Notes + Stage buttons in actions cell) */
   .action-group {
@@ -973,12 +973,12 @@
          since they only see their own leads anyway via RLS). -->
     <div class="assignment-filter-row" id="assignmentFilterRow">
       <span class="label">Assigned to:</span>
-      <span class="assignment-pill active" data-assign="all" onclick="setAssignmentFilter('all')">All</span>
-      <span class="assignment-pill" data-assign="mine" onclick="setAssignmentFilter('mine')">Mine</span>
-      <span class="assignment-pill" data-assign="joseph.hhremodeling@gmail.com" onclick="setAssignmentFilter('joseph.hhremodeling@gmail.com')">Joseph</span>
-      <span class="assignment-pill" data-assign="mark.realdealsource@gmail.com" onclick="setAssignmentFilter('mark.realdealsource@gmail.com')">Walter</span>
-      <span class="assignment-pill" data-assign="nmjr75@gmail.com" onclick="setAssignmentFilter('nmjr75@gmail.com')">Nelson</span>
-      <span class="assignment-pill" data-assign="unassigned" onclick="setAssignmentFilter('unassigned')">Unassigned</span>
+      <span class="assignment-pill active" data-assign="all" onclick="setAssignmentFilter('all')">All <span class="count" data-assign-count="all">0</span></span>
+      <span class="assignment-pill" data-assign="mine" onclick="setAssignmentFilter('mine')">Mine <span class="count" data-assign-count="mine">0</span></span>
+      <span class="assignment-pill" data-assign="joseph.hhremodeling@gmail.com" onclick="setAssignmentFilter('joseph.hhremodeling@gmail.com')">Joseph <span class="count" data-assign-count="joseph.hhremodeling@gmail.com">0</span></span>
+      <span class="assignment-pill" data-assign="mark.realdealsource@gmail.com" onclick="setAssignmentFilter('mark.realdealsource@gmail.com')">Walter <span class="count" data-assign-count="mark.realdealsource@gmail.com">0</span></span>
+      <span class="assignment-pill" data-assign="nmjr75@gmail.com" onclick="setAssignmentFilter('nmjr75@gmail.com')">Nelson <span class="count" data-assign-count="nmjr75@gmail.com">0</span></span>
+      <span class="assignment-pill" data-assign="unassigned" onclick="setAssignmentFilter('unassigned')">Unassigned <span class="count" data-assign-count="unassigned">0</span></span>
     </div>
     <div class="stage-filter-row">
       <span class="stage-filter-label">Stage:</span>
@@ -1880,6 +1880,36 @@ function updateFilterCounts() {
   for (const k in stageCounts) {
     const el = document.querySelector(`[data-count-stage="${k}"]`);
     if (el) el.textContent = stageCounts[k];
+  }
+
+  // Assignment counts (admin/owner-only filter bar). Universe = HOT/WARM
+  // scored leads UNION Hit List members, deduped by contact_id. For each
+  // contact, look up DATA.assignments to bucket by current assignee.
+  const me = userEmail();
+  const universe = new Set();
+  for (const r of all) if (r.contact_id) universe.add(r.contact_id);
+  for (const cid of Object.keys(DATA.hitList || {})) universe.add(cid);
+  const assignCounts = {
+    all: universe.size,
+    mine: 0,
+    "joseph.hhremodeling@gmail.com": 0,
+    "mark.realdealsource@gmail.com": 0,
+    "nmjr75@gmail.com": 0,
+    unassigned: 0,
+  };
+  for (const cid of universe) {
+    const cur = DATA.assignments[cid];
+    const email = cur?.assigned_to_email || null;
+    if (!email) {
+      assignCounts.unassigned++;
+      continue;
+    }
+    if (assignCounts[email] !== undefined) assignCounts[email]++;
+    if (email === me) assignCounts.mine++;
+  }
+  for (const k in assignCounts) {
+    const el = document.querySelector(`[data-assign-count="${k}"]`);
+    if (el) el.textContent = assignCounts[k];
   }
 }
 
