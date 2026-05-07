@@ -442,7 +442,7 @@
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .btn-notes, .btn-stage {
+  .btn-notes, .btn-stage, .btn-assign {
     background: var(--surface2);
     color: var(--text);
     border: 1px solid var(--border);
@@ -456,7 +456,51 @@
     gap: 6px;
     font-family: inherit;
   }
-  .btn-notes:hover, .btn-stage:hover { border-color: var(--accent); }
+  .btn-notes:hover, .btn-stage:hover, .btn-assign:hover { border-color: var(--accent); }
+  /* Assignment chip — read-only badge for non-manager roles. Same shape as
+     btn-assign so the action-group keeps consistent rhythm. */
+  .assignment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    user-select: none;
+  }
+  /* Admin-only assignment filter bar above the leads table. Pill row
+     mirroring the stage filter row pattern. */
+  .assignment-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 24px 0;
+    flex-wrap: wrap;
+  }
+  .assignment-filter-row .label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .assignment-pill {
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    user-select: none;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .assignment-pill:hover { border-color: var(--accent); color: var(--text); }
+  .assignment-pill.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
   .btn-notes .badge {
     background: var(--accent);
     color: #fff;
@@ -925,6 +969,17 @@
 
   <!-- Leads tab -->
   <div id="tabLeads" class="tab-content active">
+    <!-- Assignment filter (admin/owner only — hidden for assignee role
+         since they only see their own leads anyway via RLS). -->
+    <div class="assignment-filter-row" id="assignmentFilterRow">
+      <span class="label">Assigned to:</span>
+      <span class="assignment-pill active" data-assign="all" onclick="setAssignmentFilter('all')">All</span>
+      <span class="assignment-pill" data-assign="mine" onclick="setAssignmentFilter('mine')">Mine</span>
+      <span class="assignment-pill" data-assign="joseph.hhremodeling@gmail.com" onclick="setAssignmentFilter('joseph.hhremodeling@gmail.com')">Joseph</span>
+      <span class="assignment-pill" data-assign="mark.realdealsource@gmail.com" onclick="setAssignmentFilter('mark.realdealsource@gmail.com')">Walter</span>
+      <span class="assignment-pill" data-assign="nmjr75@gmail.com" onclick="setAssignmentFilter('nmjr75@gmail.com')">Nelson</span>
+      <span class="assignment-pill" data-assign="unassigned" onclick="setAssignmentFilter('unassigned')">Unassigned</span>
+    </div>
     <div class="stage-filter-row">
       <span class="stage-filter-label">Stage:</span>
       <span class="filter-pill active" data-stage="active" onclick="setStageFilter('active')">Active <span class="count" data-count-stage="active">0</span></span>
@@ -1024,15 +1079,27 @@ function openInReiAiLeads(address) {
   window.open(REI_AI_LEADS_BASE, "_blank", "noopener");
 }
 
-// Email allowlists per role. RLS enforces these server-side via is_nelson()
-// and is_acquisitions() (see migrations 001 + 009); the client-side check
-// just routes the user to the right UI surface (or access-denied) instead
-// of showing an empty dashboard. Keep the email lists here in sync with
-// the SQL functions.
+// Email allowlists per role. RLS enforces these server-side via is_nelson(),
+// is_admin(), is_assignee() (see migrations 001 + 019); the client-side
+// check just routes the user to the right UI surface (or access-denied)
+// instead of showing an empty dashboard. Keep the email lists here in sync
+// with the SQL functions.
 const NELSON_EMAILS = ["nmjr75@gmail.com", "nelson@htxpropertybuyers.com"];
-const ACQUISITIONS_EMAILS = [
-  "joseph.hhremodeling@gmail.com",   // Joseph Castelan
-  "brian@htxpropertybuyers.com",     // Bernabé Sanchez
+const ADMIN_EMAILS = [
+  "brian@htxpropertybuyers.com",     // Bernabé Sanchez (admin viewer + writer)
+];
+const ASSIGNEE_EMAILS = [
+  "joseph.hhremodeling@gmail.com",   // Joseph Castelan (closer — HOT/WARM)
+  "mark.realdealsource@gmail.com",   // Walter (follow-up specialist — Hit List)
+];
+
+// All possible assignees for the per-row "Assign" dropdown (admin-only).
+// Order is intentional — Joseph first (most common assignment for HOT/WARM),
+// Walter second, Nelson last (he assigns to himself rarely).
+const ASSIGNEES = [
+  { email: "joseph.hhremodeling@gmail.com", label: "Joseph",  color: "#3b82f6" },
+  { email: "mark.realdealsource@gmail.com", label: "Walter",  color: "#06b6d4" },
+  { email: "nmjr75@gmail.com",              label: "Nelson",  color: "#7c5cfc" },
 ];
 
 // Pipeline stage definitions. The DB CHECK constraint is the source of
@@ -1087,7 +1154,17 @@ let DATA = {
   // REI Reply. The Hit List filter pill renders these (joined with snapshot
   // data when available; slim row otherwise).
   hitList: {},
+  // contact_id -> { assigned_to_email, assigned_at, assigned_by_email, reason }
+  // from ghl_current_assignment (migration 018). Drives the per-row assignment
+  // chip + the admin-only "Assign to" menu. Assignees only see rows where
+  // they're the assignee thanks to RLS, so this view is naturally pre-filtered
+  // for them.
+  assignments: {},
 };
+// Admin-only: which assignment bucket to show. "all" | "mine" | one of the
+// assignee emails | "unassigned". Defaults to "all" — managers see the full
+// universe, click a pill to narrow down.
+let currentAssignmentFilter = "all";
 // One inline-expanded detail at a time. type is "history" (score timeline,
 // triggered by clicking the contact name) or "notes" (notes panel,
 // triggered by clicking the Notes button).
@@ -1095,30 +1172,47 @@ let expandedDetail = null; // { convId, type } | null
 let scoreHistoryCache = {}; // conversation_id -> array of past scores
 
 // ── Auth ──────────────────────────────────────────────────────────
-let currentRole = null; // "nelson" | "acquisitions" | null
+let currentRole = null; // "nelson" | "admin" | "assignee" | null
 
 function userEmail() {
   return (currentSession?.user?.email || "").toLowerCase();
 }
 function isNelson() { return NELSON_EMAILS.includes(userEmail()); }
-function isAcquisitions() { return ACQUISITIONS_EMAILS.includes(userEmail()); }
+function isAdmin() { return ADMIN_EMAILS.includes(userEmail()); }
+function isAssignee() { return ASSIGNEE_EMAILS.includes(userEmail()); }
+// Owner + Admin are both "managers" — they see all leads, can assign, can
+// add notes / change stages on anyone. Used for UI gating of admin-only
+// surfaces like the Assign button, the assignment filter bar, etc.
+function isManager() { return isNelson() || isAdmin(); }
 function deriveRole() {
   if (isNelson()) return "nelson";
-  if (isAcquisitions()) return "acquisitions";
+  if (isAdmin()) return "admin";
+  if (isAssignee()) return "assignee";
   return null;
 }
 
-// Hide deletion-audit surfaces + promotions counter for the acquisitions
-// role. RLS already denies the underlying queries; this just keeps the UI
-// from showing dashes / failing silently.
+// Apply role-specific UI visibility. Three tiers:
+//   - "nelson"   (Owner): sees everything. No hiding.
+//   - "admin"    (Bernabé): hides deletion-audit surfaces (Nelson-private
+//                surveillance of VAs). Sees Assign button + filter bar.
+//   - "assignee" (Joseph/Walter): sees only assigned leads. Hides deletion
+//                stuff AND the assign button (they don't assign).
+// RLS enforces the hard security boundary; this just shapes the UI.
 function applyRoleVisibility() {
-  const acq = currentRole === "acquisitions";
-  const hide = (id) => { const el = document.getElementById(id); if (el) el.style.display = acq ? "none" : ""; };
-  hide("statPromosCard");
-  hide("pendingDelCard");
-  hide("tabBtnDeletions");
-  // If acquisitions somehow lands on the deletions tab, force back to leads.
-  if (acq && currentTab === "deletions") setTab("leads");
+  const role = currentRole;
+  const isAssigneeRole = role === "assignee";
+  const isAdminOrAssignee = role === "admin" || role === "assignee";
+  const hide = (id, condition) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = condition ? "none" : "";
+  };
+  // Deletion-audit surfaces: Nelson only.
+  hide("statPromosCard", isAdminOrAssignee);
+  hide("pendingDelCard", isAdminOrAssignee);
+  hide("tabBtnDeletions", isAdminOrAssignee);
+  // Assignment filter bar: managers only.
+  hide("assignmentFilterRow", isAssigneeRole);
+  if (isAdminOrAssignee && currentTab === "deletions") setTab("leads");
 }
 
 async function checkAuth() {
@@ -1309,6 +1403,61 @@ async function loadHitList() {
   }
 }
 
+// Per-contact current assignment from ghl_current_assignment view (mig 018).
+// Drives the assignment chip on every row + the admin-only filter bar.
+// Assignees see only their own rows (RLS scopes the view automatically).
+async function loadAssignments() {
+  const { data, error } = await sb
+    .from("ghl_current_assignment")
+    .select("contact_id, assigned_to_email, assigned_at, assigned_by_email, reason");
+  if (error) { console.error("loadAssignments:", error); return; }
+  DATA.assignments = {};
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.assignments[r.contact_id] = r;
+  }
+}
+
+// Assign a contact to a specific email. Admin-only path; RLS rejects writes
+// from assignees. Inserts an append-only row into ghl_lead_assignments —
+// the latest row is the current assignment via ghl_current_assignment view.
+// Pass null/undefined for `email` to "unassign" (we model unassignment as a
+// special sentinel: the absence of a current row means unassigned, so we
+// can't actually write null. For now, "Unassign" is just a no-op — admins
+// reassign to a different person rather than clearing).
+async function assignContact(contactId, contactName, email) {
+  if (!isManager()) return;
+  if (!email) return;
+  const lead = DATA.leads.find(r => r.contact_id === contactId);
+  const conversationId = lead?.conversation_id || null;
+  const { error } = await sb.from("ghl_lead_assignments").insert({
+    contact_id: contactId,
+    conversation_id: conversationId,
+    contact_name: contactName || null,
+    assigned_to_email: email,
+    assigned_by_email: currentSession?.user?.email || null,
+    reason: "manual",
+  });
+  if (error) { alert("Assignment failed: " + error.message); return; }
+  // Optimistically update local state + re-render. Realtime will catch up.
+  DATA.assignments[contactId] = {
+    contact_id: contactId,
+    assigned_to_email: email,
+    assigned_at: new Date().toISOString(),
+    assigned_by_email: currentSession?.user?.email || null,
+    reason: "manual",
+  };
+  renderLeads();
+}
+
+function assigneeLabel(email) {
+  const a = ASSIGNEES.find(x => x.email === email);
+  return a ? a.label : (email || "—");
+}
+function assigneeColor(email) {
+  const a = ASSIGNEES.find(x => x.email === email);
+  return a ? a.color : "var(--text-muted)";
+}
+
 // Build a single-line full address from the structured contact fields,
 // falling back to the LLM-extracted texted_property_address when the
 // structured fields aren't yet populated (e.g. older snapshots that
@@ -1383,6 +1532,7 @@ async function loadAll() {
     loadContactAddresses(),
     loadMetadata(),
     loadHitList(),
+    loadAssignments(),
   ]);
   // Final re-render after all parallel loads complete. loadLeads triggers an
   // initial render the moment it finishes, but the metadata / outbound / hit
@@ -1555,6 +1705,36 @@ function getStageKey(conversationId) {
 function renderStageBadge(stageKey) {
   const def = STAGES[stageKey] || STAGES.active;
   return `<span class="stage-pill ${def.className}">${def.label}</span>`;
+}
+
+// Render the per-row assignment chip + (admin-only) "Assign" button.
+// Used by both the full row and the slim Hit List row.
+function renderAssignmentControl(row) {
+  const cid = row.contact_id;
+  const cidEsc = escapeHtml(cid || "");
+  const nameEsc = escapeHtml(row.contact_name || "");
+  const cur = DATA.assignments[cid];
+  const curEmail = cur?.assigned_to_email || null;
+  const label = curEmail ? assigneeLabel(curEmail) : "Unassigned";
+  const color = curEmail ? assigneeColor(curEmail) : "var(--text-muted)";
+  const titleSuffix = curEmail
+    ? `Assigned to ${label} on ${absTime(cur.assigned_at)}${cur.reason ? ` (${cur.reason})` : ""}`
+    : "No assignee yet";
+
+  if (isManager()) {
+    return `
+      <button class="btn-assign" onclick="event.stopPropagation(); openAssignMenu(event, '${cidEsc}', '${nameEsc}')"
+              style="border-color:${color}33;color:${color}" title="${escapeHtml(titleSuffix)} — click to reassign">
+        👤 ${escapeHtml(label)} ▾
+      </button>
+    `;
+  }
+  // Assignees see the chip but no button — they can't reassign.
+  return `
+    <span class="assignment-chip" style="border-color:${color}55;color:${color}" title="${escapeHtml(titleSuffix)}">
+      👤 ${escapeHtml(label)}
+    </span>
+  `;
 }
 
 // Hide CRM activity-log noise the same way the scorer does (Opportunity created/updated/deleted).
@@ -1752,6 +1932,8 @@ function renderLeads() {
       (r.phone || "").toLowerCase().includes(search)
     );
   }
+  // Apply assignment filter (admin/owner only — no-op for assignees).
+  rows = rows.filter(matchesAssignmentFilter);
   rows = sortLeads(rows);
 
   const body = document.getElementById("leadsBody");
@@ -1791,6 +1973,7 @@ function renderLeads() {
           <td class="col-actions">
             <div class="action-group">
               ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
+              ${renderAssignmentControl(r)}
             </div>
           </td>
         </tr>
@@ -1854,6 +2037,7 @@ function renderLeads() {
             ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
             <button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${cidEsc}')" title="View / add notes">📝 Notes${noteCount ? ` <span class="badge">${noteCount}</span>` : ""}</button>
             <button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${cidEsc}')" title="Change pipeline stage">${renderStageBadge(stageKey)} ▾</button>
+            ${renderAssignmentControl(r)}
           </div>
         </td>
       </tr>
@@ -1948,6 +2132,27 @@ function setStageFilter(s) {
   expandedDetail = null;
   closeStageMenu();
   renderLeads();
+}
+
+function setAssignmentFilter(s) {
+  currentAssignmentFilter = s;
+  document.querySelectorAll('.assignment-pill[data-assign]').forEach(el => el.classList.toggle("active", el.dataset.assign === s));
+  renderLeads();
+}
+
+// Returns true if `row` (a lead row) matches the current assignment filter.
+// Admin filter is a no-op for assignee role (they only see their own leads
+// via RLS regardless of pill state). Returns true if no filter is active or
+// if the assignment matches.
+function matchesAssignmentFilter(row) {
+  if (currentRole === "assignee") return true;
+  const f = currentAssignmentFilter;
+  if (!f || f === "all") return true;
+  const cur = DATA.assignments[row.contact_id];
+  const curEmail = cur?.assigned_to_email || null;
+  if (f === "unassigned") return !curEmail;
+  if (f === "mine") return curEmail === userEmail();
+  return curEmail === f;
 }
 
 function setAckFilter(s) {
@@ -2074,6 +2279,36 @@ function closeStageMenu() {
   if (m) m.remove();
 }
 
+// Admin-only menu to (re)assign a contact to one of the three valid
+// assignees: Joseph (closer), Walter (follow-up), or Nelson (Owner takes
+// it personally). Mirrors openStageMenu's pattern.
+function openAssignMenu(event, contactId, contactName) {
+  if (!isManager()) return;
+  event.preventDefault();
+  closeAssignMenu();
+  closeStageMenu();
+  const menu = document.createElement("div");
+  menu.className = "stage-menu";
+  menu.id = "assignMenu";
+  menu.innerHTML = ASSIGNEES.map(a => `
+    <button onclick="assignContact('${escapeHtml(contactId)}', '${escapeHtml(contactName || "")}', '${a.email}'); closeAssignMenu();">
+      <span class="stage-pill" style="background:${a.color};color:#fff">${a.label}</span>
+    </button>
+  `).join("");
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  menu.style.left = `${rect.left + window.scrollX}px`;
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener("click", closeAssignMenu, { once: true });
+  }, 0);
+}
+
+function closeAssignMenu() {
+  const m = document.getElementById("assignMenu");
+  if (m) m.remove();
+}
+
 async function setStage(conversationId, stage) {
   if (!STAGES[stage]) return;
   closeStageMenu();
@@ -2168,6 +2403,16 @@ function subscribeToNewScores() {
       table: "ghl_opportunities",
     }, () => {
       loadHitList().then(renderLeads);
+    })
+    // New / updated lead assignment. Refresh the assignment map so chips,
+    // filter bar, and assignee scoping reflect immediately when a manager
+    // (re)assigns a contact.
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "ghl_lead_assignments",
+    }, () => {
+      loadAssignments().then(renderLeads);
     })
     .subscribe();
 }
