@@ -1774,6 +1774,12 @@ let DATA = {
   // view selected "All"). Loaded by loadMyTasks() — separate from DATA.tasks
   // which is per-contact lazy-loaded. The My Tasks panel renders this.
   myTasks: [],
+  // contact_id -> conversation_id for Hit List slim rows (contacts not in
+  // the recent-100 ghl_latest_scores window but still active in REI Reply).
+  // Loaded by loadHitListConversations() so slim rows can wire up
+  // Notes/Tasks/Stage buttons. Without this, Walter (who primarily works
+  // Hit List) sees buttonless rows.
+  slimConversations: {},
 };
 // My Tasks panel state. open=true when the slide-out is visible. assignee
 // is the email we're showing tasks for; defaults to the current user but
@@ -2532,6 +2538,10 @@ async function loadAll() {
     loadTasksSummary(),
     loadMyTasks(),
   ]);
+  // Hit List slim-row conversation_id lookup runs after the parallel batch
+  // because it depends on both DATA.leads + DATA.hitList being populated.
+  // Cheap query: pulls one column for ~hundred contacts at most.
+  await loadHitListConversations();
   // Final re-render after all parallel loads complete. loadLeads triggers an
   // initial render the moment it finishes, but the metadata / outbound / hit
   // list / contact-address / notes-count loaders may finish later — without
@@ -2540,6 +2550,34 @@ async function loadAll() {
   renderLeads();
   updateMyTasksPill();
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+}
+
+// For Hit List contacts that aren't in DATA.leads (slim rows — aged out
+// of the recent-100 score window), fetch the most-recent snapshot's
+// conversation_id so the action buttons (Notes / Tasks / Stage) can wire
+// up properly. Runs after loadHitList + loadLeads in loadAll().
+async function loadHitListConversations() {
+  const hitContactIds = Object.keys(DATA.hitList || {});
+  const leadContactIds = new Set((DATA.leads || []).map(r => r.contact_id).filter(Boolean));
+  const slimContactIds = hitContactIds.filter(id => id && !leadContactIds.has(id));
+  if (slimContactIds.length === 0) {
+    DATA.slimConversations = {};
+    return;
+  }
+  const { data, error } = await sb
+    .from("ghl_conversation_snapshots")
+    .select("contact_id, conversation_id, pulled_at")
+    .in("contact_id", slimContactIds)
+    .order("pulled_at", { ascending: false });
+  if (error) { console.error("loadHitListConversations:", error); return; }
+  // Most-recent per contact (data is sorted desc; first occurrence wins).
+  const map = {};
+  for (const r of (data || [])) {
+    if (r.contact_id && r.conversation_id && !(r.contact_id in map)) {
+      map[r.contact_id] = r.conversation_id;
+    }
+  }
+  DATA.slimConversations = map;
 }
 
 async function loadScoreHistory(conversationId) {
@@ -3079,9 +3117,14 @@ function getHitListRows() {
   return Object.values(DATA.hitList || {}).map(opp => {
     const matched = leadsByContact[opp.contact_id];
     if (matched) return { ...matched, _hitListOpp: opp };
-    // Slim row — no snapshot, no score. Sort timestamp uses last stage change.
+    // Slim row — no recent score. We DO want Notes/Tasks/Stage to work
+    // for these (Walter primarily works Hit List leads), so populate a
+    // conversation_id from the slim-conversation lookup if available.
+    // The contact still has a snapshot in our DB (it just aged out of
+    // the recent-100 window that loadLeads queries).
+    const convId = DATA.slimConversations?.[opp.contact_id] || null;
     return {
-      conversation_id: null,
+      conversation_id: convId,
       contact_id: opp.contact_id,
       contact_name: opp.contact_name,
       phone: opp.phone,
@@ -3137,8 +3180,18 @@ function renderLeads() {
       const url = contactUrl(r.contact_id);
       const stageMoveAt = opp.last_stage_change_at || null;
       const stageMoveFull = stageMoveAt ? absTime(stageMoveAt) : "—";
+      // Slim rows can still wire up Notes/Tasks/Stage if we have a
+      // conversation_id from the snapshot lookup (loadHitListConversations).
+      // Without conversation_id (truly orphaned contact), fall back to the
+      // minimal row with just Open + Assignment.
+      const slimCid = r.conversation_id;
+      const slimCidEsc = escapeHtml(slimCid || "");
+      const slimNoteCount = slimCid ? (DATA.notesCount[slimCid] || 0) : 0;
+      const slimStageKey = slimCid ? getStageKey(slimCid) : "active";
+      const slimIsExpanded = slimCid && expandedDetail && expandedDetail.convId === slimCid;
+      const slimExpandedType = slimIsExpanded ? expandedDetail.type : null;
       return `
-        <tr class="hit-list-slim">
+        <tr data-cid="${slimCidEsc}" class="hit-list-slim ${slimIsExpanded ? 'expanded' : ''}">
           <td class="col-name">
             ${escapeHtml(r.contact_name || "(no name)")}
             <div class="name-stack">
@@ -3162,10 +3215,19 @@ function renderLeads() {
           <td class="col-actions">
             <div class="action-group">
               ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
+              ${slimCid ? renderTasksButton(r) : ""}
+              ${slimCid ? `<button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${slimCidEsc}')" title="View / add notes">📝 Notes${slimNoteCount ? ` <span class="badge">${slimNoteCount}</span>` : ""}</button>` : ""}
+              ${slimCid ? `<button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${slimCidEsc}')" title="Change pipeline stage">${renderStageBadge(slimStageKey)} ▾</button>` : ""}
               ${renderAssignmentControl(r)}
             </div>
           </td>
         </tr>
+        ${slimIsExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${slimCidEsc}">${
+          slimExpandedType === 'notes' ? renderNotesPanel(r) :
+          slimExpandedType === 'tasks' ? renderTasksPanel(r) :
+          slimExpandedType === 'transcript' ? renderTranscriptPanel(r) :
+          '<div class="detail-content">Loading…</div>'
+        }</td></tr>` : ""}
       `;
     }
     const cid = r.conversation_id;
