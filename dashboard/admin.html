@@ -3460,6 +3460,12 @@ async function toggleTasksPanel(conversationId) {
   }
 }
 
+// Save a note typed in the dashboard's Notes panel. Routes through the
+// create-ghl-note Edge Function so the note is mirrored to REI Reply
+// (creates the note via GHL API, then INSERTs the row in Supabase with
+// the canonical GHL note ID). Without this round-trip, dashboard notes
+// would never appear in REI Reply — the inverse direction (REI Reply →
+// dashboard) is already covered by sync-ghl-note + the GHL workflow.
 async function saveNote(conversationId) {
   const ta = document.getElementById(`noteInput-${conversationId}`);
   const body = (ta?.value || "").trim();
@@ -3467,15 +3473,48 @@ async function saveNote(conversationId) {
   const btn = ta?.parentElement?.querySelector(".btn-save-note");
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
-  const { error } = await sb.from("ghl_contact_notes").insert({
-    conversation_id: conversationId,
-    contact_id: lead.contact_id || null,
-    body: body,
-    created_by_email: currentSession?.user?.email || null,
-  });
+  const contactId = lead.contact_id;
+  if (!contactId) {
+    if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+    alert("Can't save — no contact ID on this lead.");
+    return;
+  }
+
+  let ok = false;
+  let errMsg = "";
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-ghl-note`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession?.access_token || ""}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        contactId,
+        conversationId,
+        body,
+      }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (resp.ok && result.ok) {
+      ok = true;
+    } else {
+      errMsg = result.detail || result.error || `HTTP ${resp.status}`;
+    }
+  } catch (e) {
+    errMsg = String(e);
+  }
+
   if (btn) { btn.disabled = false; btn.textContent = "Save"; }
-  if (error) { alert("Save failed: " + error.message); return; }
-  // Refresh count + reopen panel with the new note visible
+  if (!ok) {
+    alert(`Save failed — REI Reply did not accept the note: ${errMsg}\n\nThe note was NOT saved (we don't write dashboard-only notes that aren't synced).`);
+    return;
+  }
+
+  // Clear the textarea on success — the realtime subscription on
+  // ghl_contact_notes will refresh the panel with the new note within ~1s.
+  if (ta) ta.value = "";
   await Promise.all([loadNotesCounts(), loadNotesFor(conversationId)]);
   renderLeads();
 }
