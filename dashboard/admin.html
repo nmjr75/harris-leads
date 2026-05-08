@@ -377,7 +377,22 @@
     margin-bottom: 2px;
   }
   .col-phone { font-family: ui-monospace, monospace; color: var(--text-muted); font-size: 0.8rem; }
-  .col-time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+  .col-time { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; vertical-align: top; }
+  .activity-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; line-height: 1.2; }
+  .activity-primary {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+    letter-spacing: -0.1px;
+  }
+  .activity-relative {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    letter-spacing: 0.2px;
+  }
+  .activity-empty { color: var(--text-muted); font-style: italic; }
   .clickable { cursor: pointer; }
   .ack-note-input {
     width: 100%;
@@ -880,7 +895,7 @@
       border-bottom: 1px solid var(--border) !important;
       margin-bottom: 6px;
     }
-    .data-table .col-time::before  { content: "Pulled  "; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .data-table .col-time::before  { content: "Last activity  "; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
     .data-table .col-phone::before { content: "Phone  ";  color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
     .data-table .signals-cell::before { content: "Signals  "; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-top: 6px; }
     .data-table .col-time { font-size: 0.85rem; }
@@ -1655,6 +1670,33 @@ function shortDateTime(iso) {
   });
 }
 
+// Polished "Last activity" datetime — labels today/yesterday explicitly,
+// drops the year for current-year dates, always Central Time. Examples:
+// "Today, 2:23 PM" / "Yesterday, 9:45 AM" / "May 8, 2:23 PM" / "Dec 12, 2025, 3:00 PM"
+function smartDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const ctOpts = { timeZone: "America/Chicago" };
+  const dateCT = d.toLocaleDateString("en-US", ctOpts);
+  const now = new Date();
+  const todayCT = now.toLocaleDateString("en-US", ctOpts);
+  const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  const yestCT = yest.toLocaleDateString("en-US", ctOpts);
+  const time = d.toLocaleTimeString("en-US", {
+    timeZone: "America/Chicago", hour: "numeric", minute: "2-digit",
+  });
+  if (dateCT === todayCT) return `Today, ${time}`;
+  if (dateCT === yestCT) return `Yesterday, ${time}`;
+  const sameYear = d.toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric" })
+    === now.toLocaleDateString("en-US", { timeZone: "America/Chicago", year: "numeric" });
+  const dateFmt = d.toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    month: "short", day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+  return `${dateFmt}, ${time}`;
+}
+
 function contactUrl(contactId) {
   if (!contactId) return null;
   return `${REI_REPLY_BASE}/contacts/detail/${contactId}`;
@@ -1996,8 +2038,8 @@ function renderLeads() {
     if (r._hitListSlim) {
       const opp = r._hitListOpp || {};
       const url = contactUrl(r.contact_id);
-      const sinceShort = opp.last_stage_change_at ? shortDateTime(opp.last_stage_change_at) : "—";
-      const sinceFull = opp.last_stage_change_at ? absTime(opp.last_stage_change_at) : "—";
+      const stageMoveAt = opp.last_stage_change_at || null;
+      const stageMoveFull = stageMoveAt ? absTime(stageMoveAt) : "—";
       return `
         <tr class="hit-list-slim">
           <td class="col-name">
@@ -2010,7 +2052,14 @@ function renderLeads() {
           <td class="col-phone">
             ${r.phone ? `<span class="phone-primary" onclick="copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(r.phone)}')" title="Click to copy">${escapeHtml(r.phone)}</span>` : "—"}
           </td>
-          <td class="col-time" title="In Hit List since ${escapeHtml(sinceFull)}">since ${escapeHtml(sinceShort)}</td>
+          <td class="col-time" title="Moved to Hit List: ${escapeHtml(stageMoveFull)}">
+            ${stageMoveAt ? `
+              <div class="activity-stack">
+                <span class="activity-primary">${escapeHtml(smartDateTime(stageMoveAt))}</span>
+                <span class="activity-relative">moved to hit list · ${escapeHtml(relTime(stageMoveAt))}</span>
+              </div>
+            ` : `<span class="activity-empty">—</span>`}
+          </td>
           <td title="No motivation score — not in our snapshot universe"><span class="score-badge" style="background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)">—</span></td>
           <td class="signals-cell" style="color:var(--text-muted);font-style:italic">In REI Reply Hit List · No transcript captured · Use Open → to view conversation directly</td>
           <td class="col-actions">
@@ -2057,7 +2106,17 @@ function renderLeads() {
         </td>
         ${(() => {
           const lastAct = lastActivityFor(r);
-          return `<td class="col-time" title="Last message activity: ${escapeHtml(absTime(lastAct))}">${lastAct ? relTime(lastAct) : "—"}</td>`;
+          if (!lastAct) {
+            return `<td class="col-time"><span class="activity-empty">—</span></td>`;
+          }
+          return `
+            <td class="col-time" title="Last message activity: ${escapeHtml(absTime(lastAct))}">
+              <div class="activity-stack">
+                <span class="activity-primary">${escapeHtml(smartDateTime(lastAct))}</span>
+                <span class="activity-relative">${escapeHtml(relTime(lastAct))}</span>
+              </div>
+            </td>
+          `;
         })()}
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
