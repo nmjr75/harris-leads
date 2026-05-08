@@ -1967,11 +1967,18 @@ async function loadDeletions() {
   renderDeletions();
 }
 
+// Per-contact current pipeline stage. Reads from ghl_current_stage_by_contact
+// (migration 024) which aggregates stage moves across ALL conversation_ids the
+// contact may have had. This is what makes Hit List slim rows render the
+// correct stage badge — they don't have a conversation_id but they always
+// have a contact_id.
 async function loadStages() {
-  const { data, error } = await sb.from("ghl_current_stage").select("*");
+  const { data, error } = await sb.from("ghl_current_stage_by_contact").select("*");
   if (error) { console.error("loadStages:", error); return; }
   DATA.stages = {};
-  for (const r of (data || [])) DATA.stages[r.conversation_id] = r;
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.stages[r.contact_id] = r;
+  }
 }
 
 async function loadOutboundNumbers() {
@@ -2098,18 +2105,47 @@ function fullAddressFor(row) {
   return row.texted_property_address || null;
 }
 
+// Per-contact note count. Reads from ghl_notes_count_by_contact (migration
+// 024) which groups by contact_id. Hit List slim rows can have a count
+// without needing a conversation_id.
 async function loadNotesCounts() {
-  const { data, error } = await sb.from("ghl_notes_count").select("*");
+  const { data, error } = await sb.from("ghl_notes_count_by_contact").select("*");
   if (error) { console.error("loadNotesCounts:", error); return; }
   DATA.notesCount = {};
-  for (const r of (data || [])) DATA.notesCount[r.conversation_id] = r.note_count;
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.notesCount[r.contact_id] = r.note_count;
+  }
 }
 
+// Notes for a contact. Cached under the conversation_id key for panel
+// expansion state, but the QUERY filters by contact_id so all notes for
+// the contact aggregate together regardless of which (real or synthetic)
+// conversation_id they were stored against. The lead row provides both
+// IDs; we accept conversationId for the cache key (matches existing
+// callers) and resolve contact_id from DATA.leads or the synthetic
+// `contact:${id}` form.
 async function loadNotesFor(conversationId) {
+  const lead = (DATA.leads || []).find(r => r.conversation_id === conversationId);
+  let contactId = lead?.contact_id;
+  if (!contactId && conversationId && conversationId.startsWith("contact:")) {
+    contactId = conversationId.slice("contact:".length);
+  }
+  // Fallback: hit list opportunity may carry the contact_id directly when
+  // the row isn't in DATA.leads (slim case).
+  if (!contactId) {
+    for (const cid in (DATA.hitList || {})) {
+      const opp = DATA.hitList[cid];
+      if (opp?.conversation_id === conversationId) { contactId = cid; break; }
+    }
+  }
+  if (!contactId) {
+    DATA.notes[conversationId] = [];
+    return [];
+  }
   const { data, error } = await sb
     .from("ghl_contact_notes")
     .select("*")
-    .eq("conversation_id", conversationId)
+    .eq("contact_id", contactId)
     .order("created_at", { ascending: false });
   if (error) { console.error("loadNotesFor:", error); return []; }
   DATA.notes[conversationId] = data || [];
@@ -2480,7 +2516,7 @@ function jumpToContactFromPanel(contactId) {
   if (currentScoreFilter !== "all" && lead.score !== currentScoreFilter) {
     setScoreFilter("all");
   }
-  if (currentStageFilter !== "all" && getStageKey(lead.conversation_id) !== currentStageFilter) {
+  if (currentStageFilter !== "all" && getStageKey(lead) !== currentStageFilter) {
     setStageFilter("all");
   }
   setTimeout(() => {
@@ -2492,14 +2528,30 @@ function jumpToContactFromPanel(contactId) {
   }, 100);
 }
 
-// Per-conversation stage-move history (every row in ghl_contact_lifecycle).
-// Rendered alongside notes in the panel as italicized system entries so
-// you can see at a glance who moved a lead between stages and when.
+// Stage-move history for a contact. Cached under conversation_id (matches
+// the panel-state caching pattern) but queries by contact_id so the
+// timeline shows ALL stage moves regardless of which conversation_id they
+// were keyed against. Same rationale as loadNotesFor.
 async function loadStageHistoryFor(conversationId) {
+  const lead = (DATA.leads || []).find(r => r.conversation_id === conversationId);
+  let contactId = lead?.contact_id;
+  if (!contactId && conversationId && conversationId.startsWith("contact:")) {
+    contactId = conversationId.slice("contact:".length);
+  }
+  if (!contactId) {
+    for (const cid in (DATA.hitList || {})) {
+      const opp = DATA.hitList[cid];
+      if (opp?.conversation_id === conversationId) { contactId = cid; break; }
+    }
+  }
+  if (!contactId) {
+    DATA.stageHistory[conversationId] = [];
+    return [];
+  }
   const { data, error } = await sb
     .from("ghl_contact_lifecycle")
     .select("*")
-    .eq("conversation_id", conversationId)
+    .eq("contact_id", contactId)
     .order("set_at", { ascending: false });
   if (error) { console.error("loadStageHistoryFor:", error); return []; }
   DATA.stageHistory[conversationId] = data || [];
@@ -2774,8 +2826,16 @@ function sortLeads(rows) {
   });
 }
 
-function getStageKey(conversationId) {
-  const row = DATA.stages[conversationId];
+// Resolve a row's pipeline stage from DATA.stages (now keyed by contact_id
+// per migration 024). Accepts either the full row object or just a
+// contact_id string. Falls back to "active" when there's no stage history.
+function getStageKey(rowOrContactId) {
+  if (!rowOrContactId) return "active";
+  const cid = typeof rowOrContactId === "string"
+    ? rowOrContactId
+    : rowOrContactId.contact_id;
+  if (!cid) return "active";
+  const row = DATA.stages[cid];
   return row ? row.stage : "active";
 }
 
@@ -3061,7 +3121,7 @@ function updateFilterCounts() {
   // Stage counts: bucket every lead by its current stage (default 'active')
   const stageCounts = { all: all.length, active: 0, working: 0, run_comps: 0, offer_made: 0, ghosting: 0, won: 0, lost: 0, dnc: 0 };
   for (const r of all) {
-    const k = getStageKey(r.conversation_id);
+    const k = getStageKey(r);
     if (stageCounts[k] !== undefined) stageCounts[k]++;
   }
   // Hit List count comes from DATA.hitList (contact_ids at SELLER DISPOSITION
@@ -3122,7 +3182,14 @@ function getHitListRows() {
     // conversation_id from the slim-conversation lookup if available.
     // The contact still has a snapshot in our DB (it just aged out of
     // the recent-100 window that loadLeads queries).
-    const convId = DATA.slimConversations?.[opp.contact_id] || null;
+    // Real conversation_id from snapshot lookup if available; otherwise
+    // synthesize a stable per-contact key so panel expansion and saves
+    // still work. Notes/stages/tasks all aggregate by contact_id (per
+    // migration 024), so the synthetic conv_id never causes data loss —
+    // it's just a placeholder for the panel-state keying that the
+    // dashboard built around conversation_id.
+    const convId = DATA.slimConversations?.[opp.contact_id]
+      || (opp.contact_id ? `contact:${opp.contact_id}` : null);
     return {
       conversation_id: convId,
       contact_id: opp.contact_id,
@@ -3149,7 +3216,7 @@ function renderLeads() {
     rows = rows.filter(r => r.score === currentScoreFilter);
   }
   if (!isHitList && currentStageFilter !== "all") {
-    rows = rows.filter(r => getStageKey(r.conversation_id) === currentStageFilter);
+    rows = rows.filter(r => getStageKey(r) === currentStageFilter);
   }
   if (search) {
     rows = rows.filter(r =>
@@ -3186,8 +3253,8 @@ function renderLeads() {
       // minimal row with just Open + Assignment.
       const slimCid = r.conversation_id;
       const slimCidEsc = escapeHtml(slimCid || "");
-      const slimNoteCount = slimCid ? (DATA.notesCount[slimCid] || 0) : 0;
-      const slimStageKey = slimCid ? getStageKey(slimCid) : "active";
+      const slimNoteCount = r.contact_id ? (DATA.notesCount[r.contact_id] || 0) : 0;
+      const slimStageKey = getStageKey(r);
       const slimIsExpanded = slimCid && expandedDetail && expandedDetail.convId === slimCid;
       const slimExpandedType = slimIsExpanded ? expandedDetail.type : null;
       return `
@@ -3235,8 +3302,8 @@ function renderLeads() {
     const url = contactUrl(r.contact_id);
     const isExpanded = expandedDetail && expandedDetail.convId === cid;
     const expandedType = isExpanded ? expandedDetail.type : null;
-    const stageKey = getStageKey(cid);
-    const noteCount = DATA.notesCount[cid] || 0;
+    const stageKey = getStageKey(r);
+    const noteCount = r.contact_id ? (DATA.notesCount[r.contact_id] || 0) : 0;
     return `
       <tr data-cid="${cidEsc}" class="${isExpanded ? 'expanded' : ''}">
         <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">
@@ -3500,10 +3567,30 @@ async function toggleNotesPanel(conversationId) {
   }
 }
 
+// Resolve the contact_id for any conversation_id the dashboard knows about,
+// including synthetic `contact:${id}` IDs and Hit List slim rows. Used by
+// saveNote, setStage, toggleTasksPanel etc. — anywhere a click handler has
+// the conversation_id but needs the underlying contact_id to do real work.
+function resolveContactId(conversationId) {
+  if (!conversationId) return null;
+  // Synthetic format from getHitListRows() for slim rows.
+  if (conversationId.startsWith("contact:")) {
+    return conversationId.slice("contact:".length) || null;
+  }
+  // Real lead in the HOT/WARM table.
+  const lead = (DATA.leads || []).find(r => r.conversation_id === conversationId);
+  if (lead?.contact_id) return lead.contact_id;
+  // Hit List slim row whose conversation_id was resolved from the snapshot
+  // lookup (DATA.slimConversations). Reverse the lookup.
+  for (const cid in (DATA.slimConversations || {})) {
+    if (DATA.slimConversations[cid] === conversationId) return cid;
+  }
+  return null;
+}
+
 // Open / close the inline Tasks panel for a row. Tasks are loaded by
 // contact_id (the GHL primary key for tasks) but the panel expansion is
 // keyed on conversation_id to match the existing notes/transcript pattern.
-// We resolve the contactId from the in-memory leads list.
 async function toggleTasksPanel(conversationId) {
   if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "tasks") {
     expandedDetail = null;
@@ -3513,8 +3600,7 @@ async function toggleTasksPanel(conversationId) {
   closeStageMenu();
   expandedDetail = { convId: conversationId, type: "tasks" };
   renderLeads();
-  const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
-  const contactId = lead.contact_id;
+  const contactId = resolveContactId(conversationId);
   if (!contactId) return;
   await loadTasksFor(contactId);
   if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "tasks") {
@@ -3534,8 +3620,7 @@ async function saveNote(conversationId) {
   if (!body) return;
   const btn = ta?.parentElement?.querySelector(".btn-save-note");
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
-  const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
-  const contactId = lead.contact_id;
+  const contactId = resolveContactId(conversationId);
   if (!contactId) {
     if (btn) { btn.disabled = false; btn.textContent = "Save"; }
     alert("Can't save — no contact ID on this lead.");
@@ -3641,12 +3726,18 @@ function closeAssignMenu() {
 async function setStage(conversationId, stage) {
   if (!STAGES[stage]) return;
   closeStageMenu();
-  const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
+  const contactId = resolveContactId(conversationId);
+  // contact_name and phone are best-effort metadata for display only.
+  // Look in DATA.leads first, then DATA.hitList for slim rows.
+  const lead = (DATA.leads || []).find(r => r.conversation_id === conversationId);
+  const opp = contactId ? DATA.hitList?.[contactId] : null;
+  const contactName = lead?.contact_name || opp?.contact_name || null;
+  const phone = lead?.phone || opp?.phone || null;
   const { error } = await sb.from("ghl_contact_lifecycle").insert({
     conversation_id: conversationId,
-    contact_id: lead.contact_id || null,
-    contact_name: lead.contact_name || null,
-    phone: lead.phone || null,
+    contact_id: contactId,
+    contact_name: contactName,
+    phone: phone,
     stage: stage,
     set_by_email: currentSession?.user?.email || null,
   });
@@ -3696,31 +3787,42 @@ function subscribeToNewScores() {
       }
     })
     // New note (typed by either user). Refresh the count badges and, if
-    // the affected conversation has its panel open, reload its notes so
-    // the new entry appears in place.
+    // the affected contact has its notes panel open, reload its notes.
+    // Match by contact_id (not conversation_id) so slim Hit List rows
+    // with synthetic conv_ids — and notes inserted by sync-ghl-note with
+    // conversation_id=null — both trigger the right reload.
     .on("postgres_changes", {
       event: "INSERT",
       schema: "public",
       table: "ghl_contact_notes",
     }, (payload) => {
-      const cid = payload.new?.conversation_id;
+      const noteContactId = payload.new?.contact_id;
       loadNotesCounts().then(renderLeads);
-      if (cid && expandedDetail && expandedDetail.convId === cid && expandedDetail.type === "notes") {
-        loadNotesFor(cid).then(renderLeads);
+      if (
+        noteContactId
+        && expandedDetail
+        && expandedDetail.type === "notes"
+        && resolveContactId(expandedDetail.convId) === noteContactId
+      ) {
+        loadNotesFor(expandedDetail.convId).then(renderLeads);
       }
     })
-    // New stage move (by either user). Refresh the row's stage badge and,
-    // if the panel is open, reload the stage history so the system-row
-    // entry appears in the timeline.
+    // New stage move. Refresh the row's stage badge; if the notes panel
+    // is open for that contact, reload its stage history too.
     .on("postgres_changes", {
       event: "INSERT",
       schema: "public",
       table: "ghl_contact_lifecycle",
     }, (payload) => {
-      const cid = payload.new?.conversation_id;
+      const stageContactId = payload.new?.contact_id;
       loadStages().then(renderLeads);
-      if (cid && expandedDetail && expandedDetail.convId === cid && expandedDetail.type === "notes") {
-        loadStageHistoryFor(cid).then(renderLeads);
+      if (
+        stageContactId
+        && expandedDetail
+        && expandedDetail.type === "notes"
+        && resolveContactId(expandedDetail.convId) === stageContactId
+      ) {
+        loadStageHistoryFor(expandedDetail.convId).then(renderLeads);
       }
     })
     // New / updated opportunity from the Hit List pull cron. Refresh the
