@@ -2175,7 +2175,15 @@ function setAssignmentFilter(s) {
 // via RLS regardless of pill state). Returns true if no filter is active or
 // if the assignment matches.
 function matchesAssignmentFilter(row) {
-  if (currentRole === "assignee") return true;
+  // Assignee role: hard-filter to ONLY rows assigned to the current user.
+  // RLS on Supabase is supposed to enforce this server-side, but we belt-
+  // and-suspenders here so a misbehaving policy can't leak other VAs' leads
+  // into Joseph's or Walter's view. RLS stays the real security boundary;
+  // this is a UX safety net.
+  if (currentRole === "assignee") {
+    const cur = DATA.assignments[row.contact_id];
+    return cur?.assigned_to_email === userEmail();
+  }
   const f = currentAssignmentFilter;
   if (!f || f === "all") return true;
   const cur = DATA.assignments[row.contact_id];
