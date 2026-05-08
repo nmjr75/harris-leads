@@ -631,6 +631,163 @@
   .btn-save-note:disabled { opacity: 0.6; cursor: not-allowed; }
   .btn-save-note:hover:not(:disabled) { background: var(--accent-light); }
 
+  /* Tasks button — mirrors btn-notes shape but with severity-aware borders.
+     Overdue tasks glow red, due-today is orange, future is muted. Inspired
+     by Pipedrive's "next activity" pill — the most-important visual signal
+     on a row. */
+  .btn-tasks {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .btn-tasks:hover { border-color: var(--accent); }
+  .btn-tasks .badge {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .btn-tasks .due-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.2px;
+  }
+  /* Severity states — overdue = the deal-leakage signal Nelson cares about most. */
+  .btn-tasks.overdue {
+    border-color: #ef4444;
+    color: #fca5a5;
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25), 0 0 8px rgba(239, 68, 68, 0.18);
+    animation: taskPulse 2.4s ease-in-out infinite;
+  }
+  .btn-tasks.overdue .badge { background: #ef4444; }
+  .btn-tasks.overdue .due-hint { color: #fca5a5; }
+  .btn-tasks.due-today { border-color: #f59e0b; color: #fcd34d; }
+  .btn-tasks.due-today .badge { background: #f59e0b; }
+  .btn-tasks.due-today .due-hint { color: #fcd34d; }
+  .btn-tasks.due-soon .badge { background: var(--accent); }
+  @keyframes taskPulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25), 0 0 8px rgba(239, 68, 68, 0.18); }
+    50%      { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.5),  0 0 14px rgba(239, 68, 68, 0.4); }
+  }
+
+  /* Tasks panel — mirrors notes-panel structure for visual consistency. */
+  .tasks-panel {
+    background: var(--surface2);
+    border-left: 3px solid #f59e0b;
+    border-radius: 4px;
+    padding: 14px 18px;
+  }
+  .tasks-panel h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .tasks-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .task-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: start;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+  .task-item.task-overdue { border-color: rgba(239, 68, 68, 0.5); }
+  .task-item.task-due-today { border-color: rgba(245, 158, 11, 0.5); }
+  .task-item.task-completed { opacity: 0.55; }
+  .task-checkbox {
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+  .task-item.task-completed .task-checkbox {
+    background: #10b981;
+    border-color: #10b981;
+    color: #fff;
+  }
+  .task-body { min-width: 0; }
+  .task-title {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+    word-wrap: break-word;
+  }
+  .task-item.task-completed .task-title { text-decoration: line-through; color: var(--text-muted); }
+  .task-desc {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 3px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .task-meta {
+    text-align: right;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    line-height: 1.4;
+    flex-shrink: 0;
+  }
+  .task-due {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .task-due.overdue { color: #fca5a5; }
+  .task-due.today { color: #fcd34d; }
+  .task-assignee {
+    font-size: 0.66rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: 2px;
+  }
+  .tasks-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.85rem;
+    padding: 12px 0;
+    text-align: center;
+  }
+  .tasks-source-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-style: italic;
+  }
+
   /* Stage selection menu (floating dropdown) */
   .stage-menu {
     position: absolute;
@@ -1175,6 +1332,14 @@ let DATA = {
   // they're the assignee thanks to RLS, so this view is naturally pre-filtered
   // for them.
   assignments: {},
+  // contact_id -> { open_count, nearest_due_at, has_overdue } from
+  // ghl_open_tasks_summary view (migration 023). Drives the 📅 Tasks button
+  // badge + severity coloring on every row. Loaded eagerly on every refresh.
+  tasksSummary: {},
+  // contact_id -> full tasks array (open + completed, lazy-loaded when the
+  // Tasks panel opens). Synced from REI Reply via the sync-ghl-task Edge
+  // Function on the GHL "Task Added" / "Task Updated" workflow trigger.
+  tasks: {},
 };
 // Admin-only: which assignment bucket to show. "all" | "mine" | one of the
 // assignee emails | "unassigned". Defaults to "all" — managers see the full
@@ -1505,6 +1670,38 @@ async function loadNotesFor(conversationId) {
   return DATA.notes[conversationId];
 }
 
+// Per-contact open-task summary (migration 023's ghl_open_tasks_summary view).
+// Drives the 📅 Tasks badge: open_count + nearest_due_at + has_overdue. Loaded
+// on every refresh + via realtime subscription on ghl_contact_tasks INSERT/UPDATE.
+async function loadTasksSummary() {
+  const { data, error } = await sb.from("ghl_open_tasks_summary").select("*");
+  if (error) { console.error("loadTasksSummary:", error); return; }
+  DATA.tasksSummary = {};
+  for (const r of (data || [])) {
+    DATA.tasksSummary[r.contact_id] = {
+      open_count: r.open_count,
+      nearest_due_at: r.nearest_due_at,
+      has_overdue: r.has_overdue,
+    };
+  }
+}
+
+// Full task list for one contact — open tasks first sorted by due_at ascending,
+// then completed tasks at the bottom sorted by completed_at descending. Lazy-
+// loaded when the Tasks panel opens (mirrors loadNotesFor pattern).
+async function loadTasksFor(contactId) {
+  const { data, error } = await sb
+    .from("ghl_contact_tasks")
+    .select("*")
+    .eq("contact_id", contactId)
+    .order("is_completed", { ascending: true })
+    .order("due_at", { ascending: true, nullsFirst: false })
+    .order("completed_at", { ascending: false, nullsFirst: false });
+  if (error) { console.error("loadTasksFor:", error); return []; }
+  DATA.tasks[contactId] = data || [];
+  return DATA.tasks[contactId];
+}
+
 // Per-conversation stage-move history (every row in ghl_contact_lifecycle).
 // Rendered alongside notes in the panel as italicized system entries so
 // you can see at a glance who moved a lead between stages and when.
@@ -1548,6 +1745,7 @@ async function loadAll() {
     loadMetadata(),
     loadHitList(),
     loadAssignments(),
+    loadTasksSummary(),
   ]);
   // Final re-render after all parallel loads complete. loadLeads triggers an
   // initial render the moment it finishes, but the metadata / outbound / hit
@@ -1762,6 +1960,53 @@ function renderStageBadge(stageKey) {
   return `<span class="stage-pill ${def.className}">${def.label}</span>`;
 }
 
+// Render the per-row 📅 Tasks button. Severity color depends on the nearest
+// open task's due date: overdue glows red (the deal-leakage signal Joseph
+// must never miss), due-today is amber, future is the default muted look.
+// Tooltip surfaces the exact due date so an agent can prioritize without
+// opening the panel.
+function renderTasksButton(row) {
+  const cid = row.contact_id;
+  // Skip on rows with no conversation snapshot (slim Hit List rows). Mirrors
+  // the Notes button which is also absent there. Phase 2 can add per-
+  // contact-only expansion to support tasks on slim rows.
+  if (!cid || !row.conversation_id) return "";
+  const convIdEsc = escapeHtml(row.conversation_id);
+  const summary = DATA.tasksSummary[cid];
+  const count = summary?.open_count || 0;
+  let severityClass = "";
+  let dueHint = "";
+  let titleText = "View tasks for this lead — synced live from REI Reply";
+  if (count > 0 && summary?.nearest_due_at) {
+    const due = new Date(summary.nearest_due_at);
+    const now = new Date();
+    const daysOut = Math.floor((due - now) / 86400000);
+    const isToday = due.toLocaleDateString("en-US", { timeZone: "America/Chicago" })
+      === now.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+    if (summary.has_overdue) {
+      severityClass = "overdue";
+      dueHint = `· overdue ${relTime(summary.nearest_due_at)}`;
+      titleText = `OVERDUE — earliest task was due ${absTime(summary.nearest_due_at)}`;
+    } else if (isToday) {
+      severityClass = "due-today";
+      dueHint = `· due today`;
+      titleText = `Due today at ${due.toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" })}`;
+    } else if (daysOut <= 3) {
+      severityClass = "due-soon";
+      dueHint = `· in ${daysOut + 1}d`;
+      titleText = `Earliest task due ${absTime(summary.nearest_due_at)}`;
+    } else {
+      dueHint = `· ${shortDate(summary.nearest_due_at)}`;
+      titleText = `Earliest task due ${absTime(summary.nearest_due_at)}`;
+    }
+  } else if (count > 0) {
+    dueHint = `· no due date`;
+  }
+  const badge = count > 0 ? ` <span class="badge">${count}</span>` : "";
+  const hint = dueHint ? ` <span class="due-hint">${escapeHtml(dueHint)}</span>` : "";
+  return `<button class="btn-tasks ${severityClass}" onclick="event.stopPropagation(); toggleTasksPanel('${convIdEsc}')" title="${escapeHtml(titleText)}">📅 Tasks${badge}${hint}</button>`;
+}
+
 // Render the per-row assignment chip + (admin-only) "Assign" button.
 // Used by both the full row and the slim Hit List row.
 function renderAssignmentControl(row) {
@@ -1903,6 +2148,72 @@ function renderNotesPanel(row) {
                   onkeydown="if(event.ctrlKey && event.key === 'Enter') { event.preventDefault(); saveNote('${cidEsc}'); }"></textarea>
         <button class="btn-save-note" onclick="saveNote('${cidEsc}')">Save</button>
       </div>
+    </div>
+  `;
+}
+
+// Render the inline Tasks panel for one contact. Open tasks at the top
+// (severity-colored, sorted by due_at ascending), completed tasks below
+// (struck through, sorted by completed_at descending). Tasks are created
+// in REI Reply and sync via the sync-ghl-task Edge Function — the panel is
+// read-only in Phase 1.
+function renderTasksPanel(row) {
+  const cid = row.contact_id;
+  const tasks = DATA.tasks[cid];
+  let body;
+  if (tasks === undefined) {
+    body = `<div class="tasks-empty">Loading tasks…</div>`;
+  } else if (tasks.length === 0) {
+    body = `<div class="tasks-empty">No tasks for this lead yet. Tasks created in REI Reply will appear here within ~2 seconds.</div>`;
+  } else {
+    body = `<ul class="tasks-list">${tasks.map(t => {
+      const completed = t.is_completed;
+      const dueDate = t.due_at ? new Date(t.due_at) : null;
+      const now = new Date();
+      const isOverdue = !completed && dueDate && dueDate < now;
+      const isToday = !completed && dueDate
+        && dueDate.toLocaleDateString("en-US", { timeZone: "America/Chicago" })
+           === now.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+      const itemClass = completed ? "task-completed"
+        : isOverdue ? "task-overdue"
+        : isToday   ? "task-due-today"
+        : "";
+      const dueClass = isOverdue ? "overdue" : isToday ? "today" : "";
+      const dueLabel = dueDate
+        ? `<div class="task-due ${dueClass}" title="${escapeHtml(absTime(t.due_at))}">${escapeHtml(smartDateTime(t.due_at))}</div>`
+        : `<div class="task-due" style="color:var(--text-muted)">no due date</div>`;
+      const dueRelative = dueDate
+        ? `<div style="font-size:0.66rem;color:var(--text-muted);margin-top:2px">${escapeHtml(relTime(t.due_at))}</div>`
+        : "";
+      const assigneeLabel = t.assigned_to_name || t.assigned_to_email;
+      const assignee = assigneeLabel
+        ? `<div class="task-assignee" title="${escapeHtml(t.assigned_to_email || "")}">${escapeHtml(assigneeLabel)}</div>`
+        : "";
+      const desc = t.body
+        ? `<div class="task-desc">${escapeHtml(t.body).replace(/\n/g, "<br>")}</div>`
+        : "";
+      const checkmark = completed ? "✓" : "";
+      return `
+        <li class="task-item ${itemClass}">
+          <span class="task-checkbox" title="${completed ? `Completed ${escapeHtml(absTime(t.completed_at))}` : "Open task"}">${checkmark}</span>
+          <div class="task-body">
+            <div class="task-title">${escapeHtml(t.title)}</div>
+            ${desc}
+          </div>
+          <div class="task-meta">
+            ${dueLabel}
+            ${dueRelative}
+            ${assignee}
+          </div>
+        </li>
+      `;
+    }).join("")}</ul>`;
+  }
+  return `
+    <div class="tasks-panel">
+      <h4>Tasks for ${escapeHtml(row.contact_name || "(no name)")}</h4>
+      ${body}
+      <div class="tasks-source-hint">Tasks are created in REI Reply (Tasks tab on the contact page) and sync here automatically. Phase 2 will let you mark tasks complete from the dashboard.</div>
     </div>
   `;
 }
@@ -2134,6 +2445,7 @@ function renderLeads() {
         <td class="col-actions">
           <div class="action-group">
             ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
+            ${renderTasksButton(r)}
             <button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${cidEsc}')" title="View / add notes">📝 Notes${noteCount ? ` <span class="badge">${noteCount}</span>` : ""}</button>
             <button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${cidEsc}')" title="Change pipeline stage">${renderStageBadge(stageKey)} ▾</button>
             ${renderAssignmentControl(r)}
@@ -2142,6 +2454,7 @@ function renderLeads() {
       </tr>
       ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${cidEsc}">${
         expandedType === 'notes' ? renderNotesPanel(r) :
+        expandedType === 'tasks' ? renderTasksPanel(r) :
         expandedType === 'transcript' ? renderTranscriptPanel(r) :
         '<div class="detail-content">Loading score history…</div>'
       }</td></tr>` : ""}
@@ -2339,6 +2652,28 @@ async function toggleNotesPanel(conversationId) {
   }
 }
 
+// Open / close the inline Tasks panel for a row. Tasks are loaded by
+// contact_id (the GHL primary key for tasks) but the panel expansion is
+// keyed on conversation_id to match the existing notes/transcript pattern.
+// We resolve the contactId from the in-memory leads list.
+async function toggleTasksPanel(conversationId) {
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "tasks") {
+    expandedDetail = null;
+    renderLeads();
+    return;
+  }
+  closeStageMenu();
+  expandedDetail = { convId: conversationId, type: "tasks" };
+  renderLeads();
+  const lead = DATA.leads.find(r => r.conversation_id === conversationId) || {};
+  const contactId = lead.contact_id;
+  if (!contactId) return;
+  await loadTasksFor(contactId);
+  if (expandedDetail && expandedDetail.convId === conversationId && expandedDetail.type === "tasks") {
+    renderLeads();
+  }
+}
+
 async function saveNote(conversationId) {
   const ta = document.getElementById(`noteInput-${conversationId}`);
   const body = (ta?.value || "").trim();
@@ -2520,6 +2855,24 @@ function subscribeToNewScores() {
       table: "ghl_lead_assignments",
     }, () => {
       loadAssignments().then(renderLeads);
+    })
+    // Task synced from REI Reply (Created or Updated webhook). Refresh the
+    // summary so the badge + severity color update on the affected row.
+    // If that contact's Tasks panel is open, reload its full task list so
+    // the new/updated task slots in immediately.
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: "ghl_contact_tasks",
+    }, (payload) => {
+      const cid = payload.new?.contact_id || payload.old?.contact_id;
+      loadTasksSummary().then(renderLeads);
+      if (cid && expandedDetail?.type === "tasks") {
+        const lead = DATA.leads.find(r => r.contact_id === cid);
+        if (lead && expandedDetail.convId === lead.conversation_id) {
+          loadTasksFor(cid).then(renderLeads);
+        }
+      }
     })
     .subscribe();
 }
