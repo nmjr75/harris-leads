@@ -788,6 +788,410 @@
     font-style: italic;
   }
 
+  /* ──────────────────────────────────────────────────────────────────
+     My Tasks slide-out panel — the agent's primary morning workflow
+     surface. Modeled after Pipedrive "Today" / Linear inbox / Slack
+     threads. Sticky pill in the header opens a 420px panel from the
+     right edge with severity-grouped tasks and one-click completion.
+     ────────────────────────────────────────────────────────────────── */
+
+  /* Pill in the header — visible from anywhere on the page */
+  .my-tasks-pill {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    transition: border-color 0.12s, transform 0.08s, box-shadow 0.12s;
+    position: relative;
+  }
+  .my-tasks-pill:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .my-tasks-pill:active { transform: translateY(0); }
+  .my-tasks-pill .label { letter-spacing: 0.1px; }
+  .my-tasks-pill .count {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    min-width: 20px;
+    text-align: center;
+  }
+  .my-tasks-pill .kbd {
+    margin-left: 4px;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    line-height: 1.4;
+  }
+  /* Overdue state — pulses red so it's the most-noticed thing on the page */
+  .my-tasks-pill.has-overdue {
+    border-color: #ef4444;
+    color: #fca5a5;
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3), 0 0 12px rgba(239, 68, 68, 0.25);
+    animation: myTasksPulse 2.4s ease-in-out infinite;
+  }
+  .my-tasks-pill.has-overdue .count { background: #ef4444; }
+  @keyframes myTasksPulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3), 0 0 12px rgba(239, 68, 68, 0.25); }
+    50%      { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.55), 0 0 20px rgba(239, 68, 68, 0.5); }
+  }
+
+  /* Backdrop — subtle dim, doesn't block content reading */
+  .mtp-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 900;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  .mtp-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* The slide-out panel itself */
+  .mtp-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 440px;
+    max-width: 92vw;
+    height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
+    z-index: 950;
+    transform: translateX(110%);
+    transition: transform 0.22s cubic-bezier(0.32, 0.72, 0.24, 1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .mtp-panel.open { transform: translateX(0); }
+
+  .mtp-header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface2) 0%, var(--surface) 100%);
+    flex-shrink: 0;
+  }
+  .mtp-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .mtp-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+  }
+  .mtp-close {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+  }
+  .mtp-close:hover { color: var(--text); border-color: var(--accent); }
+  .mtp-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .mtp-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+  }
+  .mtp-stat.overdue { color: #fca5a5; }
+  .mtp-stat.today { color: #fcd34d; }
+
+  /* Manager-only assignee selector */
+  .mtp-assignee-row {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mtp-assignee-row .label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .mtp-assignee-row select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .mtp-assignee-row select:focus { border-color: var(--accent); outline: none; }
+
+  /* Scrollable body */
+  .mtp-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .mtp-body::-webkit-scrollbar { width: 8px; }
+  .mtp-body::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .mtp-body::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* Severity group — collapsible */
+  .mtp-group { margin-bottom: 18px; }
+  .mtp-group:last-child { margin-bottom: 4px; }
+  .mtp-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .mtp-group-header .group-title { flex: 1; }
+  .mtp-group-header .group-count {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+  }
+  .mtp-group-header .group-chevron {
+    transition: transform 0.15s;
+    font-size: 0.7rem;
+    opacity: 0.7;
+  }
+  .mtp-group.collapsed .group-chevron { transform: rotate(-90deg); }
+  .mtp-group.collapsed .mtp-group-list { display: none; }
+
+  /* Severity-specific group header colors */
+  .mtp-group.overdue .mtp-group-header {
+    background: rgba(239, 68, 68, 0.14);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  .mtp-group.today .mtp-group-header {
+    background: rgba(245, 158, 11, 0.14);
+    color: #fcd34d;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .mtp-group.tomorrow .mtp-group-header {
+    background: rgba(124, 92, 252, 0.14);
+    color: var(--accent-light);
+    border: 1px solid rgba(124, 92, 252, 0.3);
+  }
+  .mtp-group.week .mtp-group-header {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .mtp-group.later .mtp-group-header {
+    background: var(--surface2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }
+
+  .mtp-group-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Individual task card */
+  .mtp-card {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 10px;
+    align-items: start;
+    padding: 11px 12px 11px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 6px;
+    transition: opacity 0.3s, transform 0.3s, background 0.12s;
+  }
+  .mtp-card:hover { background: rgba(255, 255, 255, 0.03); }
+  .mtp-card.overdue { border-left-color: #ef4444; }
+  .mtp-card.today { border-left-color: #f59e0b; }
+  .mtp-card.tomorrow { border-left-color: var(--accent); }
+  .mtp-card.week, .mtp-card.later { border-left-color: var(--border); }
+  .mtp-card.completing {
+    opacity: 0.4;
+    transform: translateX(8px);
+  }
+
+  .mtp-checkbox {
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--text-muted);
+    border-radius: 5px;
+    background: transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+    font-size: 0.95rem;
+    line-height: 1;
+    transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s;
+    margin-top: 1px;
+    flex-shrink: 0;
+    font-weight: 700;
+    padding: 0;
+    font-family: inherit;
+  }
+  .mtp-checkbox:hover {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    transform: scale(1.05);
+  }
+  .mtp-checkbox.completing {
+    background: #10b981;
+    border-color: #10b981;
+    color: #fff;
+  }
+  .mtp-checkbox:disabled { cursor: progress; opacity: 0.7; }
+
+  .mtp-card-body { min-width: 0; }
+  .mtp-card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.35;
+    word-wrap: break-word;
+    margin-bottom: 3px;
+  }
+  .mtp-card-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .mtp-card-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .mtp-card-contact {
+    font-size: 0.78rem;
+    color: var(--accent-light);
+    cursor: pointer;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(124, 92, 252, 0.1);
+    border: 1px solid rgba(124, 92, 252, 0.25);
+    transition: background 0.12s;
+  }
+  .mtp-card-contact:hover { background: rgba(124, 92, 252, 0.22); }
+  .mtp-card-due {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.74rem;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .mtp-card.overdue .mtp-card-due { color: #fca5a5; }
+  .mtp-card.today   .mtp-card-due { color: #fcd34d; }
+  .mtp-card-relative {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .mtp-card-assignee {
+    margin-left: auto;
+    font-size: 0.66rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  /* Empty state — celebrate clearing the queue */
+  .mtp-empty {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text-muted);
+  }
+  .mtp-empty .icon { font-size: 2.4rem; margin-bottom: 12px; }
+  .mtp-empty .title {
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .mtp-empty .sub { font-size: 0.84rem; line-height: 1.5; max-width: 300px; margin: 0 auto; }
+
+  .mtp-loading {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 0;
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+
+  /* Row-jump highlight when an agent clicks a contact name in the panel
+     — main table row pulses for 2s so they can find it without losing
+     context. */
+  @keyframes mtpRowFlash {
+    0%   { background: rgba(124, 92, 252, 0.4); }
+    100% { background: transparent; }
+  }
+  tr.mtp-flash > td { animation: mtpRowFlash 1.6s ease-out; }
+
+  /* Mobile — full screen panel on narrow viewports */
+  @media (max-width: 768px) {
+    .mtp-panel { width: 100vw; max-width: 100vw; }
+    .my-tasks-pill .kbd { display: none; }
+  }
+
   /* Stage selection menu (floating dropdown) */
   .stage-menu {
     position: absolute;
@@ -1084,8 +1488,34 @@
     <h1>REI Reply <span>Lead Audit</span></h1>
     <a href="index.html" class="nav-link">&larr; Main Dashboard</a>
   </div>
-  <div class="header-meta" id="headerMeta"></div>
+  <div class="header-meta" id="headerMeta">
+    <button id="myTasksPill" class="my-tasks-pill" onclick="openMyTasksPanel()" style="display:none" title="Your task queue — keyboard shortcut: T">
+      <span>📅</span>
+      <span class="label">My Tasks</span>
+      <span class="count" id="myTasksPillCount">0</span>
+      <span class="kbd">T</span>
+    </button>
+  </div>
 </header>
+
+<!-- My Tasks slide-out panel (the agent's morning workflow surface) -->
+<div class="mtp-backdrop" id="mtpBackdrop" onclick="closeMyTasksPanel()"></div>
+<aside class="mtp-panel" id="mtpPanel" role="dialog" aria-label="My Tasks">
+  <div class="mtp-header">
+    <div class="mtp-title-row">
+      <h2 class="mtp-title">📅 My Tasks</h2>
+      <button class="mtp-close" onclick="closeMyTasksPanel()" title="Close (Esc)">×</button>
+    </div>
+    <div class="mtp-subtitle" id="mtpSubtitle">Loading…</div>
+    <div class="mtp-assignee-row" id="mtpAssigneeRow" style="display:none">
+      <span class="label">Showing:</span>
+      <select id="mtpAssigneeSelect" onchange="onMyTasksAssigneeChange()"></select>
+    </div>
+  </div>
+  <div class="mtp-body" id="mtpBody">
+    <div class="mtp-loading">Loading your tasks…</div>
+  </div>
+</aside>
 
 <!-- Login modal (visible if not signed in) -->
 <div class="modal-overlay" id="loginOverlay" style="display:none">
@@ -1340,7 +1770,17 @@ let DATA = {
   // Tasks panel opens). Synced from REI Reply via the sync-ghl-task Edge
   // Function on the GHL "Task Added" / "Task Updated" workflow trigger.
   tasks: {},
+  // Open tasks assigned to a specific email (or all open tasks if manager
+  // view selected "All"). Loaded by loadMyTasks() — separate from DATA.tasks
+  // which is per-contact lazy-loaded. The My Tasks panel renders this.
+  myTasks: [],
 };
+// My Tasks panel state. open=true when the slide-out is visible. assignee
+// is the email we're showing tasks for; defaults to the current user but
+// admins/owner can switch via the dropdown to audit other VAs.
+let myTasksPanelOpen = false;
+let myTasksAssigneeFilter = null; // resolved on init from currentSession email
+const MTP_GROUP_COLLAPSE_KEY = "mtp_collapsed_groups_v1";
 // Admin-only: which assignment bucket to show. "all" | "mine" | one of the
 // assignee emails | "unassigned". Defaults to "all" — managers see the full
 // universe, click a pill to narrow down.
@@ -1702,6 +2142,350 @@ async function loadTasksFor(contactId) {
   return DATA.tasks[contactId];
 }
 
+// Open tasks for the My Tasks panel. Filters to incomplete tasks assigned
+// to the current panel assignee (or all open tasks if "All" selected by an
+// admin/owner). Sorted by due_at ascending — but the renderer regroups by
+// severity bucket, so this is just a stable initial order.
+async function loadMyTasks() {
+  let q = sb
+    .from("ghl_contact_tasks")
+    .select("*")
+    .eq("is_completed", false)
+    .order("due_at", { ascending: true, nullsFirst: false });
+  if (myTasksAssigneeFilter && myTasksAssigneeFilter !== "all") {
+    q = q.eq("assigned_to_email", myTasksAssigneeFilter);
+  }
+  const { data, error } = await q;
+  if (error) { console.error("loadMyTasks:", error); DATA.myTasks = []; return; }
+  DATA.myTasks = data || [];
+  updateMyTasksPill();
+  if (myTasksPanelOpen) renderMyTasksPanel();
+}
+
+// Compute the count + overdue state shown on the header pill. Pulls from
+// DATA.myTasks (loaded by loadMyTasks). Hidden entirely if the user has
+// no tasks AND isn't a manager (assignees with no tasks just don't see
+// the pill — managers always see it for audit context).
+function updateMyTasksPill() {
+  const pill = document.getElementById("myTasksPill");
+  if (!pill) return;
+  const tasks = DATA.myTasks || [];
+  const total = tasks.length;
+  const now = new Date();
+  const overdue = tasks.filter(t => t.due_at && new Date(t.due_at) < now).length;
+  // Hide the pill entirely for assignees with zero tasks. Managers always
+  // see it so they can audit who has overdue work.
+  if (total === 0 && !isManager()) {
+    pill.style.display = "none";
+    return;
+  }
+  pill.style.display = "inline-flex";
+  pill.classList.toggle("has-overdue", overdue > 0);
+  document.getElementById("myTasksPillCount").textContent = total;
+  pill.title = overdue > 0
+    ? `${overdue} overdue · ${total} total · keyboard shortcut: T`
+    : `${total} task${total === 1 ? "" : "s"} · keyboard shortcut: T`;
+}
+
+// Group an array of open tasks into severity buckets for the panel.
+// Returns groups in fixed order so the most-urgent always renders first.
+function groupTasksBySeverity(tasks) {
+  const now = new Date();
+  const todayKey = now.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const tomorrowKey = tomorrow.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7);
+  const buckets = {
+    overdue:  { key: "overdue",  label: "Overdue",          severity: "overdue",  tasks: [] },
+    today:    { key: "today",    label: "Due today",        severity: "today",    tasks: [] },
+    tomorrow: { key: "tomorrow", label: "Due tomorrow",     severity: "tomorrow", tasks: [] },
+    week:     { key: "week",     label: "Due this week",    severity: "week",     tasks: [] },
+    later:    { key: "later",    label: "Later / no date",  severity: "later",    tasks: [] },
+  };
+  for (const t of tasks) {
+    if (!t.due_at) { buckets.later.tasks.push(t); continue; }
+    const due = new Date(t.due_at);
+    const dueKey = due.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+    if (due < now)               buckets.overdue.tasks.push(t);
+    else if (dueKey === todayKey)    buckets.today.tasks.push(t);
+    else if (dueKey === tomorrowKey) buckets.tomorrow.tasks.push(t);
+    else if (due <= weekEnd)         buckets.week.tasks.push(t);
+    else                             buckets.later.tasks.push(t);
+  }
+  // Sort each bucket: overdue oldest-first (most-forgotten on top), all
+  // others soonest-first (the soonest deadlines surface).
+  buckets.overdue.tasks.sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
+  for (const k of ["today", "tomorrow", "week", "later"]) {
+    buckets[k].tasks.sort((a, b) => {
+      if (!a.due_at && !b.due_at) return 0;
+      if (!a.due_at) return 1;
+      if (!b.due_at) return -1;
+      return new Date(a.due_at) - new Date(b.due_at);
+    });
+  }
+  return [buckets.overdue, buckets.today, buckets.tomorrow, buckets.week, buckets.later]
+    .filter(g => g.tasks.length > 0);
+}
+
+// Persist which group sections an agent has collapsed (per-browser, so
+// preferences survive refresh but don't sync across devices — fine for a
+// daily working tool).
+function getCollapsedGroups() {
+  try { return JSON.parse(localStorage.getItem(MTP_GROUP_COLLAPSE_KEY) || "[]"); }
+  catch { return []; }
+}
+function setCollapsedGroups(arr) {
+  try { localStorage.setItem(MTP_GROUP_COLLAPSE_KEY, JSON.stringify(arr)); } catch {}
+}
+function toggleGroupCollapse(key) {
+  const cur = new Set(getCollapsedGroups());
+  if (cur.has(key)) cur.delete(key); else cur.add(key);
+  setCollapsedGroups([...cur]);
+  // Re-render in place — cheap, just toggles a class.
+  renderMyTasksPanel();
+}
+
+// Resolve a contact name from any data source we have. The My Tasks query
+// returns the task row but not the contact's display name; we join client-
+// side from the leads list / hit list / assignment table.
+function resolveContactName(contactId) {
+  if (!contactId) return "Unknown";
+  const lead = (DATA.leads || []).find(r => r.contact_id === contactId);
+  if (lead?.contact_name) return lead.contact_name;
+  const opp = DATA.hitList?.[contactId];
+  if (opp?.contact_name) return opp.contact_name;
+  const a = DATA.assignments?.[contactId];
+  if (a?.contact_name) return a.contact_name;
+  return "Unknown contact";
+}
+
+// Render the panel body. Header subtitle + grouped task cards (or empty
+// state if all clear).
+function renderMyTasksPanel() {
+  const body = document.getElementById("mtpBody");
+  const subtitle = document.getElementById("mtpSubtitle");
+  if (!body || !subtitle) return;
+  const tasks = DATA.myTasks || [];
+  const now = new Date();
+  const overdueCount = tasks.filter(t => t.due_at && new Date(t.due_at) < now).length;
+  const todayKey = now.toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const todayCount = tasks.filter(t => {
+    if (!t.due_at) return false;
+    const d = new Date(t.due_at);
+    return d >= now && d.toLocaleDateString("en-US", { timeZone: "America/Chicago" }) === todayKey;
+  }).length;
+
+  const personLabel = myTasksAssigneeLabel();
+  const subtitleParts = [
+    `<span>${escapeHtml(personLabel)}</span>`,
+    `<span class="mtp-stat">${tasks.length} open</span>`,
+  ];
+  if (overdueCount > 0) subtitleParts.push(`<span class="mtp-stat overdue">${overdueCount} overdue</span>`);
+  if (todayCount > 0)   subtitleParts.push(`<span class="mtp-stat today">${todayCount} today</span>`);
+  subtitle.innerHTML = subtitleParts.join(" · ");
+
+  if (tasks.length === 0) {
+    body.innerHTML = `
+      <div class="mtp-empty">
+        <div class="icon">🎉</div>
+        <div class="title">All caught up</div>
+        <div class="sub">Nothing on your plate right now. Pick up the next HOT lead from the table, or take a breather.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const groups = groupTasksBySeverity(tasks);
+  const collapsed = new Set(getCollapsedGroups());
+  body.innerHTML = groups.map(g => {
+    const isCollapsed = collapsed.has(g.key);
+    const cards = g.tasks.map(t => renderMyTaskCard(t, g.severity)).join("");
+    return `
+      <div class="mtp-group ${g.severity} ${isCollapsed ? "collapsed" : ""}" data-group="${g.key}">
+        <div class="mtp-group-header" onclick="toggleGroupCollapse('${g.key}')">
+          <span class="group-chevron">▾</span>
+          <span class="group-title">${escapeHtml(g.label)}</span>
+          <span class="group-count">${g.tasks.length}</span>
+        </div>
+        <ul class="mtp-group-list">${cards}</ul>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderMyTaskCard(task, severity) {
+  const dueDate = task.due_at ? new Date(task.due_at) : null;
+  const dueLabel = dueDate
+    ? `<span class="mtp-card-due" title="${escapeHtml(absTime(task.due_at))}">${escapeHtml(smartDateTime(task.due_at))}</span>`
+    : `<span class="mtp-card-due" style="color:var(--text-muted)">no due date</span>`;
+  const relative = dueDate
+    ? `<span class="mtp-card-relative">${escapeHtml(relTime(task.due_at))}</span>`
+    : "";
+  const contactName = resolveContactName(task.contact_id);
+  const contactBtn = task.contact_id
+    ? `<span class="mtp-card-contact" onclick="jumpToContactFromPanel('${escapeHtml(task.contact_id)}')" title="Jump to this contact in the leads table">${escapeHtml(contactName)}</span>`
+    : "";
+  const desc = task.body
+    ? `<div class="mtp-card-desc">${escapeHtml(task.body).replace(/\n/g, "<br>")}</div>`
+    : "";
+  const assignee = task.assigned_to_name || (task.assigned_to_email ? task.assigned_to_email.split("@")[0] : "");
+  const assigneeChip = assignee && (myTasksAssigneeFilter === "all" || isManager())
+    ? `<span class="mtp-card-assignee" title="${escapeHtml(task.assigned_to_email || "")}">${escapeHtml(assignee)}</span>`
+    : "";
+  const taskIdEsc = escapeHtml(task.external_id || "");
+  return `
+    <li class="mtp-card ${severity}" data-task-id="${taskIdEsc}">
+      <button class="mtp-checkbox" onclick="completeTaskFromPanel('${taskIdEsc}', '${escapeHtml(task.contact_id || "")}', this)" title="Mark complete (also marks complete in REI Reply)">✓</button>
+      <div class="mtp-card-body">
+        <div class="mtp-card-title">${escapeHtml(task.title || "(untitled task)")}</div>
+        ${desc}
+        <div class="mtp-card-footer">
+          ${contactBtn}
+          ${dueLabel}
+          ${relative}
+          ${assigneeChip}
+        </div>
+      </div>
+    </li>
+  `;
+}
+
+function myTasksAssigneeLabel() {
+  if (!myTasksAssigneeFilter || myTasksAssigneeFilter === "all") return "All open tasks";
+  const a = ASSIGNEES.find(x => x.email === myTasksAssigneeFilter);
+  return a ? `${a.label}'s tasks` : "Tasks";
+}
+
+// Manager-only: populate the assignee dropdown so admins/owners can audit
+// each VA's queue. Assignees see no dropdown — they only see their own.
+function setupMyTasksAssigneeDropdown() {
+  const row = document.getElementById("mtpAssigneeRow");
+  const select = document.getElementById("mtpAssigneeSelect");
+  if (!row || !select) return;
+  if (!isManager()) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "flex";
+  // Default = "All" for managers (so they see the team's open work).
+  if (!myTasksAssigneeFilter) myTasksAssigneeFilter = "all";
+  select.innerHTML = `
+    <option value="all">All open tasks</option>
+    ${ASSIGNEES.map(a => `<option value="${escapeHtml(a.email)}">${escapeHtml(a.label)}</option>`).join("")}
+  `;
+  select.value = myTasksAssigneeFilter;
+}
+
+async function onMyTasksAssigneeChange() {
+  const select = document.getElementById("mtpAssigneeSelect");
+  if (!select) return;
+  myTasksAssigneeFilter = select.value;
+  document.getElementById("mtpBody").innerHTML = `<div class="mtp-loading">Loading tasks for ${escapeHtml(myTasksAssigneeLabel())}…</div>`;
+  await loadMyTasks();
+}
+
+async function openMyTasksPanel() {
+  myTasksPanelOpen = true;
+  document.getElementById("mtpBackdrop").classList.add("open");
+  document.getElementById("mtpPanel").classList.add("open");
+  setupMyTasksAssigneeDropdown();
+  // Show stale data if we have any (instant feel) then refresh in background.
+  renderMyTasksPanel();
+  await loadMyTasks();
+}
+
+function closeMyTasksPanel() {
+  myTasksPanelOpen = false;
+  document.getElementById("mtpBackdrop").classList.remove("open");
+  document.getElementById("mtpPanel").classList.remove("open");
+}
+
+// Optimistic completion: mark the card visually complete immediately, then
+// fire-and-forget the Supabase UPDATE + GHL API call. If either fails we
+// surface a toast and revert. The DB write is the source of truth for the
+// dashboard view; the GHL call is best-effort sync.
+async function completeTaskFromPanel(externalId, contactId, btn) {
+  if (!externalId) return;
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("completing");
+  }
+  const card = btn?.closest(".mtp-card");
+  if (card) card.classList.add("completing");
+
+  // 1. Supabase UPDATE — RLS gates who can update (Owner/Admin/assignee-of-contact)
+  const completedAt = new Date().toISOString();
+  const { error: dbErr } = await sb
+    .from("ghl_contact_tasks")
+    .update({ is_completed: true, completed_at: completedAt })
+    .eq("external_id", externalId);
+  if (dbErr) {
+    console.error("complete task DB write failed:", dbErr);
+    showToast(`⚠ Couldn't mark task complete: ${dbErr.message}`);
+    if (card) card.classList.remove("completing");
+    if (btn) { btn.disabled = false; btn.classList.remove("completing"); }
+    return;
+  }
+
+  // 2. Animate card out then refresh local state
+  if (card) {
+    setTimeout(() => {
+      DATA.myTasks = (DATA.myTasks || []).filter(t => t.external_id !== externalId);
+      updateMyTasksPill();
+      renderMyTasksPanel();
+      // Also refresh the per-row Tasks badge on the affected contact
+      if (contactId) {
+        loadTasksSummary().then(renderLeads);
+      }
+    }, 700);
+  }
+
+  // 3. Fire-and-forget GHL API sync. Non-blocking; failures get logged but
+  // don't roll back the dashboard state.
+  fetch(`${SUPABASE_URL}/functions/v1/complete-ghl-task`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${currentSession?.access_token || ""}`,
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify({ contactId, taskId: externalId }),
+  }).then(r => r.json().then(j => ({ ok: r.ok, body: j }))).then(res => {
+    if (!res.ok) {
+      console.warn("GHL completion sync failed (Supabase row was still marked complete):", res.body);
+    }
+  }).catch(e => {
+    console.warn("GHL completion sync request failed:", e);
+  });
+}
+
+// Click a contact name in the panel → close panel, scroll the main leads
+// table to that row, flash it for 2s so the agent can find it.
+function jumpToContactFromPanel(contactId) {
+  if (!contactId) return;
+  closeMyTasksPanel();
+  const lead = (DATA.leads || []).find(r => r.contact_id === contactId);
+  if (!lead) {
+    showToast("Lead not in current view — try clearing filters.");
+    return;
+  }
+  // Lift any restrictive filters that would hide this row, so the jump
+  // always succeeds. Conservative: only widen filters if needed.
+  if (currentScoreFilter !== "all" && lead.score !== currentScoreFilter) {
+    setScoreFilter("all");
+  }
+  if (currentStageFilter !== "all" && getStageKey(lead.conversation_id) !== currentStageFilter) {
+    setStageFilter("all");
+  }
+  setTimeout(() => {
+    const row = document.querySelector(`tr[data-cid="${CSS.escape(lead.conversation_id)}"]`);
+    if (!row) return;
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("mtp-flash");
+    setTimeout(() => row.classList.remove("mtp-flash"), 1700);
+  }, 100);
+}
+
 // Per-conversation stage-move history (every row in ghl_contact_lifecycle).
 // Rendered alongside notes in the panel as italicized system entries so
 // you can see at a glance who moved a lead between stages and when.
@@ -1746,6 +2530,7 @@ async function loadAll() {
     loadHitList(),
     loadAssignments(),
     loadTasksSummary(),
+    loadMyTasks(),
   ]);
   // Final re-render after all parallel loads complete. loadLeads triggers an
   // initial render the moment it finishes, but the metadata / outbound / hit
@@ -1753,6 +2538,7 @@ async function loadAll() {
   // this second render the count badges and the "created / last activity"
   // stack appear empty until the next interaction forces a re-render.
   renderLeads();
+  updateMyTasksPill();
   document.getElementById("syncStatus").textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
 
@@ -2867,6 +3653,9 @@ function subscribeToNewScores() {
     }, (payload) => {
       const cid = payload.new?.contact_id || payload.old?.contact_id;
       loadTasksSummary().then(renderLeads);
+      // My Tasks panel data also depends on this table — keep it fresh so
+      // a task added in REI Reply pops into the panel without a manual refresh.
+      loadMyTasks();
       if (cid && expandedDetail?.type === "tasks") {
         const lead = DATA.leads.find(r => r.contact_id === cid);
         if (lead && expandedDetail.convId === lead.conversation_id) {
@@ -2877,6 +3666,46 @@ function subscribeToNewScores() {
     .subscribe();
 }
 
+// Resolve the default assignee filter for the My Tasks panel based on the
+// signed-in user. Owner/Admin default to "all" (manage the whole queue).
+// Joseph/Walter default to their own email (their personal queue).
+function initMyTasksAssignee() {
+  const email = (currentSession?.user?.email || "").toLowerCase();
+  if (!email) return;
+  if (isManager()) {
+    myTasksAssigneeFilter = "all";
+  } else {
+    myTasksAssigneeFilter = email;
+  }
+}
+
+// Keyboard shortcuts:
+//   T   — open the My Tasks panel (only when no input/textarea is focused)
+//   Esc — close any open panel
+function setupKeyboardShortcuts() {
+  document.addEventListener("keydown", (e) => {
+    // Ignore when typing in an input/textarea/contenteditable
+    const tag = (e.target?.tagName || "").toLowerCase();
+    const inEditable = tag === "input" || tag === "textarea" || tag === "select"
+      || e.target?.isContentEditable;
+
+    if (e.key === "Escape") {
+      if (myTasksPanelOpen) {
+        e.preventDefault();
+        closeMyTasksPanel();
+      }
+      return;
+    }
+    if (inEditable) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "t" || e.key === "T") {
+      e.preventDefault();
+      if (myTasksPanelOpen) closeMyTasksPanel();
+      else openMyTasksPanel();
+    }
+  });
+}
+
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
   const authed = await checkAuth();
@@ -2884,6 +3713,8 @@ async function init() {
   if (!currentRole) { showAccessDenied(); return; }
   showMainUI();
   applyRoleVisibility();
+  initMyTasksAssignee();
+  setupKeyboardShortcuts();
   await loadAll();
   subscribeToNewScores();
   // Auto-refresh every 60s as a backup to realtime
