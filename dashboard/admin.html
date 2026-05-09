@@ -118,6 +118,114 @@
     gap: 6px;
   }
   .stat-card.alert { border-color: var(--red); }
+
+  /* Per-VA call activity row — sits between stats cards and tabs.
+     One card per agent (admin/owner), or single own-card (assignee). */
+  .call-activity-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    padding: 0 24px 16px;
+  }
+  .call-card {
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .call-card .agent-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .call-card .agent-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+  }
+  .call-card .agent-dot.idle { background: #6b7280; box-shadow: none; }
+  .call-card .agent-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+  }
+  .call-card .stat-block {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .call-card .stat-num {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    line-height: 1.1;
+  }
+  .call-card .stat-name {
+    font-size: 0.66rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .call-card .last-call {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-style: italic;
+    border-top: 1px dashed var(--border);
+    padding-top: 6px;
+    margin-top: 2px;
+  }
+  .call-card.empty .stat-num { color: var(--text-muted); }
+
+  /* Call list table — direction icon + duration formatting */
+  .call-direction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.74rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .call-direction-chip.outbound { background: rgba(124, 92, 252, 0.15); color: var(--accent-light); }
+  .call-direction-chip.inbound  { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+  .call-status-chip {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+  }
+  .call-status-chip.completed { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+  .call-status-chip.missed    { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+  .call-status-chip.voicemail { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+  .call-status-chip.no-answer { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+  .call-status-chip.busy      { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+  .call-duration {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.84rem;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .call-recording-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.74rem;
+    color: var(--accent-light);
+    text-decoration: none;
+    padding: 4px 9px;
+    border: 1px solid rgba(124, 92, 252, 0.35);
+    border-radius: 6px;
+    background: rgba(124, 92, 252, 0.08);
+  }
+  .call-recording-link:hover { background: rgba(124, 92, 252, 0.18); }
   .stat-label {
     color: var(--text-muted);
     font-size: 0.75rem;
@@ -1563,9 +1671,14 @@
     </div>
   </div>
 
+  <!-- Per-VA call activity (today, Central Time). Visible to managers as a
+       team-wide row; assignees see only their own card. -->
+  <div class="call-activity-row" id="callActivityRow" style="display:none"></div>
+
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab active" data-tab="leads" onclick="setTab('leads')">Hot/Warm Leads</button>
+    <button class="tab" data-tab="calls" onclick="setTab('calls')" id="tabBtnCalls">📞 Call Activity</button>
     <button class="tab" data-tab="deletions" onclick="setTab('deletions')" id="tabBtnDeletions">Deletion Audits</button>
   </div>
 
@@ -1616,6 +1729,41 @@
       </thead>
       <tbody id="leadsBody">
         <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Call Activity tab — per-call drill-down with deep links to recordings -->
+  <div id="tabCalls" class="tab-content">
+    <div class="filter-bar">
+      <span class="stage-filter-label">Date:</span>
+      <span class="filter-pill active" data-call-range="today" onclick="setCallRange('today')">Today</span>
+      <span class="filter-pill" data-call-range="yesterday" onclick="setCallRange('yesterday')">Yesterday</span>
+      <span class="filter-pill" data-call-range="7d" onclick="setCallRange('7d')">Last 7 days</span>
+      <span class="filter-pill" data-call-range="30d" onclick="setCallRange('30d')">Last 30 days</span>
+    </div>
+    <div class="filter-bar" id="callAgentFilterBar" style="display:none">
+      <span class="stage-filter-label">Agent:</span>
+      <span class="filter-pill active" data-call-agent="all" onclick="setCallAgentFilter('all')">All <span class="count" data-call-agent-count="all">0</span></span>
+      <span class="filter-pill" data-call-agent="joseph.hhremodeling@gmail.com" onclick="setCallAgentFilter('joseph.hhremodeling@gmail.com')">Joseph <span class="count" data-call-agent-count="joseph.hhremodeling@gmail.com">0</span></span>
+      <span class="filter-pill" data-call-agent="mark.realdealsource@gmail.com" onclick="setCallAgentFilter('mark.realdealsource@gmail.com')">Walter <span class="count" data-call-agent-count="mark.realdealsource@gmail.com">0</span></span>
+      <span class="filter-pill" data-call-agent="nmjr75@gmail.com" onclick="setCallAgentFilter('nmjr75@gmail.com')">Nelson <span class="count" data-call-agent-count="nmjr75@gmail.com">0</span></span>
+      <button class="btn-refresh" style="margin-left:auto" onclick="loadCalls()">↻ Refresh</button>
+    </div>
+    <table class="data-table" id="callsTable">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Direction</th>
+          <th>Contact</th>
+          <th>Agent</th>
+          <th>Duration</th>
+          <th>Status</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="callsBody">
+        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
       </tbody>
     </table>
   </div>
@@ -1780,7 +1928,17 @@ let DATA = {
   // Notes/Tasks/Stage buttons. Without this, Walter (who primarily works
   // Hit List) sees buttonless rows.
   slimConversations: {},
+  // Per-agent today aggregates from ghl_calls_today_by_user view (migration
+  // 025). Keyed by agent_email. Drives the per-VA call activity cards on
+  // the dashboard top row.
+  callsTodayByUser: {},
+  // Drill-down list of calls for the Call Activity tab. Refreshed when the
+  // tab is opened or when a date-range filter changes.
+  calls: [],
 };
+// Call Activity tab state.
+let currentCallRange = "today";  // "today" | "yesterday" | "7d" | "30d"
+let currentCallAgentFilter = "all";
 // My Tasks panel state. open=true when the slide-out is visible. assignee
 // is the email we're showing tasks for; defaults to the current user but
 // admins/owner can switch via the dropdown to audit other VAs.
@@ -1838,6 +1996,9 @@ function applyRoleVisibility() {
   hide("tabBtnDeletions", isAdminOrAssignee);
   // Assignment filter bar: managers only.
   hide("assignmentFilterRow", isAssigneeRole);
+  // Call Activity agent filter bar: managers only (assignees see only
+  // their own calls thanks to RLS, so the filter is meaningless to them).
+  hide("callAgentFilterBar", isAssigneeRole);
   if (isAdminOrAssignee && currentTab === "deletions") setTab("leads");
 }
 
@@ -2589,11 +2750,13 @@ async function loadAll() {
     loadAssignments(),
     loadTasksSummary(),
     loadMyTasks(),
+    loadCallsTodayByUser(),
   ]);
   // Hit List slim-row conversation_id lookup runs after the parallel batch
   // because it depends on both DATA.leads + DATA.hitList being populated.
   // Cheap query: pulls one column for ~hundred contacts at most.
   await loadHitListConversations();
+  renderCallActivityRow();
   // Final re-render after all parallel loads complete. loadLeads triggers an
   // initial render the moment it finishes, but the metadata / outbound / hit
   // list / contact-address / notes-count loaders may finish later — without
@@ -2630,6 +2793,206 @@ async function loadHitListConversations() {
     }
   }
   DATA.slimConversations = map;
+}
+
+// Per-VA call activity for today (Central Time). Reads the
+// ghl_calls_today_by_user view (migration 025). Drives the per-agent
+// stat cards on the dashboard top row.
+async function loadCallsTodayByUser() {
+  const { data, error } = await sb.from("ghl_calls_today_by_user").select("*");
+  if (error) {
+    if (error.code === "42P01") {
+      // View doesn't exist yet (migration 025 not applied). Silently skip
+      // so the rest of the dashboard still works.
+      DATA.callsTodayByUser = {};
+      return;
+    }
+    console.error("loadCallsTodayByUser:", error);
+    return;
+  }
+  DATA.callsTodayByUser = {};
+  for (const r of (data || [])) {
+    if (r.agent_email) DATA.callsTodayByUser[r.agent_email] = r;
+  }
+}
+
+// Drill-down call list. Pulls from ghl_calls filtered by date range +
+// optional agent. Triggered when the Call Activity tab is opened or a
+// filter changes.
+async function loadCalls() {
+  const since = callRangeSince(currentCallRange);
+  let q = sb.from("ghl_calls").select("*").gte("started_at", since)
+    .order("started_at", { ascending: false }).limit(500);
+  if (currentCallAgentFilter && currentCallAgentFilter !== "all") {
+    q = q.eq("agent_email", currentCallAgentFilter);
+  }
+  const { data, error } = await q;
+  if (error) {
+    if (error.code === "42P01") {
+      DATA.calls = [];
+      renderCallsTable();
+      return;
+    }
+    console.error("loadCalls:", error);
+    return;
+  }
+  DATA.calls = data || [];
+  renderCallsTable();
+}
+
+function callRangeSince(range) {
+  const now = new Date();
+  const tz = "America/Chicago";
+  // Compute "today" CT midnight as a UTC ISO timestamp.
+  const todayCT = new Date(now.toLocaleString("en-US", { timeZone: tz }));
+  todayCT.setHours(0, 0, 0, 0);
+  if (range === "today")     return todayCT.toISOString();
+  if (range === "yesterday") {
+    const y = new Date(todayCT); y.setDate(y.getDate() - 1);
+    return y.toISOString();
+  }
+  if (range === "7d") {
+    const d = new Date(todayCT); d.setDate(d.getDate() - 7); return d.toISOString();
+  }
+  if (range === "30d") {
+    const d = new Date(todayCT); d.setDate(d.getDate() - 30); return d.toISOString();
+  }
+  return todayCT.toISOString();
+}
+
+function formatDuration(seconds) {
+  if (seconds == null || seconds < 0) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return `${m}m ${rem}s`;
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h ${remM}m`;
+}
+
+// Render the per-VA call cards row. For Owner/Admin, shows one card per
+// known assignee (Joseph, Walter, Nelson). For Assignees, shows only their
+// own card. Cards show today's outbound count, talk time, and last-call
+// timestamp.
+function renderCallActivityRow() {
+  const row = document.getElementById("callActivityRow");
+  if (!row) return;
+  const map = DATA.callsTodayByUser || {};
+  const myEmail = (currentSession?.user?.email || "").toLowerCase();
+  let agentList;
+  if (isManager()) {
+    agentList = ASSIGNEES.map(a => ({ email: a.email, label: a.label }));
+  } else {
+    const me = ASSIGNEES.find(a => a.email === myEmail) || { email: myEmail, label: "You" };
+    agentList = [me];
+  }
+  if (agentList.length === 0) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "grid";
+  row.innerHTML = agentList.map(a => {
+    const stats = map[a.email] || {};
+    const outboundCount = stats.outbound_count || 0;
+    const inboundCount = stats.inbound_count || 0;
+    const totalSeconds = stats.total_seconds || 0;
+    const connected = stats.connected_outbound || 0;
+    const lastCall = stats.last_call_at;
+    const isActive = (outboundCount + inboundCount) > 0;
+    const empty = !isActive ? "empty" : "";
+    return `
+      <div class="call-card ${empty}">
+        <div class="agent-name">
+          <span class="agent-dot ${isActive ? "" : "idle"}"></span>
+          📞 ${escapeHtml(a.label)} — today
+        </div>
+        <div class="agent-stats">
+          <div class="stat-block">
+            <div class="stat-num">${outboundCount}</div>
+            <div class="stat-name">Dials made</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-num">${formatDuration(totalSeconds)}</div>
+            <div class="stat-name">Talk time</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-num">${connected}</div>
+            <div class="stat-name">Connected</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-num">${inboundCount}</div>
+            <div class="stat-name">Inbound</div>
+          </div>
+        </div>
+        ${lastCall ? `<div class="last-call">Last call: ${escapeHtml(relTime(lastCall))}</div>` : `<div class="last-call">No calls today yet</div>`}
+      </div>
+    `;
+  }).join("");
+}
+
+function setCallRange(range) {
+  currentCallRange = range;
+  document.querySelectorAll('.filter-pill[data-call-range]').forEach(el => el.classList.toggle("active", el.dataset.callRange === range));
+  loadCalls();
+}
+
+function setCallAgentFilter(email) {
+  currentCallAgentFilter = email;
+  document.querySelectorAll('.filter-pill[data-call-agent]').forEach(el => el.classList.toggle("active", el.dataset.callAgent === email));
+  loadCalls();
+}
+
+function reiReplyContactUrl(contactId) {
+  if (!contactId) return null;
+  return `${REI_REPLY_BASE}/contacts/detail/${contactId}`;
+}
+
+function renderCallsTable() {
+  const tbody = document.getElementById("callsBody");
+  if (!tbody) return;
+  const rows = DATA.calls || [];
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No calls in this date range.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(c => {
+    const dirClass = c.direction === "inbound" ? "inbound" : "outbound";
+    const dirLabel = c.direction === "inbound" ? "↙ Inbound" : "↗ Outbound";
+    const statusClass = (c.status || "").toLowerCase().replace(/[^a-z]/g, "-");
+    const statusLabel = c.status ? c.status : "—";
+    const contactUrl = reiReplyContactUrl(c.contact_id);
+    const contactName = resolveContactName(c.contact_id);
+    const agent = c.agent_name || (c.agent_email ? c.agent_email.split("@")[0] : "—");
+    const recording = c.recording_url
+      ? `<a class="call-recording-link" href="${escapeHtml(c.recording_url)}" target="_blank" title="Direct recording link">🎧 Recording</a>`
+      : "";
+    const open = contactUrl
+      ? `<a class="btn-action primary" href="${contactUrl}" target="_blank" title="Open contact in REI Reply (recording plays inline there)">Open →</a>`
+      : "";
+    return `
+      <tr>
+        <td class="col-time" title="${escapeHtml(absTime(c.started_at))}">
+          <div class="activity-stack">
+            <span class="activity-primary">${escapeHtml(smartDateTime(c.started_at))}</span>
+            <span class="activity-relative">${escapeHtml(relTime(c.started_at))}</span>
+          </div>
+        </td>
+        <td><span class="call-direction-chip ${dirClass}">${dirLabel}</span></td>
+        <td><strong>${escapeHtml(contactName)}</strong></td>
+        <td>${escapeHtml(agent)}</td>
+        <td><span class="call-duration">${formatDuration(c.duration_seconds)}</span></td>
+        <td><span class="call-status-chip ${statusClass}">${escapeHtml(statusLabel)}</span></td>
+        <td class="col-actions">
+          <div class="action-group">
+            ${recording}
+            ${open}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
 }
 
 async function loadScoreHistory(conversationId) {
@@ -3443,6 +3806,8 @@ function setTab(tab) {
   currentTab = tab;
   document.querySelectorAll(".tab").forEach(el => el.classList.toggle("active", el.dataset.tab === tab));
   document.querySelectorAll(".tab-content").forEach(el => el.classList.toggle("active", el.id === `tab${tab[0].toUpperCase() + tab.slice(1)}`));
+  // Lazy-load Call Activity tab content the first time it's opened.
+  if (tab === "calls") loadCalls();
 }
 
 function setScoreFilter(s) {
@@ -3865,6 +4230,18 @@ function subscribeToNewScores() {
           loadTasksFor(cid).then(renderLeads);
         }
       }
+    })
+    // New call synced from REI Reply (Call Status webhook). Refresh the
+    // per-VA cards immediately so Nelson sees Joseph's running tally
+    // without a manual refresh. If the Call Activity tab is open, also
+    // re-pull the list.
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: "ghl_calls",
+    }, () => {
+      loadCallsTodayByUser().then(renderCallActivityRow);
+      if (currentTab === "calls") loadCalls();
     })
     .subscribe();
 }
