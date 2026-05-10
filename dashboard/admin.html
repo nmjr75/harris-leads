@@ -2450,7 +2450,10 @@ function toggleGroupCollapse(key) {
 
 // Resolve a contact name from any data source we have. The My Tasks query
 // returns the task row but not the contact's display name; we join client-
-// side from the leads list / hit list / assignment table.
+// side from the leads list / hit list / assignment table. Calls are a
+// fourth fallback — sync-ghl-call stores contact_name on the row at sync
+// time, so contacts that were dialed but never reached the leads/hitList/
+// assignments tables still resolve to a real name here.
 function resolveContactName(contactId) {
   if (!contactId) return "Unknown";
   const lead = (DATA.leads || []).find(r => r.contact_id === contactId);
@@ -2459,6 +2462,8 @@ function resolveContactName(contactId) {
   if (opp?.contact_name) return opp.contact_name;
   const a = DATA.assignments?.[contactId];
   if (a?.contact_name) return a.contact_name;
+  const call = (DATA.calls || []).find(c => c.contact_id === contactId && c.contact_name);
+  if (call?.contact_name) return call.contact_name;
   return "Unknown contact";
 }
 
@@ -2963,7 +2968,11 @@ function renderCallsTable() {
     const statusClass = (c.status || "").toLowerCase().replace(/[^a-z]/g, "-");
     const statusLabel = c.status ? c.status : "—";
     const contactUrl = reiReplyContactUrl(c.contact_id);
-    const contactName = resolveContactName(c.contact_id);
+    // Prefer the name stored on the call row at sync time (migration 026 +
+    // sync-ghl-call). Falls back to in-memory lookups for older call rows
+    // synced before that column existed. resolveContactName() also reads
+    // DATA.calls now, so most "Unknown contact" cases resolve here directly.
+    const contactName = c.contact_name || resolveContactName(c.contact_id);
     const agent = c.agent_name || (c.agent_email ? c.agent_email.split("@")[0] : "—");
     const recording = c.recording_url
       ? `<a class="call-recording-link" href="${escapeHtml(c.recording_url)}" target="_blank" title="Direct recording link">🎧 Recording</a>`
