@@ -317,9 +317,71 @@ def parse_panel(text: str) -> dict[str, Any]:
         ("ai_on_market_investor",  "ON-MARKET INVESTOR"),
         ("ai_realtor",             "REALTOR"),
     ]:
-        pat = re.compile(re.escape(label) + r"\s*\n+\s*(\d+(?:\.\d+)?)")
+        pat = re.compile(re.escape(label) + r"\s*[:\n]+\s*(\d+(?:\.\d+)?)")
         m = pat.search(upper)
         if m: out[key] = to_float(m.group(1))
+
+    # Distressor signal flags (visible in the DISTRESSORS list).
+    out["high_equity"]    = "HIGH EQUITY"     in upper
+    out["low_equity"]     = "LOW EQUITY"      in upper
+    out["absentee_owner"] = "ABSENTEE"        in upper
+    out["vacant"]         = "VACANT"          in upper and "VACANT LAND" not in upper
+
+    # Collect distressor labels into an array. DataSift typically lists them
+    # under a "DISTRESSORS" header on individual lines.
+    known_distressors = [
+        "High Equity", "Low Equity", "Free & Clear", "Owner Occupied",
+        "Absentee Owners", "Vacant", "Low Income", "Bad Credit",
+        "Senior Homeowners", "Tax Delinquent", "Pre-Foreclosure",
+        "Bankruptcy", "Divorce", "Probate", "Tired Landlord",
+    ]
+    signals = [d for d in known_distressors if d.upper() in upper]
+    if signals:
+        out["distressor_signals"] = signals
+
+    # County assessed value — SiftMap sometimes shows it as "County Value"
+    # or "Assessed Value". Try both, take the dollar amount.
+    m = re.search(r"(?:COUNTY\s+VALUE|ASSESSED\s+VALUE)\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
+    if m: out["county_assessed_value"] = parse_money("$" + m.group(1))
+
+    # Mortgage balance (Owner tab). Labels vary: "Mortgage Balance",
+    # "Outstanding Mortgage", "Loan Balance".
+    for label in ["MORTGAGE BALANCE", "OUTSTANDING MORTGAGE", "LOAN BALANCE", "MORTGAGE"]:
+        m = re.search(re.escape(label) + r"\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
+        if m:
+            v = parse_money("$" + m.group(1))
+            if v and v > 1000:  # reject "0" or single-digit garbage
+                out["mortgage_balance"] = v
+                break
+
+    # Last sale (price + date). Labels: "Last Sale Date", "Last Sale Price",
+    # "Sale Date", "Sale Price".
+    m = re.search(r"LAST\s+SALE\s+PRICE\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper) \
+        or re.search(r"SALE\s+PRICE\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
+    if m: out["last_sale_price"] = parse_money("$" + m.group(1))
+
+    m = re.search(r"LAST\s+SALE\s+DATE\s*[:\n]+\s*([\d/\-]{6,10})", upper) \
+        or re.search(r"SALE\s+DATE\s*[:\n]+\s*([\d/\-]{6,10})", upper)
+    if m:
+        # Accept "MM/DD/YYYY" or "YYYY-MM-DD" — pass through as ISO if possible.
+        ds = m.group(1)
+        try:
+            from datetime import datetime as _dt
+            for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"):
+                try:
+                    out["last_sale_date"] = _dt.strptime(ds, fmt).date().isoformat()
+                    break
+                except ValueError:
+                    continue
+        except Exception:
+            pass
+
+    # Tax delinquent value + year.
+    m = re.search(r"TAX\s+DELINQUENT\s+VALUE\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
+    if m: out["tax_delinquent_value"] = parse_money("$" + m.group(1))
+    m = re.search(r"TAX\s+DELINQUENT\s+YEAR\s*[:\n]+\s*(\d{4})", upper) \
+        or re.search(r"DELINQUENT\s+SINCE\s*[:\n]+\s*(\d{4})", upper)
+    if m: out["tax_delinquent_year"] = to_int(m.group(1))
 
     return out
 
@@ -344,6 +406,117 @@ def upsert_enrichment(sb, row: dict[str, Any]) -> bool:
 
 
 # ── Per-address worker ───────────────────────────────────────────────
+async def search_via_input(page: Page, full_address: str) -> bool:
+    """Drive the SiftMap search box like a human: click the address input,
+    type the address, wait for autocomplete, click the first suggestion.
+
+    The URL-query approach (location={searchType,title,value}) doesn't
+    trigger the React SPA to fetch the property — confirmed by capturing
+    completely wrong properties on 5 different addresses. The search-box
+    flow IS the workflow Nelson uses manually, so it's the reliable path.
+    Returns True if the SPA appears to have navigated to a per-property
+    detail view; False otherwise.
+    """
+    # Land on bare SiftMap.
+    try:
+        await page.goto(SIFTMAP_BASE, wait_until="domcontentloaded", timeout=45_000)
+    except Exception as e:
+        log.warning("siftmap nav failed: %s", e)
+        return False
+    await page.wait_for_timeout(5000)
+    await dismiss_popups(page)
+
+    # Find the search input — placeholder is "Address, city, county or zip".
+    placeholders = [
+        "Address, city, county or zip",
+        "Address, city, county or",
+        "Address",
+    ]
+    search_input = None
+    for ph in placeholders:
+        loc = page.locator(f'input[placeholder*="{ph}" i]').first
+        try:
+            if await loc.count() > 0:
+                search_input = loc
+                break
+        except Exception:
+            continue
+    if not search_input:
+        log.warning("Could not find SiftMap search input")
+        return False
+
+    try:
+        await search_input.click()
+        await page.wait_for_timeout(500)
+        # Clear any prior value, then type slowly so autocomplete kicks in.
+        await search_input.fill("")
+        await page.wait_for_timeout(300)
+        await search_input.type(full_address, delay=40)
+    except Exception as e:
+        log.warning("Failed to type into search box: %s", e)
+        return False
+
+    # Wait for the autocomplete dropdown to populate.
+    await page.wait_for_timeout(2500)
+
+    # Click the first autocomplete result. DataSift typically renders these
+    # as styled options under the input — try a few selector patterns.
+    clicked = False
+    for sel in [
+        '[class*="autocomplete"] [class*="Item"]',
+        '[class*="Autocomplete"] [class*="Item"]',
+        '[class*="SuggestionItem"]',
+        '[class*="result-item"]',
+        '[role="option"]',
+        '[class*="DropdownItem"]',
+    ]:
+        try:
+            opt = page.locator(sel).first
+            if await opt.count() > 0 and await opt.is_visible():
+                await opt.click()
+                clicked = True
+                break
+        except Exception:
+            continue
+    if not clicked:
+        # Fallback: just press Enter to submit the typed value.
+        try:
+            await search_input.press("Enter")
+        except Exception:
+            return False
+
+    # Give the SPA time to fetch + render the detail panel.
+    await page.wait_for_timeout(10_000)
+    await dismiss_popups(page)
+    try:
+        await page.wait_for_selector(
+            'text=/EST\\.?\\s*VALUE|EQUITY|BDS/i', timeout=10_000
+        )
+    except Exception:
+        pass
+    return True
+
+
+async def click_owner_tab(page: Page) -> bool:
+    """Click the Owner tab on the SiftMap detail panel so its content
+    (mortgage balance + owner details) becomes part of the panel text.
+    Returns True if the click landed."""
+    for sel in [
+        'button:has-text("Owner")',
+        '[role="tab"]:has-text("Owner")',
+        'div:has-text("Owner") >> visible=true',
+    ]:
+        try:
+            loc = page.locator(sel).first
+            if await loc.count() > 0 and await loc.is_visible():
+                await loc.click()
+                await page.wait_for_timeout(2500)
+                return True
+        except Exception:
+            continue
+    return False
+
+
 async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | None:
     raw = (addr.get("raw_address") or "").strip()
     city = (addr.get("city") or "").strip() or None
@@ -354,29 +527,29 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
 
     full = build_full_address(raw, city, state, zipc)
     norm = normalize_address(raw)
-    url = siftmap_url(full)
 
     log.info("[%s] %s", norm[:18], full[:80])
+    ok = await search_via_input(page, full)
+    if not ok:
+        log.warning("search-via-input bailed for %s", full[:60])
+
+    # Capture Property tab (default view) first.
+    property_text = await find_property_panel_text(page) or ""
+
+    # Then click Owner tab so its content joins the panel text. Mortgage
+    # balance + sale history typically live behind that tab.
+    owner_text = ""
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+        if await click_owner_tab(page):
+            owner_text = await find_property_panel_text(page) or ""
     except Exception as e:
-        log.warning("nav failed for %s: %s", full[:60], e)
-        return None
+        log.debug("click_owner_tab failed: %s", e)
 
-    # SiftMap's React panel + map tiles take 8-12s on a cold session.
-    # Wait long enough that the right-side detail panel is fully rendered
-    # before we scrape; otherwise we capture a header-only stub (152 chars).
-    await page.wait_for_timeout(12000)
-    await dismiss_popups(page)
-    # Best-effort wait for the property-details marker. Falls through on timeout.
-    try:
-        await page.wait_for_selector('text=/EST\\.?\\s*VALUE|EQUITY|BDS/i', timeout=8000)
-    except Exception:
-        pass
+    combined = (property_text + "\n\n=== OWNER TAB ===\n\n" + owner_text).strip() \
+        if owner_text else property_text
 
-    panel = await find_property_panel_text(page)
     now_iso = datetime.now(timezone.utc).isoformat()
-    if not panel:
+    if not combined or len(combined) < 50:
         log.warning("no Property Details panel for %s", full[:60])
         # Cache a "no panel" row so we don't re-attempt every cron tick.
         return {
@@ -389,13 +562,33 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
             "last_refreshed_at": now_iso,
         }
 
-    fields = parse_panel(panel)
+    fields = parse_panel(combined)
+    # Cross-check: refuse to save a row whose panel text doesn't contain at
+    # least part of the address we searched for. Prevents us from caching
+    # whatever generic page DataSift falls back to when a search fails.
+    addr_tokens = [t for t in re.split(r"\W+", raw) if len(t) >= 3]
+    if addr_tokens:
+        hits = sum(1 for t in addr_tokens if t.upper() in combined.upper())
+        if hits < max(1, len(addr_tokens) // 3):
+            log.warning(
+                "panel text doesn't reference '%s' (%d/%d tokens) — caching as miss",
+                raw, hits, len(addr_tokens),
+            )
+            return {
+                "normalized_address": norm,
+                "raw_address": raw,
+                "city": city, "state": state, "postal_code": zipc,
+                "source": "siftmap_address_mismatch",
+                "raw_panel_text": combined[:8000],
+                "looked_up_at": now_iso,
+                "last_refreshed_at": now_iso,
+            }
     fields.update({
         "normalized_address": norm,
         "raw_address": raw,
         "city": city, "state": state, "postal_code": zipc,
         "source": "siftmap",
-        "raw_panel_text": panel[:8000],
+        "raw_panel_text": combined[:8000],
         "looked_up_at": now_iso,
         "last_refreshed_at": now_iso,
     })
