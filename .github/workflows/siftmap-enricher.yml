@@ -1,0 +1,64 @@
+name: SiftMap Property Enricher
+
+# Pulls dashboard contact addresses lacking property data, navigates DataSift's
+# SiftMap per-property URL, scrapes the Property Details side panel, and
+# upserts enriched fields (year built / sqft / value / equity %, etc.) into
+# Supabase. Each address is looked up exactly once and cached forever. The
+# dashboard joins on normalized_address to render chips inline.
+#
+# Quota math: ~100 addresses per run, daily = ~3K/mo, far under the 100K/mo
+# DataSift account limit. Backfill of all current dashboard contacts happens
+# across the first few daily runs.
+
+on:
+  schedule:
+    # Daily 6:00 AM UTC = 1:00 AM CT. Off-peak runner availability.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      per_run_limit:
+        description: "Max addresses to enrich this run"
+        required: false
+        default: "100"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: siftmap-enricher
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    name: Enrich pending addresses
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    env:
+      SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      DATASIFT_EMAIL:      ${{ secrets.DATASIFT_EMAIL }}
+      DATASIFT_PASSWORD:   ${{ secrets.DATASIFT_PASSWORD }}
+      SIFTMAP_PER_RUN_LIMIT: ${{ github.event.inputs.per_run_limit || '100' }}
+      TZ: America/Chicago
+
+    steps:
+      - name: Checkout harris-leads
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install playwright>=1.40.0 supabase>=2.10.0 python-dotenv>=1.0.0
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run enricher
+        run: python scraper/siftmap_enricher.py

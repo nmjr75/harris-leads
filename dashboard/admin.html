@@ -1484,6 +1484,51 @@
     opacity: 0.7;
   }
 
+  /* Property enrichment chips — DataSift SiftMap data cached by
+     scraper/siftmap_enricher.py, joined by normalized_address. */
+  .prop-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 0 6px 0;
+  }
+  .prop-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .prop-chip-value {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.35);
+    color: rgb(74, 222, 128);
+    font-weight: 600;
+  }
+  .prop-chip-offmkt {
+    background: rgba(148, 163, 184, 0.08);
+    border-color: rgba(148, 163, 184, 0.35);
+    color: rgb(148, 163, 184);
+  }
+  .prop-chip-onmkt {
+    background: rgba(251, 191, 36, 0.10);
+    border-color: rgba(251, 191, 36, 0.40);
+    color: rgb(252, 211, 77);
+    font-weight: 600;
+  }
+  .prop-chip-oo {
+    background: rgba(124, 92, 252, 0.10);
+    border-color: rgba(124, 92, 252, 0.40);
+    color: var(--accent-light);
+    font-weight: 600;
+  }
+
   /* Copy-confirmation toast */
   .copy-toast {
     position: fixed;
@@ -2165,6 +2210,77 @@ async function loadContactAddresses() {
   }
 }
 
+// Per-property enrichment cached by scraper/siftmap_enricher.py (DataSift
+// SiftMap scrape, daily cron). Keyed on the same normalized_address scheme
+// the worker writes — strip non-alphanumerics, upper-case. Renders inline
+// chips under each lead's address: year built, sqft, beds/baths, est value,
+// equity %, MLS status. Works for ALL counties Bismarck/Nelly pull from,
+// not just Harris.
+function normalizeAddress(s) {
+  return (s || "").replace(/[^A-Za-z0-9]+/g, "").toUpperCase();
+}
+
+async function loadPropertyEnrichment() {
+  const { data, error } = await sb.from("property_enrichment").select(
+    "normalized_address, bedrooms, bathrooms, sqft, year_built, " +
+    "structure_type, ownership_type, estimated_value, equity_pct, " +
+    "mls_status, days_on_market, owner_occupied, off_market, source"
+  );
+  if (error) {
+    if (error.code === "42P01") {
+      // Migration 027 not applied yet — skip silently.
+      DATA.propertyEnrichment = {};
+      return;
+    }
+    console.error("loadPropertyEnrichment:", error);
+    return;
+  }
+  DATA.propertyEnrichment = {};
+  for (const r of (data || [])) {
+    if (r.normalized_address) DATA.propertyEnrichment[r.normalized_address] = r;
+  }
+}
+
+function propertyEnrichmentFor(row) {
+  const addr = fullAddressFor(row);
+  if (!addr) return null;
+  // Match against the street portion only — that's what the worker normalizes.
+  const street = addr.split(",")[0] || "";
+  const norm = normalizeAddress(street);
+  return DATA.propertyEnrichment ? (DATA.propertyEnrichment[norm] || null) : null;
+}
+
+function fmtMoneyShort(n) {
+  if (n == null || isNaN(n)) return "";
+  if (n >= 1_000_000) return "$" + (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000)     return "$" + Math.round(n / 1_000) + "K";
+  return "$" + Math.round(n);
+}
+
+function renderPropertyChips(row) {
+  const e = propertyEnrichmentFor(row);
+  if (!e || e.source === "siftmap_no_panel") return "";
+  const chips = [];
+  if (e.year_built) chips.push(`<span class="prop-chip" title="Year built">🏗 ${e.year_built}</span>`);
+  if (e.bedrooms != null || e.bathrooms != null) {
+    const beds = e.bedrooms != null ? `${e.bedrooms}bd` : "";
+    const baths = e.bathrooms != null ? `${e.bathrooms}ba` : "";
+    chips.push(`<span class="prop-chip" title="Beds / Baths">🛏 ${[beds, baths].filter(Boolean).join(" / ")}</span>`);
+  }
+  if (e.sqft) chips.push(`<span class="prop-chip" title="Living area">📐 ${e.sqft.toLocaleString()} sqft</span>`);
+  if (e.estimated_value) {
+    const eq = e.equity_pct != null ? ` · ${Math.round(e.equity_pct)}% eq` : "";
+    chips.push(`<span class="prop-chip prop-chip-value" title="Estimated value · equity">💰 ${fmtMoneyShort(e.estimated_value)}${eq}</span>`);
+  }
+  if (e.mls_status) {
+    const cls = (e.mls_status || "").toLowerCase().includes("on") ? "prop-chip-onmkt" : "prop-chip-offmkt";
+    chips.push(`<span class="prop-chip ${cls}" title="MLS status">${escapeHtml(e.mls_status)}</span>`);
+  }
+  if (e.owner_occupied) chips.push(`<span class="prop-chip prop-chip-oo" title="Owner-occupied per HCAD/MLS">OO</span>`);
+  if (chips.length === 0) return "";
+  return `<div class="prop-chips">${chips.join("")}</div>`;
+}
+
 // Per-conversation metadata (created date + last activity timestamp) from
 // the ghl_conversation_metadata view (migration 011). Rendered under the
 // contact name in the leads table.
@@ -2756,6 +2872,7 @@ async function loadAll() {
     loadTasksSummary(),
     loadMyTasks(),
     loadCallsTodayByUser(),
+    loadPropertyEnrichment(),
   ]);
   // Hit List slim-row conversation_id lookup runs after the parallel batch
   // because it depends on both DATA.leads + DATA.hitList being populated.
@@ -3724,6 +3841,7 @@ function renderLeads() {
               <div>
                 <a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(fullAddr).replace(/'/g, "\\'")}')" title="Open in REI AI Leads (address copied to clipboard — paste into search box)">🏠 ${escapeHtml(fullAddr)}</a>
               </div>
+              ${renderPropertyChips(r)}
             ` : "";
           })()}
           <div class="signal-chips">${renderSignals(r)}</div>
