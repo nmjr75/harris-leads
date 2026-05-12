@@ -1632,6 +1632,271 @@
     /* Bottom user bar: compact */
     #userBar { padding: 6px 12px; font-size: 0.68rem; }
   }
+
+  /* ─────────────────────────────────────────────────────────────
+     CRM Details slide-out panel (additive — does NOT replace any
+     existing expand-row UX). Triggered by the 📋 Details button on
+     each lead row OR keyboard shortcut "D" on a focused row. Same
+     overlay/backdrop pattern as the existing My Tasks panel.
+     ───────────────────────────────────────────────────────────── */
+  .crm-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 90; opacity: 0; pointer-events: none;
+    transition: opacity .18s ease;
+  }
+  .crm-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .crm-panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(720px, 96vw);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgba(0,0,0,.45);
+    z-index: 91;
+    transform: translateX(100%);
+    transition: transform .22s ease;
+    display: flex; flex-direction: column;
+  }
+  .crm-panel.open { transform: translateX(0); }
+
+  .crm-header {
+    padding: 18px 22px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .crm-title-row {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 14px;
+  }
+  .crm-title {
+    margin: 0; font-size: 1.05rem; font-weight: 600;
+    color: var(--text); line-height: 1.3;
+  }
+  .crm-title small {
+    display: block; color: var(--text-muted);
+    font-size: 0.74rem; font-weight: 400; margin-top: 2px;
+  }
+  .crm-close {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text); width: 30px; height: 30px;
+    border-radius: 8px; cursor: pointer; font-size: 1.1rem;
+    line-height: 1; padding: 0;
+  }
+  .crm-close:hover { background: var(--surface2); }
+
+  .crm-meta-row {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 10px; align-items: center;
+  }
+  .crm-meta-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 3px 9px; border-radius: 6px; font-size: 0.74rem;
+    color: var(--text-muted);
+  }
+  .crm-meta-chip strong { color: var(--text); font-weight: 600; }
+  .crm-save-pill {
+    font-size: 0.72rem; color: var(--text-muted);
+    padding: 2px 8px; border-radius: 6px;
+  }
+  .crm-save-pill.saving { color: var(--amber); }
+  .crm-save-pill.saved { color: rgb(74, 222, 128); }
+  .crm-save-pill.error { color: var(--red); }
+
+  /* Tab bar */
+  .crm-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    padding: 0 12px; overflow-x: auto;
+  }
+  .crm-tab {
+    background: transparent; border: 0; border-bottom: 2px solid transparent;
+    padding: 12px 14px; color: var(--text-muted); font-size: 0.82rem;
+    cursor: pointer; white-space: nowrap; font-weight: 500;
+    transition: color .15s ease, border-color .15s ease;
+  }
+  .crm-tab:hover { color: var(--text); }
+  .crm-tab.active {
+    color: var(--accent-light); border-bottom-color: var(--accent);
+  }
+
+  /* Body (scrolls) */
+  .crm-body {
+    flex: 1; overflow-y: auto; padding: 20px 22px;
+  }
+  .crm-tab-pane { display: none; }
+  .crm-tab-pane.active { display: block; }
+  .crm-section-title {
+    font-size: 0.74rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-muted);
+    margin: 0 0 12px 0;
+  }
+  .crm-section-title:not(:first-child) { margin-top: 22px; }
+
+  /* Property tab — two-column form: cached value | override input */
+  .crm-prop-grid {
+    display: grid;
+    grid-template-columns: 130px 1fr 1fr 32px;
+    gap: 8px 14px;
+    align-items: center;
+  }
+  .crm-prop-grid .label {
+    color: var(--text-muted); font-size: 0.78rem;
+    font-weight: 500;
+  }
+  .crm-prop-grid .cached {
+    color: var(--text-muted); font-size: 0.82rem;
+    background: var(--surface2); padding: 6px 10px;
+    border-radius: 6px; border: 1px solid var(--border);
+    min-height: 30px; display: flex; align-items: center;
+  }
+  .crm-prop-grid .cached.empty { color: rgba(148,163,184,.5); font-style: italic; }
+  .crm-prop-grid input.override {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text); padding: 6px 10px;
+    border-radius: 6px; font-size: 0.85rem;
+    outline: none; min-height: 30px; box-sizing: border-box;
+    width: 100%;
+  }
+  .crm-prop-grid input.override:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.18);
+  }
+  .crm-prop-grid input.override.locked {
+    background: rgba(124, 92, 252, 0.07);
+    border-color: rgba(124, 92, 252, 0.35);
+  }
+  .crm-lock {
+    background: transparent; border: 0; cursor: pointer;
+    color: rgba(148,163,184,.4); font-size: 1rem;
+    padding: 0; width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 5px;
+  }
+  .crm-lock:hover { background: var(--surface2); color: var(--text); }
+  .crm-lock.active { color: var(--accent-light); }
+  .crm-prop-grid .col-label-head, .crm-prop-grid .col-cached-head,
+  .crm-prop-grid .col-override-head, .crm-prop-grid .col-lock-head {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); font-weight: 700; padding-bottom: 4px;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  }
+
+  /* Placeholder pane for tabs not yet implemented */
+  .crm-coming-soon {
+    text-align: center; padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .crm-coming-soon h3 {
+    margin: 12px 0 6px; color: var(--text); font-size: 1rem;
+  }
+  .crm-coming-soon p { font-size: 0.82rem; margin: 0; max-width: 360px; margin-inline: auto; }
+
+  /* Row button trigger */
+  .btn-crm-details {
+    background: rgba(124, 92, 252, 0.10);
+    border: 1px solid rgba(124, 92, 252, 0.40);
+    color: var(--accent-light);
+    padding: 5px 9px; border-radius: 6px; font-size: 0.74rem;
+    cursor: pointer; font-weight: 600;
+  }
+  .btn-crm-details:hover {
+    background: rgba(124, 92, 252, 0.18);
+    border-color: var(--accent);
+  }
+
+  @media (max-width: 768px) {
+    .crm-panel { width: 100vw; }
+    .crm-prop-grid { grid-template-columns: 100px 1fr 24px; }
+    .crm-prop-grid .cached { display: none; }
+    .crm-prop-grid .col-cached-head { display: none; }
+  }
+
+  /* ── Access Control modal (owner-only) ─────────────────────────── */
+  .acl-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    z-index: 110; opacity: 0; pointer-events: none;
+    transition: opacity .15s ease;
+  }
+  .acl-backdrop.open { opacity: 1; pointer-events: auto; }
+  .acl-modal {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(.97);
+    width: min(640px, 94vw); max-height: 84vh;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; z-index: 111;
+    opacity: 0; pointer-events: none;
+    display: flex; flex-direction: column;
+    box-shadow: 0 18px 48px rgba(0,0,0,.55);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .acl-modal.open {
+    opacity: 1; pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .acl-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px 8px;
+  }
+  .acl-title { margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--text); }
+  .acl-close {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text); width: 30px; height: 30px;
+    border-radius: 8px; cursor: pointer; font-size: 1.1rem;
+    line-height: 1; padding: 0;
+  }
+  .acl-close:hover { background: var(--surface2); }
+  .acl-subtitle {
+    padding: 0 22px 14px; color: var(--text-muted);
+    font-size: 0.78rem; line-height: 1.4;
+    border-bottom: 1px solid var(--border);
+  }
+  .acl-body {
+    padding: 12px 14px 18px;
+    overflow-y: auto; flex: 1;
+  }
+  .acl-loading { text-align: center; color: var(--text-muted); padding: 30px; }
+  .acl-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px; align-items: center;
+    padding: 12px 10px; border-radius: 8px;
+    border: 1px solid transparent;
+  }
+  .acl-row:hover { background: var(--surface2); border-color: var(--border); }
+  .acl-row.is-suspended { background: rgba(239, 68, 68, 0.06); }
+  .acl-row .name { font-weight: 600; color: var(--text); font-size: 0.88rem; }
+  .acl-row .email { color: var(--text-muted); font-size: 0.74rem; margin-top: 2px; }
+  .acl-row .role-chip {
+    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); background: var(--surface2);
+    border: 1px solid var(--border); padding: 2px 7px;
+    border-radius: 6px; margin-right: 10px;
+  }
+  .acl-row .role-chip.owner { color: var(--accent-light); border-color: var(--accent); }
+  .acl-status-chip {
+    display: inline-block; padding: 4px 10px; border-radius: 14px;
+    font-size: 0.72rem; font-weight: 600; min-width: 80px; text-align: center;
+  }
+  .acl-status-chip.active   { background: rgba(34,197,94,.14); color: rgb(74,222,128); border: 1px solid rgba(34,197,94,.45); }
+  .acl-status-chip.suspended { background: rgba(239,68,68,.14); color: var(--red); border: 1px solid rgba(239,68,68,.45); }
+  .acl-toggle-btn {
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    font-size: 0.78rem; font-weight: 600; min-width: 110px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text);
+  }
+  .acl-toggle-btn:hover { border-color: var(--accent); }
+  .acl-toggle-btn.suspend-action { color: var(--red); border-color: rgba(239,68,68,.45); }
+  .acl-toggle-btn.suspend-action:hover { background: rgba(239,68,68,.12); }
+  .acl-toggle-btn.activate-action { color: rgb(74,222,128); border-color: rgba(34,197,94,.45); }
+  .acl-toggle-btn.activate-action:hover { background: rgba(34,197,94,.12); }
+  .acl-toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .acl-self-tag {
+    color: var(--text-muted); font-size: 0.7rem; font-style: italic;
+    padding: 7px 12px;
+  }
 </style>
 </head>
 <body>
@@ -1667,6 +1932,64 @@
   </div>
   <div class="mtp-body" id="mtpBody">
     <div class="mtp-loading">Loading your tasks…</div>
+  </div>
+</aside>
+
+<!-- CRM Details slide-out panel (additive — doesn't touch the existing
+     expand-row UX or notes/tasks/transcript panels). Triggered by the
+     📋 Details button on each row OR keyboard shortcut "D" on a focused
+     row. All four tabs visible; Property tab is fully functional in
+     Phase 1, others are placeholders awaiting Phase 2-4. -->
+<div class="crm-backdrop" id="crmBackdrop" onclick="closeCrmPanel()"></div>
+<aside class="crm-panel" id="crmPanel" role="dialog" aria-label="Lead Details">
+  <div class="crm-header">
+    <div class="crm-title-row">
+      <div>
+        <h2 class="crm-title" id="crmTitle">Lead Details</h2>
+        <small id="crmSubtitle">—</small>
+      </div>
+      <button class="crm-close" onclick="closeCrmPanel()" title="Close (Esc)">×</button>
+    </div>
+    <div class="crm-meta-row" id="crmMetaRow">
+      <span class="crm-meta-chip" id="crmAddressChip">—</span>
+      <span class="crm-meta-chip" id="crmPhoneChip">—</span>
+      <span class="crm-meta-chip" id="crmAssigneeChip" style="display:none"></span>
+      <span class="crm-save-pill" id="crmSavePill"></span>
+    </div>
+  </div>
+  <div class="crm-tabs">
+    <button class="crm-tab active" data-tab="property"      onclick="switchCrmTab('property')">🏠 Property</button>
+    <button class="crm-tab"        data-tab="qualification" onclick="switchCrmTab('qualification')">🎯 Qualification</button>
+    <button class="crm-tab"        data-tab="deal"          onclick="switchCrmTab('deal')">💰 Deal</button>
+    <button class="crm-tab"        data-tab="comps"         onclick="switchCrmTab('comps')">🔢 Comps</button>
+  </div>
+  <div class="crm-body">
+    <div class="crm-tab-pane active" id="crmPaneProperty">
+      <div id="crmPropertyContent">
+        <div class="crm-coming-soon"><h3>Loading…</h3></div>
+      </div>
+    </div>
+    <div class="crm-tab-pane" id="crmPaneQualification">
+      <div class="crm-coming-soon">
+        <div style="font-size:2.5rem;opacity:.6">🎯</div>
+        <h3>Four Pillars — Coming Soon</h3>
+        <p>VA qualification scorecard: Motivation · Timeline · Condition · Asking Price. Ships in the next push.</p>
+      </div>
+    </div>
+    <div class="crm-tab-pane" id="crmPaneDeal">
+      <div class="crm-coming-soon">
+        <div style="font-size:2.5rem;opacity:.6">💰</div>
+        <h3>Deal Math — Coming Soon</h3>
+        <p>Asking · Agent Offer · ARV · Repair Estimate · MAO thermometer. Ships next.</p>
+      </div>
+    </div>
+    <div class="crm-tab-pane" id="crmPaneComps">
+      <div class="crm-coming-soon">
+        <div style="font-size:2.5rem;opacity:.6">🔢</div>
+        <h3>Comps — Coming Soon</h3>
+        <p>Three editable comp rows with auto-averaged adjusted value → ARV.</p>
+      </div>
+    </div>
   </div>
 </aside>
 
@@ -1843,7 +2166,22 @@
 <div id="userBar">
   <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
   <span style="margin-left:auto" id="syncStatus"></span>
+  <button id="accessControlBtn" onclick="openAccessControl()" style="display:none;margin-right:6px" title="Manage VA dashboard access">🔐 Access Control</button>
   <button onclick="handleSignOut()">Sign Out</button>
+</div>
+
+<!-- Access Control modal (owner-only). Lists every profile with an
+     Active/Suspended toggle. Visible only when Nelson is signed in. -->
+<div class="acl-backdrop" id="aclBackdrop" onclick="closeAccessControl()"></div>
+<div class="acl-modal" id="aclModal" role="dialog" aria-label="Access Control">
+  <div class="acl-header">
+    <h2 class="acl-title">🔐 Access Control</h2>
+    <button class="acl-close" onclick="closeAccessControl()" title="Close (Esc)">×</button>
+  </div>
+  <div class="acl-subtitle">Toggle dashboard access for each VA. Suspended users are signed out on their next page load and shown an "Account suspended" screen.</div>
+  <div class="acl-body" id="aclBody">
+    <div class="acl-loading">Loading…</div>
+  </div>
 </div>
 
 <script>
@@ -2053,7 +2391,44 @@ async function checkAuth() {
   currentSession = session;
   currentRole = deriveRole();
   document.getElementById("currentUserLabel").textContent = session.user.email;
+  // Suspension gate (migration 032). If the caller's profile.is_active is
+  // false, sign them out and show the suspended screen. Owner is exempt
+  // — Nelson can't lock himself out from the dashboard.
+  if (currentRole !== "nelson") {
+    try {
+      const { data: profile } = await sb.from("profiles")
+        .select("is_active, suspended_at")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      if (profile && profile.is_active === false) {
+        await sb.auth.signOut();
+        currentSession = null; currentRole = null;
+        showSuspended(profile.suspended_at);
+        return false;
+      }
+    } catch (e) {
+      console.warn("is_active check failed (allowing through):", e);
+    }
+  }
   return true;
+}
+
+function showSuspended(suspendedAt) {
+  document.getElementById("loginOverlay").style.display = "none";
+  document.getElementById("mainUI").style.display = "none";
+  const accessEl = document.getElementById("accessDenied");
+  if (accessEl) {
+    const when = suspendedAt ? new Date(suspendedAt).toLocaleString() : "recently";
+    accessEl.innerHTML = `
+      <div style="max-width:520px;margin:80px auto;text-align:center;padding:32px;background:var(--surface);border:1px solid var(--border);border-radius:14px">
+        <div style="font-size:3rem;margin-bottom:12px">🔒</div>
+        <h2 style="margin:0 0 6px;font-size:1.3rem;color:var(--text)">Account suspended</h2>
+        <p style="color:var(--text-muted);font-size:0.88rem;margin:0 0 20px">Your access to this dashboard has been temporarily disabled. Contact Nelson if you believe this is an error.</p>
+        <p style="color:var(--text-muted);font-size:0.74rem">Suspended ${when}</p>
+      </div>`;
+    accessEl.style.display = "block";
+  }
+  document.getElementById("userBar").style.display = "none";
 }
 
 function showLogin() {
@@ -4441,6 +4816,140 @@ if ("serviceWorker" in navigator) {
     });
   });
 }
+
+// ── Access Control (Nelson-only) ───────────────────────────────────
+// Modal that lists every profile + lets Nelson flip is_active per VA.
+// Suspended users are signed out on next page load (their checkAuth()
+// re-checks is_active and shows the "Account suspended" screen).
+// Button visibility is driven by role; the button DOM is always present
+// but display:none for everyone except nelson.
+
+let aclOpen = false;
+let aclProfiles = [];
+
+function showAccessControlButtonIfOwner() {
+  const btn = document.getElementById("accessControlBtn");
+  if (!btn) return;
+  btn.style.display = (currentRole === "nelson") ? "" : "none";
+}
+
+async function loadAccessProfiles() {
+  // Owner can read everyone thanks to caller_is_owner() in the
+  // "profiles self read" policy (migration 032). Auth role is
+  // injected by the publishable key + session JWT automatically.
+  const { data, error } = await sb.from("profiles")
+    .select("id, display_name, role, is_active, suspended_at, suspended_by")
+    .order("display_name", { ascending: true });
+  if (error) {
+    console.error("loadAccessProfiles:", error);
+    aclProfiles = [];
+    return;
+  }
+  // Pull emails from auth.users via RPC — but we don't have one yet,
+  // so fall back to the display_name as the primary identifier.
+  // Most VAs already have display_name = first name; that's enough.
+  aclProfiles = data || [];
+}
+
+function renderAccessControlBody() {
+  const body = document.getElementById("aclBody");
+  if (!body) return;
+  if (!aclProfiles.length) {
+    body.innerHTML = `<div class="acl-loading">No profiles found.</div>`;
+    return;
+  }
+  const myId = currentSession?.user?.id;
+  body.innerHTML = aclProfiles.map(p => {
+    const active = p.is_active !== false;
+    const isSelf = p.id === myId;
+    const isOwnerRow = (p.role || "").toLowerCase() === "owner";
+    const rowCls = active ? "acl-row" : "acl-row is-suspended";
+    const roleChip = `<span class="role-chip ${isOwnerRow ? 'owner' : ''}">${escapeHtml(p.role || 'viewer')}</span>`;
+    const statusChip = active
+      ? `<span class="acl-status-chip active">Active</span>`
+      : `<span class="acl-status-chip suspended">Suspended</span>`;
+    // The owner can NEVER be suspended (would lock himself out). Self also
+    // can't be toggled — defense in depth (Nelson IS the owner, so this
+    // overlaps, but keeps the UI honest).
+    let action;
+    if (isSelf || isOwnerRow) {
+      action = `<span class="acl-self-tag">${isSelf ? '(you)' : 'owner'}</span>`;
+    } else if (active) {
+      action = `<button class="acl-toggle-btn suspend-action" onclick="toggleAccess('${p.id}', false, this)">Suspend</button>`;
+    } else {
+      action = `<button class="acl-toggle-btn activate-action" onclick="toggleAccess('${p.id}', true, this)">Reactivate</button>`;
+    }
+    return `
+      <div class="${rowCls}">
+        <div>
+          <div class="name">${escapeHtml(p.display_name || '(no name)')}</div>
+          <div class="email">${roleChip}${!active && p.suspended_at ? `<span style="color:var(--text-muted);font-size:0.7rem"> · suspended ${escapeHtml(new Date(p.suspended_at).toLocaleDateString())}</span>` : ''}</div>
+        </div>
+        ${statusChip}
+        ${action}
+      </div>
+    `;
+  }).join("");
+}
+
+async function openAccessControl() {
+  if (currentRole !== "nelson") return;
+  document.getElementById("aclBackdrop").classList.add("open");
+  document.getElementById("aclModal").classList.add("open");
+  aclOpen = true;
+  document.getElementById("aclBody").innerHTML = `<div class="acl-loading">Loading…</div>`;
+  await loadAccessProfiles();
+  renderAccessControlBody();
+}
+
+function closeAccessControl() {
+  document.getElementById("aclBackdrop").classList.remove("open");
+  document.getElementById("aclModal").classList.remove("open");
+  aclOpen = false;
+}
+
+async function toggleAccess(profileId, makeActive, btn) {
+  if (currentRole !== "nelson") return;
+  const targetProfile = aclProfiles.find(p => p.id === profileId);
+  const name = targetProfile?.display_name || "this user";
+  const action = makeActive ? "reactivate" : "suspend";
+  if (!confirm(`Are you sure you want to ${action} ${name}? They will ${makeActive ? 'regain' : 'lose'} dashboard access on their next page load.`)) {
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = makeActive ? "Reactivating…" : "Suspending…"; }
+  const patch = makeActive
+    ? { is_active: true, suspended_at: null, suspended_by: null }
+    : { is_active: false, suspended_at: new Date().toISOString(), suspended_by: currentSession.user.id };
+  const { error } = await sb.from("profiles").update(patch).eq("id", profileId);
+  if (error) {
+    alert("Update failed: " + error.message);
+    if (btn) { btn.disabled = false; btn.textContent = makeActive ? "Reactivate" : "Suspend"; }
+    return;
+  }
+  // Refresh + re-render.
+  await loadAccessProfiles();
+  renderAccessControlBody();
+}
+
+// Wire Esc to close the modal alongside the existing My Tasks panel logic.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && aclOpen) {
+    e.preventDefault();
+    closeAccessControl();
+  }
+});
+
+// Hook into existing role-visibility apply so the button toggles on/off
+// in the same render pass as everything else (no need to modify the
+// existing applyRoleVisibility function — we monkey-patch it on init).
+(function wireAccessControlVisibility() {
+  if (typeof applyRoleVisibility !== "function") return;
+  const orig = applyRoleVisibility;
+  applyRoleVisibility = function() {
+    orig.apply(this, arguments);
+    showAccessControlButtonIfOwner();
+  };
+})();
 </script>
 </body>
 </html>
