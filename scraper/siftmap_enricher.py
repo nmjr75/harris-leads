@@ -457,43 +457,82 @@ async def search_via_input(page: Page, full_address: str) -> bool:
         return False
 
     # Wait for the autocomplete dropdown to populate.
-    await page.wait_for_timeout(2500)
+    await page.wait_for_timeout(3500)
 
-    # Click the first autocomplete result. DataSift typically renders these
-    # as styled options under the input — try a few selector patterns.
+    # Verified from the captured raw_panel_text on 2026-05-11: DataSift's
+    # autocomplete renders a "SUGGESTIONS" header followed by clickable rows
+    # whose visible text is the full address (e.g.
+    # "10001 Chesterfield Dr, Houston, TX 77051"). The earlier class-based
+    # selectors all missed — the panel showed "Unknown / - Bds / 0 Properties
+    # of Results" because no suggestion was actually selected. Robust fix:
+    # click the element whose text matches the address we just typed.
     clicked = False
-    for sel in [
-        '[class*="autocomplete"] [class*="Item"]',
-        '[class*="Autocomplete"] [class*="Item"]',
-        '[class*="SuggestionItem"]',
-        '[class*="result-item"]',
-        '[role="option"]',
-        '[class*="DropdownItem"]',
-    ]:
-        try:
-            opt = page.locator(sel).first
-            if await opt.count() > 0 and await opt.is_visible():
-                await opt.click()
-                clicked = True
-                break
-        except Exception:
+    # Try progressively shorter prefixes since DataSift may format the
+    # suggestion with different spacing / punctuation than what we typed.
+    candidates = [
+        full_address,                            # exact full match
+        full_address.split(",")[0],              # street portion only
+    ]
+    for needle in candidates:
+        if not needle.strip():
             continue
+        try:
+            # Use text-based locator; first() = first occurrence (the
+            # SUGGESTIONS dropdown will show this before any history/recent).
+            loc = page.get_by_text(needle, exact=False).first
+            if await loc.count() > 0:
+                try:
+                    await loc.scroll_into_view_if_needed(timeout=1500)
+                except Exception:
+                    pass
+                await loc.click(timeout=3000)
+                clicked = True
+                log.info("Clicked autocomplete suggestion by text: %r", needle[:50])
+                break
+        except Exception as e:
+            log.debug("get_by_text(%r) click failed: %s", needle[:50], e)
+            continue
+
     if not clicked:
-        # Fallback: just press Enter to submit the typed value.
+        # Last-resort: press Enter. Sometimes DataSift accepts the typed
+        # value directly.
         try:
             await search_input.press("Enter")
+            log.info("Suggestion click missed; pressed Enter as fallback")
         except Exception:
             return False
 
-    # Give the SPA time to fetch + render the detail panel.
-    await page.wait_for_timeout(10_000)
+    # Wait for the SPA to actually FETCH + POPULATE the detail panel.
+    # The placeholder state shows "Unknown" / "- Bds" / "undefined Sqft";
+    # the loaded state shows real numbers. Poll up to 25s for the panel to
+    # transition out of the placeholder state.
+    await page.wait_for_timeout(3000)
     await dismiss_popups(page)
-    try:
-        await page.wait_for_selector(
-            'text=/EST\\.?\\s*VALUE|EQUITY|BDS/i', timeout=10_000
+    populated = False
+    for attempt in range(12):  # 12 * 2s = 24s max
+        try:
+            body = await page.locator("body").inner_text(timeout=3000)
+        except Exception:
+            body = ""
+        upper = body.upper()
+        # Indicators of populated state: real numbers next to BDS/SQFT/EQUITY,
+        # NOT '- Bds', 'undefined Sqft', or 'Unknown EQUITY'.
+        looks_populated = (
+            ("UNDEFINED SQFT" not in upper) and
+            ("- BDS" not in upper) and
+            ("- BA" not in upper) and
+            (re.search(r"\d+\s*BDS?", upper) is not None or
+             re.search(r"\d+\s*SQFT", upper) is not None or
+             re.search(r"\$[\d,]{3,}", upper) is not None)
         )
-    except Exception:
-        pass
+        if looks_populated:
+            populated = True
+            log.info("Detail panel populated after %ds wait", (attempt + 1) * 2)
+            break
+        await page.wait_for_timeout(2000)
+
+    if not populated:
+        log.warning("Detail panel never left placeholder state; will scrape anyway")
     return True
 
 
