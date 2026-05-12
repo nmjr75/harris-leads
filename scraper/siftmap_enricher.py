@@ -207,29 +207,60 @@ def parse_money(s: str | None) -> float | None:
 
 # ── Panel scrape + parse ─────────────────────────────────────────────
 async def find_property_panel_text(page: Page) -> str | None:
-    """Return the inner_text of the right-side Property Details panel,
-    or None if it never rendered. Tries several selectors so we degrade
-    gracefully if DataSift renames classes."""
-    for sel in PANEL_SELECTOR_CANDIDATES:
+    """Return the inner_text of whatever container holds the SiftMap
+    Property Details. Strategy: find candidates by class, pick the
+    LARGEST text blob (not first/smallest), and fall back to the full
+    body text — the regex parser anchors on unique labels ('EST. VALUE',
+    'EQUITY', 'BDS', '% EQUITY'), so a wider blob is safe.
+    """
+    # Strategy 1: every plausible panel container; keep the largest.
+    selectors = [
+        '[class*="PropertyDetails"]',
+        '[class*="property-details"]',
+        '[class*="DrawerPanel"]',
+        '[class*="SidePanel"]',
+        '[class*="DetailPanel"]',
+        'aside',
+    ]
+    best_text = ""
+    for sel in selectors:
         try:
-            loc = page.locator(sel).first
-            if await loc.count() > 0 and await loc.is_visible():
-                txt = await loc.inner_text()
-                if txt and ("EQUITY" in txt.upper() or "EST" in txt.upper() or "BDS" in txt.upper()):
-                    return txt
+            locs = page.locator(sel)
+            n = await locs.count()
+            for i in range(min(n, 12)):
+                try:
+                    t = await locs.nth(i).inner_text(timeout=2000)
+                    if t and len(t) > len(best_text):
+                        best_text = t
+                except Exception:
+                    continue
         except Exception:
             continue
-    # Last resort: anchor on "EST. VALUE" text + walk up to a container.
+
+    if best_text and len(best_text) > 200 and \
+       any(k in best_text.upper() for k in ("EQUITY", "EST", "BDS", "SQFT")):
+        return best_text
+
+    # Strategy 2: anchor on 'EST. VALUE' text and walk up 6 levels.
     try:
         loc = page.locator('text=/EST\\.?\\s*VALUE/i').first
         if await loc.count() > 0:
-            txt = await loc.evaluate(
-                "el => { let n=el; for(let i=0;i<6;i++){ if(!n.parentElement)break; n=n.parentElement;} return n.innerText||''; }"
+            t = await loc.evaluate(
+                "el => { let n=el; for(let i=0;i<8;i++){ if(!n.parentElement)break; n=n.parentElement;} return n.innerText||''; }"
             )
-            if txt and len(txt) > 50:
-                return txt
+            if t and len(t) > 200:
+                return t
     except Exception:
         pass
+
+    # Strategy 3: dump entire body. Regex labels are unique enough.
+    try:
+        t = await page.locator("body").inner_text(timeout=5000)
+        if t and any(k in t.upper() for k in ("EQUITY", "EST. VALUE", "EST VALUE")):
+            return t
+    except Exception:
+        pass
+
     return None
 
 
@@ -332,8 +363,16 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
         log.warning("nav failed for %s: %s", full[:60], e)
         return None
 
-    await page.wait_for_timeout(7000)
+    # SiftMap's React panel + map tiles take 8-12s on a cold session.
+    # Wait long enough that the right-side detail panel is fully rendered
+    # before we scrape; otherwise we capture a header-only stub (152 chars).
+    await page.wait_for_timeout(12000)
     await dismiss_popups(page)
+    # Best-effort wait for the property-details marker. Falls through on timeout.
+    try:
+        await page.wait_for_selector('text=/EST\\.?\\s*VALUE|EQUITY|BDS/i', timeout=8000)
+    except Exception:
+        pass
 
     panel = await find_property_panel_text(page)
     now_iso = datetime.now(timezone.utc).isoformat()
