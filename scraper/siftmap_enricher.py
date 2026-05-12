@@ -677,7 +677,13 @@ async def main() -> int:
         await browser.close()
 
     log.info("Done. successes=%d failures=%d total=%d", successes, failures, len(pending))
-    return 0 if failures == 0 else 1
+    # Backfill semantics: a partial-success run is still useful; we only
+    # want the workflow to go red on catastrophic failure (login failed
+    # OR every single lookup failed). Otherwise return 0 so the daily cron
+    # doesn't email "FAILED" when most lookups succeeded.
+    if successes == 0 and failures > 0:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
