@@ -1853,12 +1853,15 @@
     display: flex; gap: 6px;
   }
   .pillar-score-btn {
-    flex: 1; padding: 7px 0; border-radius: 7px; cursor: pointer;
-    font-size: 0.74rem; font-weight: 700; letter-spacing: 0.03em;
-    text-transform: uppercase;
+    flex: 1; padding: 7px 6px; border-radius: 7px; cursor: pointer;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0;
+    text-transform: none;
     background: var(--surface); color: var(--text-muted);
     border: 1px solid var(--border);
     transition: all .12s ease;
+    white-space: normal; line-height: 1.2; min-height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
   }
   .pillar-score-btn:hover { color: var(--text); border-color: rgba(124,92,252,.5); }
   .pillar-score-btn.active.cold {
@@ -5736,15 +5739,42 @@ document.addEventListener("keydown", (e) => {
 // ARV, repair estimate) that the upcoming Deal tab will visualize.
 // Auto-saves to lead_deal_data on every change.
 
+// Per-pillar score-button labels. Score 1 = worst signal (cold/red),
+// 2 = middle (warm/yellow), 3 = best signal (hot/green). Domain-specific
+// per pillar so VAs see meaningful options instead of generic Cold/Warm/Hot.
 const PILLARS = [
   { key: "motivation", label: "Motivation",    icon: "🔥",
-    question: "Why are they selling? Pain level? How committed?" },
+    question: "Why are they selling? Pain level? How committed?",
+    options: [
+      { score: 1, label: "Cold", kind: "cold" },
+      { score: 2, label: "Warm", kind: "warm" },
+      { score: 3, label: "Hot",  kind: "hot"  },
+    ],
+  },
   { key: "timeline",   label: "Timeline",      icon: "⏱️",
-    question: "When do they need to sell by? Asap, 30 days, no rush?" },
+    question: "When do they need to sell by?",
+    options: [
+      { score: 1, label: "90+ days",   kind: "cold" },
+      { score: 2, label: "46–90 days", kind: "warm" },
+      { score: 3, label: "0–45 days",  kind: "hot"  },
+    ],
+  },
   { key: "condition",  label: "Condition",     icon: "🏚️",
-    question: "Property condition — rent-ready, light, medium, heavy, tear-down?" },
+    question: "Property condition — how much work does it need?",
+    options: [
+      { score: 1, label: "No repairs",      kind: "cold" },
+      { score: 2, label: "Minor repairs",   kind: "warm" },
+      { score: 3, label: "Upgrades needed", kind: "hot"  },
+    ],
+  },
   { key: "price",      label: "Asking Price",  icon: "💵",
-    question: "Is their number reasonable for this deal?" },
+    question: "Is their number reasonable for this deal?",
+    options: [
+      { score: 1, label: "Over retail",            kind: "cold" },
+      { score: 2, label: "Under retail",           kind: "warm" },
+      { score: 3, label: "−80% of current value",  kind: "hot"  },
+    ],
+  },
 ];
 
 async function loadLeadDealData() {
@@ -5805,10 +5835,19 @@ function renderQualificationTab(contactId) {
     const score = row[`${p.key}_score`];
     const notes = row[`${p.key}_notes`] || "";
     const sCls  = score ? `score-${score}` : "";
-    const btn = (val, label, kind) => `
-      <button class="pillar-score-btn ${score === val ? `active ${kind}` : ""}"
-        onclick="setPillarScore('${contactId}','${p.key}',${score === val ? "null" : val})">${label}</button>
-    `;
+    // Buttons render from per-pillar options array so labels can be
+    // pillar-specific ("0–45 days" vs "Hot", etc.) without losing the
+    // shared cold/warm/hot color theme.
+    const opts = p.options || [
+      { score: 1, label: "Cold", kind: "cold" },
+      { score: 2, label: "Warm", kind: "warm" },
+      { score: 3, label: "Hot",  kind: "hot"  },
+    ];
+    const btns = opts.map(o => `
+      <button class="pillar-score-btn ${score === o.score ? `active ${o.kind}` : ""}"
+        onclick="setPillarScore('${contactId}','${p.key}',${score === o.score ? "null" : o.score})"
+        title="${escapeHtml(o.label)}">${escapeHtml(o.label)}</button>
+    `).join("");
     return `
       <div class="pillar-cell ${sCls}">
         <div class="pillar-head">
@@ -5816,9 +5855,7 @@ function renderQualificationTab(contactId) {
         </div>
         <div class="pillar-question">${escapeHtml(p.question)}</div>
         <div class="pillar-score-row">
-          ${btn(1, "Cold", "cold")}
-          ${btn(2, "Warm", "warm")}
-          ${btn(3, "Hot",  "hot")}
+          ${btns}
         </div>
         <textarea class="pillar-notes"
           placeholder="Notes — what did they say?"
