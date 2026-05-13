@@ -1935,6 +1935,84 @@
   .pillar-score-header.tier-warm .tier-label { color: rgb(252, 211, 77); }
   .pillar-score-header.tier-hot  .tier-label { color: rgb(134, 239, 172); }
 
+  /* ── Deal tab: MAO thermometer + spread visualization ────────── */
+  .deal-thermo-wrap {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .deal-thermo-verdict {
+    font-size: 0.92rem; font-weight: 600; line-height: 1.4;
+    margin-bottom: 14px;
+  }
+  .deal-thermo-verdict.good { color: rgb(134, 239, 172); }
+  .deal-thermo-verdict.bad  { color: rgb(252, 165, 165); }
+  .deal-thermo-verdict.unknown { color: var(--text-muted); }
+  .deal-thermo-bar {
+    position: relative; height: 28px;
+    background: linear-gradient(to right,
+      rgba(34, 197, 94, 0.35) 0%,
+      rgba(34, 197, 94, 0.35) 65%,
+      rgba(245, 158, 11, 0.35) 80%,
+      rgba(239, 68, 68, 0.4) 100%);
+    border-radius: 14px; margin: 14px 0 28px 0;
+    border: 1px solid var(--border);
+  }
+  .deal-thermo-marker {
+    position: absolute; top: -6px;
+    width: 4px; height: 40px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+  }
+  .deal-thermo-marker.asking { background: rgb(252, 211, 77); }
+  .deal-thermo-marker.mao    { background: rgb(124, 92, 252); }
+  .deal-thermo-marker.arv    { background: rgb(96, 165, 250); }
+  .deal-thermo-marker .label {
+    position: absolute; top: -22px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; white-space: nowrap;
+    padding: 2px 6px; border-radius: 4px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .deal-thermo-marker .value {
+    position: absolute; top: 44px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.74rem; font-weight: 600;
+    white-space: nowrap; color: var(--text);
+  }
+  .deal-thermo-marker.asking .label { color: rgb(252, 211, 77); border-color: rgba(245,158,11,.5); }
+  .deal-thermo-marker.mao    .label { color: rgb(196, 181, 253); border-color: rgba(124,92,252,.5); }
+  .deal-thermo-marker.arv    .label { color: rgb(147, 197, 253); border-color: rgba(59,130,246,.5); }
+
+  .deal-mao-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px;
+    display: flex; flex-wrap: wrap; gap: 18px;
+    align-items: center; justify-content: space-between;
+  }
+  .deal-mao-card .stack { display: flex; flex-direction: column; gap: 3px; }
+  .deal-mao-card .stack .lbl {
+    font-size: 0.72rem; color: var(--text-muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .deal-mao-card .stack .val { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+  .deal-mao-card .stack .val.good { color: rgb(134, 239, 172); }
+  .deal-mao-card .stack .val.bad  { color: rgb(252, 165, 165); }
+  .deal-mao-card .formula {
+    font-size: 0.74rem; color: var(--text-muted);
+    font-family: ui-monospace, monospace;
+    background: var(--surface); padding: 6px 10px;
+    border-radius: 6px; border: 1px solid var(--border);
+  }
+  .deal-mao-override {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font-size: 0.95rem; font-family: inherit;
+    width: 140px; font-weight: 600;
+  }
+  .deal-mao-override:focus { outline: none; border-color: var(--accent); }
+
   #crmNotesContainer .notes-input-row { align-items: flex-start; }
   #crmNotesContainer .notes-input {
     min-height: 180px;
@@ -6007,6 +6085,199 @@ async function saveDealField(contactId, field, rawValue) {
   openCrmPanel = function(contactId) {
     orig.apply(this, arguments);
     if (contactId) renderQualificationTab(contactId);
+  };
+})();
+
+// ── Phase 3: Deal tab (MAO thermometer) ───────────────────────────
+// Visualizes Asking vs MAO vs ARV on a horizontal bar so the VA can
+// see at a glance whether the deal is chase-able. MAO = ARV × 0.70
+// − Repair Estimate (70% rule, REI standard). VA can override MAO
+// directly via the mao_override field.
+const MAO_FORMULA_FACTOR = 0.70;
+
+function fmtUSD(n) {
+  if (n == null || isNaN(n)) return "—";
+  const v = Math.round(Number(n));
+  if (Math.abs(v) >= 1_000_000) return "$" + (v / 1_000_000).toFixed(2) + "M";
+  if (Math.abs(v) >= 1_000)     return "$" + Math.round(v / 1_000) + "K";
+  return "$" + v.toLocaleString();
+}
+function fmtUSDExact(n) {
+  if (n == null || isNaN(n)) return "—";
+  return "$" + Math.round(Number(n)).toLocaleString();
+}
+
+function computeMao(row) {
+  const arv = Number(row.arv);
+  const rep = Number(row.repair_estimate) || 0;
+  const override = row.mao_override;
+  if (override != null && override !== "" && !isNaN(override)) {
+    return { value: Number(override), source: "override" };
+  }
+  if (!isNaN(arv) && arv > 0) {
+    return { value: Math.max(0, arv * MAO_FORMULA_FACTOR - rep), source: "formula" };
+  }
+  return { value: null, source: "missing" };
+}
+
+function renderDealTab(contactId) {
+  const target = document.getElementById("crmPaneDeal");
+  if (!target) return;
+  const row = getDealRow(contactId);
+  const asking = Number(row.asking_price);
+  const agentOffer = Number(row.agent_offer);
+  const arv = Number(row.arv);
+  const repair = Number(row.repair_estimate) || 0;
+  const mao = computeMao(row);
+
+  // Scale the bar to ARV (right edge) so all markers fit. If ARV missing,
+  // fall back to max(asking, mao_override) × 1.2 so the user can still see
+  // their data.
+  const scaleMax = !isNaN(arv) && arv > 0
+    ? arv
+    : Math.max(
+        !isNaN(asking) ? asking : 0,
+        mao.value || 0,
+      ) * 1.2 || 500_000;
+
+  const pct = (v) => {
+    if (v == null || isNaN(v) || scaleMax <= 0) return null;
+    return Math.max(0, Math.min(100, (v / scaleMax) * 100));
+  };
+
+  const askingPct = pct(asking);
+  const maoPct    = pct(mao.value);
+  const arvPct    = !isNaN(arv) && arv > 0 ? 100 : null;
+
+  // Verdict line.
+  let verdictHtml = `<span class="deal-thermo-verdict unknown">Enter ARV + Repair Estimate to compute MAO.</span>`;
+  if (mao.value != null && !isNaN(asking)) {
+    const spread = mao.value - asking;
+    if (spread >= 0) {
+      verdictHtml = `<span class="deal-thermo-verdict good">✓ Asking is <strong>${fmtUSDExact(Math.abs(spread))}</strong> below MAO — chase aggressively.</span>`;
+    } else {
+      verdictHtml = `<span class="deal-thermo-verdict bad">✗ Asking is <strong>${fmtUSDExact(Math.abs(spread))}</strong> above MAO — pass unless they negotiate.</span>`;
+    }
+  } else if (mao.value != null) {
+    verdictHtml = `<span class="deal-thermo-verdict unknown">MAO calculated. Enter their asking price to see the spread.</span>`;
+  }
+
+  const marker = (cls, label, value, percent) => {
+    if (percent == null) return "";
+    return `
+      <div class="deal-thermo-marker ${cls}" style="left:${percent}%">
+        <span class="label">${escapeHtml(label)}</span>
+        <span class="value">${escapeHtml(fmtUSDExact(value))}</span>
+      </div>
+    `;
+  };
+
+  // Reuse the same money-input layout as the Qualification tab so editing
+  // is identical here. Same fields → same lead_deal_data row → same auto-save.
+  const moneyField = (key, label, placeholder) => {
+    const v = row[key];
+    return `
+      <div class="pillar-deal-cell">
+        <label>${escapeHtml(label)}</label>
+        <input type="number" step="100" inputmode="decimal"
+          value="${v == null ? "" : escapeHtml(String(v))}"
+          placeholder="${escapeHtml(placeholder)}"
+          oninput="onDealMoneyInput('${contactId}','${key}',this.value)"
+          onchange="onDealMoneyChange('${contactId}','${key}',this.value)" />
+      </div>
+    `;
+  };
+
+  const maoOverrideValue = row.mao_override == null ? "" : String(row.mao_override);
+  const maoValueClass = mao.value != null && !isNaN(asking)
+    ? (mao.value >= asking ? "good" : "bad")
+    : "";
+
+  target.innerHTML = `
+    <div class="deal-thermo-wrap">
+      ${verdictHtml}
+      <div class="deal-thermo-bar">
+        ${marker("asking", "Asking",  asking,     askingPct)}
+        ${marker("mao",    "MAO",     mao.value,  maoPct)}
+        ${marker("arv",    "ARV",     arv,        arvPct)}
+      </div>
+    </div>
+
+    <h4 class="crm-section-title">Deal Math</h4>
+    <div class="pillar-deal-row">
+      ${moneyField("asking_price",    "Their asking price", "e.g. 300000")}
+      ${moneyField("agent_offer",     "Agent's offer (if any)", "e.g. 285000")}
+      ${moneyField("arv",             "ARV (after repair value)", "e.g. 400000")}
+      ${moneyField("repair_estimate", "Repair estimate", "e.g. 35000")}
+    </div>
+
+    <h4 class="crm-section-title" style="margin-top:22px">MAO (Max Allowable Offer)</h4>
+    <div class="deal-mao-card">
+      <div class="stack">
+        <span class="lbl">Computed MAO</span>
+        <span class="val ${maoValueClass}">${escapeHtml(fmtUSDExact(mao.value))}</span>
+        <span class="formula">ARV × ${MAO_FORMULA_FACTOR} − Repair ${mao.source === "override" ? "(overridden)" : ""}</span>
+      </div>
+      <div class="stack">
+        <span class="lbl">Spread vs Asking</span>
+        <span class="val ${maoValueClass}">${
+          mao.value != null && !isNaN(asking)
+            ? (mao.value - asking >= 0 ? "+" : "−") + fmtUSDExact(Math.abs(mao.value - asking)).replace("$", "$")
+            : "—"
+        }</span>
+      </div>
+      <div class="stack">
+        <span class="lbl">Override MAO</span>
+        <input type="number" step="100" class="deal-mao-override"
+          value="${escapeHtml(maoOverrideValue)}"
+          placeholder="(use formula)"
+          oninput="onDealMoneyInput('${contactId}','mao_override',this.value)"
+          onchange="onDealMaoOverrideChange('${contactId}',this.value)" />
+      </div>
+    </div>
+
+    ${row.updated_at ? `<div style="color:var(--text-muted);font-size:0.72rem;margin-top:14px">Last edited ${escapeHtml(new Date(row.updated_at).toLocaleString())}</div>` : ""}
+  `;
+}
+
+// When the MAO override is committed, re-render so the visualization picks
+// up the new value (regular onDealMoneyChange already does the save; this
+// just adds the redraw).
+async function onDealMaoOverrideChange(contactId, value) {
+  await onDealMoneyChange(contactId, "mao_override", value);
+  renderDealTab(contactId);
+}
+
+// Also re-render the Deal tab when any money field is committed, so the
+// thermometer + spread reflect new ARV/Repair/Asking immediately.
+(function wireDealTabReRender() {
+  if (typeof onDealMoneyChange !== "function") return;
+  const orig = onDealMoneyChange;
+  onDealMoneyChange = function(contactId, field, value) {
+    const p = orig.apply(this, arguments);
+    if (crmOpen && crmActiveTab === "deal" && contactId) {
+      // Wait one tick for the save to complete + DATA cache update.
+      Promise.resolve(p).finally(() => renderDealTab(contactId));
+    }
+    return p;
+  };
+})();
+
+// Hook tab switch + panel open so Deal tab renders fresh on every entry.
+(function wireDealTabRender() {
+  if (typeof switchCrmTab !== "function") return;
+  const orig = switchCrmTab;
+  switchCrmTab = function(tab) {
+    orig.apply(this, arguments);
+    if (tab === "deal" && crmContactId) renderDealTab(crmContactId);
+  };
+})();
+(function wirePrefetchDealOnOpen() {
+  if (typeof openCrmPanel !== "function") return;
+  const orig = openCrmPanel;
+  openCrmPanel = function(contactId) {
+    orig.apply(this, arguments);
+    if (contactId) renderDealTab(contactId);
   };
 })();
 </script>
