@@ -6181,6 +6181,10 @@ function _coerceDealValue(field, rawValue) {
     if (!Number.isFinite(n)) return null;
     return Math.max(MAO_FACTOR_MIN, Math.min(MAO_FACTOR_MAX, n));
   }
+  if (field === "subject_sqft") {
+    const n = parseInt(String(rawValue).replace(/[,]/g, ""), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
   return String(rawValue);
 }
 
@@ -6568,11 +6572,49 @@ function computeAdjusted(comp) {
   return sale + adj;
 }
 
-function computeAverageArv(contactId) {
+// Per-comp $/sqft: (sale + adjustment) / sqft. Used for the averaging
+// step. Comps missing either sale_price or sqft are excluded.
+function computeCompPpsf(comp) {
+  if (!comp) return null;
+  const sale = Number(comp.sale_price);
+  const adj  = Number(comp.adjustment_amount) || 0;
+  const sqft = Number(comp.sqft);
+  if (!Number.isFinite(sale) || sale <= 0) return null;
+  if (!Number.isFinite(sqft) || sqft <= 0) return null;
+  return (sale + adj) / sqft;
+}
+
+function computeAveragePpsf(contactId) {
   const arr = DATA.leadComps?.[contactId] || [];
-  const adjusted = arr.map(computeAdjusted).filter(v => v != null && v > 0);
-  if (adjusted.length === 0) return null;
-  return adjusted.reduce((a, b) => a + b, 0) / adjusted.length;
+  const ppsfs = arr.map(computeCompPpsf).filter(v => v != null && v > 0);
+  if (ppsfs.length === 0) return null;
+  return ppsfs.reduce((a, b) => a + b, 0) / ppsfs.length;
+}
+
+// Subject property's living-area sqft. Priority:
+//   1. lead_deal_data.subject_sqft (per-deal manual entry)
+//   2. property_overrides.sqft (VA correction on Property tab)
+//   3. property_enrichment.sqft (DataSift cached)
+function getSubjectSqft(contactId) {
+  const deal = getDealRow(contactId);
+  if (deal.subject_sqft != null && deal.subject_sqft > 0) return Number(deal.subject_sqft);
+  // Pull from property overrides/enrichment via the row's address.
+  const row = findLeadByContactId(contactId);
+  const addr = row ? fullAddressFor(row) : null;
+  if (!addr) return null;
+  const norm = normalizeAddress(addr.split(",")[0] || "");
+  const ovr = DATA.propertyOverrides?.[norm];
+  if (ovr?.sqft != null && ovr.sqft > 0) return Number(ovr.sqft);
+  const cached = DATA.propertyEnrichment?.[norm];
+  if (cached?.sqft != null && cached.sqft > 0) return Number(cached.sqft);
+  return null;
+}
+
+function computeArvFromComps(contactId) {
+  const avgPpsf = computeAveragePpsf(contactId);
+  const subj    = getSubjectSqft(contactId);
+  if (avgPpsf == null || subj == null) return null;
+  return avgPpsf * subj;
 }
 
 function renderCompsTab(contactId) {
@@ -6584,12 +6626,15 @@ function renderCompsTab(contactId) {
     const sale   = Number(c.sale_price);
     const sqft   = Number(c.sqft);
     const adjAmt = Number(c.adjustment_amount) || 0;
-    const ppsf   = (Number.isFinite(sale) && sale > 0 && Number.isFinite(sqft) && sqft > 0)
-      ? sale / sqft : null;
-    const adjusted = (Number.isFinite(sale) && sale > 0) ? sale + adjAmt : null;
+    // $/sqft applies the per-comp adjustment to the sale price, then
+    // divides by the comp's sqft. This is the value that gets averaged
+    // across all filled comps to derive the subject's ARV.
+    const adjustedSale = (Number.isFinite(sale) && sale > 0) ? sale + adjAmt : null;
+    const ppsf   = (adjustedSale != null && Number.isFinite(sqft) && sqft > 0)
+      ? adjustedSale / sqft : null;
     const summary = [
-      ppsf != null ? `$${Math.round(ppsf)}/sqft` : null,
-      adjusted != null ? `Adj: ${fmtUSDExact(adjusted)}` : null,
+      ppsf != null ? `$${ppsf.toFixed(2)}/sqft` : null,
+      (adjAmt !== 0 && adjustedSale != null) ? `(adj sale: ${fmtUSDExact(adjustedSale)})` : null,
     ].filter(Boolean).join("  ·  ");
 
     return `
@@ -6651,22 +6696,78 @@ function renderCompsTab(contactId) {
     `;
   };
 
-  const avg = computeAverageArv(contactId);
+  const avgPpsf = computeAveragePpsf(contactId);
+  const subjectSqft = getSubjectSqft(contactId);
   const dealRow = getDealRow(contactId);
+  const computedArv = computeArvFromComps(contactId);
   const currentArv = Number(dealRow.arv);
   const arvHasValue = Number.isFinite(currentArv) && currentArv > 0;
-  const matchClass = (avg != null && arvHasValue && Math.abs(avg - currentArv) < 1) ? "matches" : "";
+  const matchClass = (computedArv != null && arvHasValue && Math.abs(computedArv - currentArv) < 1) ? "matches" : "";
+
+  // Subject sqft input — pre-populates from override/cache; user can
+  // override per-deal. Save target: lead_deal_data.subject_sqft.
+  const subjectAuto = (() => {
+    if (dealRow.subject_sqft != null) return null; // user has explicit value
+    const row = findLeadByContactId(contactId);
+    const addr = row ? fullAddressFor(row) : null;
+    if (!addr) return null;
+    const norm = normalizeAddress(addr.split(",")[0] || "");
+    const ovr = DATA.propertyOverrides?.[norm]?.sqft;
+    const cached = DATA.propertyEnrichment?.[norm]?.sqft;
+    if (ovr) return { value: ovr, source: "Your Property-tab override" };
+    if (cached) return { value: cached, source: "DataSift (Property tab)" };
+    return null;
+  })();
+  const subjectShownValue = dealRow.subject_sqft != null
+    ? dealRow.subject_sqft
+    : (subjectAuto?.value ?? "");
+  const subjectHint = dealRow.subject_sqft == null && subjectAuto
+    ? `<small style="color:var(--text-muted);font-size:0.7rem">Auto: ${escapeHtml(String(subjectAuto.value))} sqft from ${escapeHtml(subjectAuto.source)}</small>`
+    : "";
 
   target.innerHTML = `
-    <h4 class="crm-section-title">Three Comps — used to derive ARV</h4>
+    <div class="comp-card" style="background:var(--surface);">
+      <div class="comp-card-head">
+        <div class="comp-card-title">Subject property sqft</div>
+        <div class="comp-computed">Used to derive ARV from avg $/sqft</div>
+      </div>
+      <div class="comp-adjustment-row">
+        <div class="field">
+          <label>Living area (sqft)</label>
+          <input type="number" step="10" inputmode="numeric"
+            value="${escapeHtml(String(subjectShownValue))}"
+            placeholder="${escapeHtml(String(subjectAuto?.value || 'e.g. 1100'))}"
+            oninput="onDealMoneyInput('${contactId}','subject_sqft',this.value)"
+            onchange="onDealSubjectSqftChange('${contactId}',this.value)" />
+          ${subjectHint}
+        </div>
+        <div class="field" style="justify-content:center">
+          <label>&nbsp;</label>
+          <button type="button" class="acl-toggle-btn"
+            style="height:36px"
+            onclick="onDealSubjectSqftChange('${contactId}','')"
+            title="Reset — use DataSift / override sqft from the Property tab">↺ Use Property tab sqft</button>
+        </div>
+      </div>
+    </div>
+
+    <h4 class="crm-section-title">Three Comps — used to derive avg $/sqft</h4>
     ${compCard(1)}
     ${compCard(2)}
     ${compCard(3)}
 
     <div class="comp-summary-card ${matchClass}">
       <div class="stack">
-        <span class="lbl">Avg adjusted value (across filled comps)</span>
-        <span class="val">${escapeHtml(fmtUSDExact(avg))}</span>
+        <span class="lbl">Avg $/sqft (filled comps)</span>
+        <span class="val">${avgPpsf != null ? "$" + avgPpsf.toFixed(2) : "—"}</span>
+      </div>
+      <div class="stack">
+        <span class="lbl">× Subject sqft</span>
+        <span class="val" style="${subjectSqft ? '' : 'color:var(--text-muted)'}">${subjectSqft ? subjectSqft.toLocaleString() : "—"}</span>
+      </div>
+      <div class="stack">
+        <span class="lbl">= Computed ARV</span>
+        <span class="val">${escapeHtml(fmtUSDExact(computedArv))}</span>
       </div>
       <div class="stack">
         <span class="lbl">Current ARV (Deal tab)</span>
@@ -6674,12 +6775,17 @@ function renderCompsTab(contactId) {
       </div>
       <button class="comp-push-arv"
         onclick="pushCompAverageToArv('${contactId}')"
-        ${avg == null ? "disabled" : ""}
-        title="Copy the average adjusted value into the Deal tab's ARV field">
+        ${computedArv == null ? "disabled" : ""}
+        title="Copy the computed ARV (avg $/sqft × subject sqft) into the Deal tab">
         → Push to ARV
       </button>
     </div>
   `;
+}
+
+async function onDealSubjectSqftChange(contactId, value) {
+  await onDealMoneyChange(contactId, "subject_sqft", value);
+  renderCompsTab(contactId);
 }
 
 // Coerce comp field values to the right type before save.
@@ -6756,13 +6862,13 @@ async function onCompChange(contactId, slot, field, value) {
   renderCompsTab(contactId);
 }
 
-// Push the average adjusted value into the Deal tab's ARV field. Saves
-// to lead_deal_data and triggers a full Deal tab re-render so the
-// thermometer reflects the new ARV.
+// Push the computed ARV (avg $/sqft × subject sqft) into the Deal tab's
+// ARV field. Saves to lead_deal_data and triggers a full Deal tab re-
+// render so the thermometer reflects the new ARV.
 async function pushCompAverageToArv(contactId) {
-  const avg = computeAverageArv(contactId);
-  if (avg == null) return;
-  const rounded = Math.round(avg);
+  const computed = computeArvFromComps(contactId);
+  if (computed == null) return;
+  const rounded = Math.round(computed);
   await saveDealField(contactId, "arv", rounded);
   setCrmSavePill("saved", `ARV set to ${fmtUSDExact(rounded)}`);
   setTimeout(() => setCrmSavePill("", ""), 2500);
