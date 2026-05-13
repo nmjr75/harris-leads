@@ -6030,7 +6030,7 @@ function _coerceDealValue(field, rawValue) {
     const n = parseInt(rawValue, 10);
     return Number.isFinite(n) ? n : null;
   }
-  if (["asking_price","agent_offer","arv","repair_estimate","mao_override"].includes(field)) {
+  if (["asking_price","agent_offer","arv","repair_estimate","mao_override","assignment_fee"].includes(field)) {
     const n = parseFloat(String(rawValue).replace(/[$,]/g, ""));
     return Number.isFinite(n) ? n : null;
   }
@@ -6107,17 +6107,33 @@ function fmtUSDExact(n) {
   return "$" + Math.round(Number(n)).toLocaleString();
 }
 
+// Default assignment fee — every wholesale deal needs at least this much
+// spread to be worth contracting. Per-deal override via lead_deal_data
+// .assignment_fee (mig 034); fallback to this constant when null.
+const DEFAULT_ASSIGNMENT_FEE = 15000;
+
+function getAssignmentFee(row) {
+  const v = row?.assignment_fee;
+  if (v == null || v === "" || isNaN(v)) return DEFAULT_ASSIGNMENT_FEE;
+  return Number(v);
+}
+
 function computeMao(row) {
   const arv = Number(row.arv);
   const rep = Number(row.repair_estimate) || 0;
+  const fee = getAssignmentFee(row);
   const override = row.mao_override;
   if (override != null && override !== "" && !isNaN(override)) {
-    return { value: Number(override), source: "override" };
+    return { value: Number(override), source: "override", fee };
   }
   if (!isNaN(arv) && arv > 0) {
-    return { value: Math.max(0, arv * MAO_FORMULA_FACTOR - rep), source: "formula" };
+    return {
+      value: Math.max(0, arv * MAO_FORMULA_FACTOR - rep - fee),
+      source: "formula",
+      fee,
+    };
   }
-  return { value: null, source: "missing" };
+  return { value: null, source: "missing", fee };
 }
 
 function renderDealTab(contactId) {
@@ -6216,7 +6232,7 @@ function renderDealTab(contactId) {
       <div class="stack">
         <span class="lbl">Computed MAO</span>
         <span class="val ${maoValueClass}">${escapeHtml(fmtUSDExact(mao.value))}</span>
-        <span class="formula">ARV × ${MAO_FORMULA_FACTOR} − Repair ${mao.source === "override" ? "(overridden)" : ""}</span>
+        <span class="formula">ARV × ${MAO_FORMULA_FACTOR} − Repair − Assignment Fee ${mao.source === "override" ? "(overridden)" : ""}</span>
       </div>
       <div class="stack">
         <span class="lbl">Spread vs Asking</span>
@@ -6225,6 +6241,14 @@ function renderDealTab(contactId) {
             ? (mao.value - asking >= 0 ? "+" : "−") + fmtUSDExact(Math.abs(mao.value - asking)).replace("$", "$")
             : "—"
         }</span>
+      </div>
+      <div class="stack">
+        <span class="lbl">Assignment Fee (default $15K)</span>
+        <input type="number" step="500" class="deal-mao-override"
+          value="${row.assignment_fee == null ? "" : escapeHtml(String(row.assignment_fee))}"
+          placeholder="${DEFAULT_ASSIGNMENT_FEE}"
+          oninput="onDealMoneyInput('${contactId}','assignment_fee',this.value)"
+          onchange="onDealAssignmentFeeChange('${contactId}',this.value)" />
       </div>
       <div class="stack">
         <span class="lbl">Override MAO</span>
@@ -6245,6 +6269,13 @@ function renderDealTab(contactId) {
 // just adds the redraw).
 async function onDealMaoOverrideChange(contactId, value) {
   await onDealMoneyChange(contactId, "mao_override", value);
+  renderDealTab(contactId);
+}
+
+// Same pattern for assignment fee — saving it changes the MAO computation,
+// so we re-render the Deal tab to reflect the new MAO + spread.
+async function onDealAssignmentFeeChange(contactId, value) {
+  await onDealMoneyChange(contactId, "assignment_fee", value);
   renderDealTab(contactId);
 }
 
