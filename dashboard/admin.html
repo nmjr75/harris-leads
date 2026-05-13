@@ -6862,16 +6862,92 @@ async function onCompChange(contactId, slot, field, value) {
   renderCompsTab(contactId);
 }
 
+// Build a human-readable note summarizing the ARV calculation. Each
+// comp's address / sold date / sale price / $/sqft, then the averaged
+// values + the computed ARV. Posted as a regular note via create-ghl-
+// note so it appears in REI Reply with full attribution + shows up in
+// the dashboard's Notes panel + CRM Details Notes section.
+function buildArvCompsNote(contactId) {
+  const arr = (DATA.leadComps?.[contactId] || []).slice().sort((a, b) => (a.slot||0) - (b.slot||0));
+  const lines = ["ARV CALCULATION (Comps Analysis)", "─".repeat(36), ""];
+  const ppsfs = [];
+  for (const c of arr) {
+    const slot = c.slot || "?";
+    const sale = Number(c.sale_price);
+    const sqft = Number(c.sqft);
+    const adj  = Number(c.adjustment_amount) || 0;
+    if (!Number.isFinite(sale) || sale <= 0 || !Number.isFinite(sqft) || sqft <= 0) {
+      lines.push(`Comp ${slot}: (incomplete — skipped)`);
+      lines.push("");
+      continue;
+    }
+    const ppsf = (sale + adj) / sqft;
+    ppsfs.push(ppsf);
+    const addr = (c.address || "(no address)").trim();
+    const sold = c.sold_date || "—";
+    const adjLabel = adj !== 0 ? ` (adjusted ${adj > 0 ? "+" : "−"}$${Math.abs(adj).toLocaleString()})` : "";
+    lines.push(`Comp ${slot}: ${addr}`);
+    lines.push(`  Sold ${sold} · $${sale.toLocaleString()}${adjLabel} · ${sqft.toLocaleString()} sqft · $${ppsf.toFixed(2)}/sqft`);
+    lines.push("");
+  }
+  const avgPpsf = ppsfs.length ? ppsfs.reduce((a, b) => a + b, 0) / ppsfs.length : null;
+  const subject = getSubjectSqft(contactId);
+  const arv = (avgPpsf != null && subject != null) ? avgPpsf * subject : null;
+
+  if (avgPpsf != null) {
+    lines.push(`Average $/sqft: $${avgPpsf.toFixed(2)}  (across ${ppsfs.length} comp${ppsfs.length === 1 ? "" : "s"})`);
+  }
+  lines.push(`Subject sqft: ${subject != null ? subject.toLocaleString() : "—"}`);
+  if (arv != null) {
+    lines.push(`Computed ARV: $${Math.round(arv).toLocaleString()}  (= $${avgPpsf.toFixed(2)} × ${subject.toLocaleString()})`);
+  }
+  return lines.join("\n");
+}
+
+// Saves a note via the same create-ghl-note Edge Function the manual
+// Notes panel uses → note lands in REI Reply with proper VA attribution
+// AND in ghl_contact_notes (visible in row-level Notes panel + CRM Details).
+async function postArvNote(contactId, body) {
+  const row = findLeadByContactId(contactId);
+  const conversationId = row?.conversation_id || (contactId ? `contact:${contactId}` : null);
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-ghl-note`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession?.access_token || ""}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({ contactId, conversationId, body }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    return resp.ok && result.ok;
+  } catch (e) {
+    console.error("postArvNote failed:", e);
+    return false;
+  }
+}
+
 // Push the computed ARV (avg $/sqft × subject sqft) into the Deal tab's
-// ARV field. Saves to lead_deal_data and triggers a full Deal tab re-
-// render so the thermometer reflects the new ARV.
+// ARV field AND log a note summarizing the comps + calculation. The note
+// flows through create-ghl-note so it appears in REI Reply + dashboard.
 async function pushCompAverageToArv(contactId) {
   const computed = computeArvFromComps(contactId);
   if (computed == null) return;
   const rounded = Math.round(computed);
   await saveDealField(contactId, "arv", rounded);
-  setCrmSavePill("saved", `ARV set to ${fmtUSDExact(rounded)}`);
-  setTimeout(() => setCrmSavePill("", ""), 2500);
+
+  // Build + post the summary note. Runs in parallel with re-render.
+  const noteBody = buildArvCompsNote(contactId);
+  setCrmSavePill("saving", "Logging note…");
+  const noteOk = await postArvNote(contactId, noteBody);
+  if (noteOk) {
+    setCrmSavePill("saved", `ARV set to ${fmtUSDExact(rounded)} · note logged`);
+  } else {
+    setCrmSavePill("error", `ARV set, but note save failed`);
+  }
+  setTimeout(() => setCrmSavePill("", ""), 3500);
+
   // Re-render both tabs so user sees the change reflected.
   renderCompsTab(contactId);
   if (typeof renderDealTab === "function") renderDealTab(contactId);
