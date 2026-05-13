@@ -2345,7 +2345,24 @@ let DATA = {
   // Drill-down list of calls for the Call Activity tab. Refreshed when the
   // tab is opened or when a date-range filter changes.
   calls: [],
+  // VA-editable corrections keyed by normalized_address. Loaded once on
+  // page load + refreshed via realtime on changes. Override values WIN
+  // over property_enrichment values when present.
+  propertyOverrides: {},
+  // Per-contact deal-qualification + deal-math data (Four Pillars, ARV,
+  // MAO, asking, etc.) keyed by contact_id. Populated lazily when the CRM
+  // panel opens — most contacts will never have a row here.
+  leadDealData: {},
+  // Per-contact comp rows. Keyed by contact_id → array of up to 3 comps.
+  leadComps: {},
 };
+
+// CRM Details slide-out panel state.
+let crmOpen = false;
+let crmContactId = null;
+let crmActiveTab = "property";
+const crmSaveTimers = {};   // field_key -> debounce timeout
+
 // Call Activity tab state.
 let currentCallRange = "today";  // "today" | "yesterday" | "7d" | "30d" | "custom"
 let currentCallAgentFilter = "all";
@@ -3290,6 +3307,7 @@ async function loadAll() {
     loadMyTasks(),
     loadCallsTodayByUser(),
     loadPropertyEnrichment(),
+    loadPropertyOverrides(),
   ]);
   // Hit List slim-row conversation_id lookup runs after the parallel batch
   // because it depends on both DATA.leads + DATA.hitList being populated.
@@ -4369,6 +4387,7 @@ function renderLeads() {
               ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
               ${slimCid ? renderTasksButton(r) : ""}
               ${slimCid ? `<button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${slimCidEsc}')" title="View / add notes">📝 Notes${slimNoteCount ? ` <span class="badge">${slimNoteCount}</span>` : ""}</button>` : ""}
+              ${r.contact_id ? `<button class="btn-crm-details" onclick="event.stopPropagation(); openCrmPanel('${escapeHtml(r.contact_id)}')" title="Open lead details">📋 Details</button>` : ""}
               ${slimCid ? `<button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${slimCidEsc}')" title="Change pipeline stage">${renderStageBadge(slimStageKey)} ▾</button>` : ""}
               ${renderAssignmentControl(r)}
             </div>
@@ -4448,6 +4467,7 @@ function renderLeads() {
             ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
             ${renderTasksButton(r)}
             <button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${cidEsc}')" title="View / add notes">📝 Notes${noteCount ? ` <span class="badge">${noteCount}</span>` : ""}</button>
+            <button class="btn-crm-details" onclick="event.stopPropagation(); openCrmPanel('${escapeHtml(r.contact_id || '')}')" title="Open lead details (property data, qualification, deal math, comps)">📋 Details</button>
             <button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${cidEsc}')" title="Change pipeline stage">${renderStageBadge(stageKey)} ▾</button>
             ${renderAssignmentControl(r)}
           </div>
@@ -5169,6 +5189,357 @@ document.addEventListener("keydown", (e) => {
   applyRoleVisibility = function() {
     orig.apply(this, arguments);
     showAccessControlButtonIfOwner();
+  };
+})();
+
+// ── CRM Details slide-out panel ───────────────────────────────────
+// Triggered by the 📋 Details button on every row. Phase 1 ships the
+// Property tab fully functional (edit overrides for beds/baths/sqft/
+// year/value/mortgage with per-field locks). Other tabs are placeholders
+// for the next phases.
+
+// Load every property_overrides row into DATA.propertyOverrides on page
+// load. Cheap: one row per address that's been touched, much smaller than
+// the enrichment table.
+async function loadPropertyOverrides() {
+  const { data, error } = await sb.from("property_overrides").select(
+    "normalized_address, bedrooms, bathrooms, sqft, year_built, " +
+    "estimated_value, mortgage_balance, condition, condition_notes, " +
+    "free_form_notes, locked_fields, updated_at"
+  );
+  if (error) {
+    if (error.code === "42P01") {  // table doesn't exist yet
+      DATA.propertyOverrides = {};
+      return;
+    }
+    console.error("loadPropertyOverrides:", error);
+    return;
+  }
+  DATA.propertyOverrides = {};
+  for (const r of (data || [])) {
+    if (r.normalized_address) DATA.propertyOverrides[r.normalized_address] = r;
+  }
+}
+
+// ── Panel open / close / tab switch ────────────────────────────────
+function openCrmPanel(contactId) {
+  if (!contactId) return;
+  crmContactId = contactId;
+  crmActiveTab = "property";
+  // Reset tab UI state.
+  document.querySelectorAll(".crm-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === "property"));
+  document.querySelectorAll(".crm-tab-pane").forEach(p => p.classList.toggle("active", p.id === "crmPaneProperty"));
+  // Update header text from the lead row we know about.
+  populateCrmHeader(contactId);
+  // Show the panel + backdrop.
+  document.getElementById("crmBackdrop").classList.add("open");
+  document.getElementById("crmPanel").classList.add("open");
+  crmOpen = true;
+  // Render the default Property tab.
+  renderPropertyTab(contactId);
+}
+
+function closeCrmPanel() {
+  document.getElementById("crmBackdrop").classList.remove("open");
+  document.getElementById("crmPanel").classList.remove("open");
+  crmOpen = false;
+  crmContactId = null;
+}
+
+function switchCrmTab(tab) {
+  crmActiveTab = tab;
+  document.querySelectorAll(".crm-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  const targetPaneId = "crmPane" + tab.charAt(0).toUpperCase() + tab.slice(1);
+  document.querySelectorAll(".crm-tab-pane").forEach(p => p.classList.toggle("active", p.id === targetPaneId));
+  if (tab === "property" && crmContactId) renderPropertyTab(crmContactId);
+}
+
+function populateCrmHeader(contactId) {
+  const row = findLeadByContactId(contactId);
+  const titleEl = document.getElementById("crmTitle");
+  const subEl   = document.getElementById("crmSubtitle");
+  const addrChip = document.getElementById("crmAddressChip");
+  const phoneChip = document.getElementById("crmPhoneChip");
+  const asgnChip = document.getElementById("crmAssigneeChip");
+  const savePill = document.getElementById("crmSavePill");
+  if (savePill) savePill.textContent = "";
+  if (!row) {
+    if (titleEl) titleEl.textContent = "Lead Details";
+    if (subEl)   subEl.textContent = "(contact not in current list)";
+    if (addrChip) addrChip.textContent = "—";
+    if (phoneChip) phoneChip.textContent = "—";
+    if (asgnChip)  { asgnChip.style.display = "none"; }
+    return;
+  }
+  if (titleEl) titleEl.textContent = row.contact_name || "(no name)";
+  if (subEl) {
+    const scoreLabel = row.score ? `${row.score} lead` : "Unscored";
+    subEl.textContent = `${scoreLabel} · contact_id: ${contactId}`;
+  }
+  const addr = fullAddressFor(row) || row.texted_property_address;
+  if (addrChip) addrChip.innerHTML = addr ? `🏠 <strong>${escapeHtml(addr)}</strong>` : "—";
+  if (phoneChip) phoneChip.innerHTML = row.phone ? `📞 <strong>${escapeHtml(row.phone)}</strong>` : "—";
+  const a = DATA.assignments?.[contactId];
+  if (a?.assigned_to_email && asgnChip) {
+    const label = ASSIGNEES.find(x => x.email === a.assigned_to_email)?.label || a.assigned_to_email.split("@")[0];
+    asgnChip.innerHTML = `👤 assigned to <strong>${escapeHtml(label)}</strong>`;
+    asgnChip.style.display = "";
+  } else if (asgnChip) {
+    asgnChip.style.display = "none";
+  }
+}
+
+function findLeadByContactId(contactId) {
+  if (!contactId) return null;
+  const fromLeads = (DATA.leads || []).find(r => r.contact_id === contactId);
+  if (fromLeads) return fromLeads;
+  const opp = DATA.hitList?.[contactId];
+  if (opp) {
+    return {
+      contact_id: contactId,
+      contact_name: opp.contact_name || null,
+      phone: opp.phone || null,
+      conversation_id: opp.conversation_id || null,
+      _hitListOpp: opp,
+    };
+  }
+  return null;
+}
+
+// ── Property tab — side-by-side cached vs override form ───────────
+// 8 fields: bedrooms / bathrooms / sqft / year_built / estimated_value /
+// mortgage_balance / condition / free_form_notes. Each row shows:
+//   label | cached value (read-only) | override input | 🔒 lock toggle
+// Auto-saves to property_overrides with an 800ms debounce after the
+// last keystroke. Lock toggle saves immediately and tells the SiftMap
+// enricher not to overwrite that field on its next run.
+const CRM_PROP_FIELDS = [
+  { key: "bedrooms",         label: "Bedrooms",        type: "int" },
+  { key: "bathrooms",        label: "Bathrooms",       type: "float" },
+  { key: "sqft",             label: "Sqft",            type: "int" },
+  { key: "year_built",       label: "Year Built",      type: "int" },
+  { key: "estimated_value",  label: "Estimated Value", type: "money" },
+  { key: "mortgage_balance", label: "Mortgage Bal.",   type: "money" },
+  { key: "condition",        label: "Condition",       type: "text", options: ["Light", "Medium", "Heavy", "Tear-down"] },
+  { key: "free_form_notes",  label: "Notes",           type: "textarea" },
+];
+
+function renderPropertyTab(contactId) {
+  const target = document.getElementById("crmPropertyContent");
+  if (!target) return;
+  const row = findLeadByContactId(contactId);
+  const addr = row ? fullAddressFor(row) : null;
+  if (!addr) {
+    target.innerHTML = `
+      <div class="crm-coming-soon">
+        <h3>No address on this contact</h3>
+        <p>This lead has no address attached, so there's nothing to enrich. Add an address in REI Reply and refresh.</p>
+      </div>`;
+    return;
+  }
+  const street = addr.split(",")[0] || "";
+  const norm = normalizeAddress(street);
+  const cached = (DATA.propertyEnrichment && DATA.propertyEnrichment[norm]) || {};
+  const ovr    = (DATA.propertyOverrides   && DATA.propertyOverrides[norm])   || {};
+  const lockedFields = Array.isArray(ovr.locked_fields) ? ovr.locked_fields : [];
+
+  const fmtCached = (key, type) => {
+    const v = cached[key];
+    if (v == null || v === "") return `<span class="cached empty">(no data)</span>`;
+    if (type === "money") return `<span class="cached">$${Number(v).toLocaleString()}</span>`;
+    return `<span class="cached">${escapeHtml(String(v))}</span>`;
+  };
+  const inputFor = (key, type) => {
+    const v = ovr[key];
+    const locked = lockedFields.includes(key);
+    const lockedCls = locked ? " locked" : "";
+    if (type === "textarea") {
+      return `<textarea class="override${lockedCls}" rows="2"
+        onchange="onCrmPropChange('${norm}','${key}',this.value)"
+        oninput="onCrmPropInput('${norm}','${key}',this.value)"
+        placeholder="(no notes)">${escapeHtml(v == null ? "" : String(v))}</textarea>`;
+    }
+    if (type === "text" && CRM_PROP_FIELDS.find(f => f.key === key)?.options) {
+      const opts = CRM_PROP_FIELDS.find(f => f.key === key).options;
+      return `<select class="override${lockedCls}" onchange="onCrmPropChange('${norm}','${key}',this.value)">
+        <option value="">— select —</option>
+        ${opts.map(o => `<option value="${escapeHtml(o)}" ${v === o ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+      </select>`;
+    }
+    const inputType = (type === "int" || type === "float" || type === "money") ? "number" : "text";
+    const step = type === "float" ? "0.5" : (type === "money" ? "100" : "1");
+    return `<input type="${inputType}" step="${step}" class="override${lockedCls}" value="${v == null ? "" : escapeHtml(String(v))}"
+      oninput="onCrmPropInput('${norm}','${key}',this.value)"
+      onchange="onCrmPropChange('${norm}','${key}',this.value)"
+      placeholder="(no override)">`;
+  };
+  const lockBtn = (key) => {
+    const locked = lockedFields.includes(key);
+    return `<button class="crm-lock ${locked ? "active" : ""}"
+      onclick="toggleCrmLock('${norm}','${key}')"
+      title="${locked ? 'Locked — SiftMap will NOT overwrite this field.' : 'Unlocked — SiftMap can overwrite.'}">
+      ${locked ? "🔒" : "🔓"}
+    </button>`;
+  };
+
+  const lastEditedLine = ovr.updated_at
+    ? `<div style="color:var(--text-muted);font-size:0.72rem;margin-top:14px">Last edited ${escapeHtml(new Date(ovr.updated_at).toLocaleString())}</div>`
+    : "";
+
+  target.innerHTML = `
+    <h4 class="crm-section-title">Property Data — DataSift cached vs your overrides</h4>
+    <div class="crm-prop-grid">
+      <div class="col-label-head">Field</div>
+      <div class="col-cached-head">DataSift Value</div>
+      <div class="col-override-head">Your Override</div>
+      <div class="col-lock-head" title="Lock prevents the scraper from overwriting">🔒</div>
+      ${CRM_PROP_FIELDS.map(f => `
+        <div class="label">${escapeHtml(f.label)}</div>
+        <div>${fmtCached(f.key, f.type)}</div>
+        <div>${inputFor(f.key, f.type)}</div>
+        <div>${lockBtn(f.key)}</div>
+      `).join("")}
+    </div>
+    ${lastEditedLine}
+  `;
+}
+
+// ── Auto-save (debounced 800ms) ────────────────────────────────────
+function setCrmSavePill(state, text) {
+  const el = document.getElementById("crmSavePill");
+  if (!el) return;
+  el.className = "crm-save-pill" + (state ? " " + state : "");
+  el.textContent = text || "";
+}
+
+function onCrmPropInput(norm, field, value) {
+  // Debounce: clear any prior timer + reset; live state = "saving in 800ms"
+  setCrmSavePill("saving", "Editing…");
+  const k = norm + "::" + field;
+  if (crmSaveTimers[k]) clearTimeout(crmSaveTimers[k]);
+  crmSaveTimers[k] = setTimeout(() => {
+    saveCrmPropField(norm, field, value);
+  }, 800);
+}
+function onCrmPropChange(norm, field, value) {
+  // Blur/change event — save immediately (cancel any pending debounce).
+  const k = norm + "::" + field;
+  if (crmSaveTimers[k]) { clearTimeout(crmSaveTimers[k]); delete crmSaveTimers[k]; }
+  saveCrmPropField(norm, field, value);
+}
+
+function _coerceCrmFieldValue(field, rawValue) {
+  if (rawValue === "" || rawValue == null) return null;
+  const def = CRM_PROP_FIELDS.find(f => f.key === field);
+  const type = def?.type;
+  if (type === "int") {
+    const n = parseInt(rawValue, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (type === "float" || type === "money") {
+    const n = parseFloat(String(rawValue).replace(/[$,]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  return String(rawValue).trim() || null;
+}
+
+async function saveCrmPropField(norm, field, rawValue) {
+  if (!norm) return;
+  const coerced = _coerceCrmFieldValue(field, rawValue);
+  // Build the upsert payload — merge with anything currently in memory so
+  // we don't blow away other fields the user touched moments ago.
+  const existing = DATA.propertyOverrides[norm] || {};
+  const patch = { ...existing, [field]: coerced };
+  patch.normalized_address = norm;
+  patch.updated_by = currentSession?.user?.id || null;
+  patch.updated_at = new Date().toISOString();
+  if (!Array.isArray(patch.locked_fields)) patch.locked_fields = [];
+
+  // Strip read-only/computed cols.
+  delete patch.created_at;
+
+  setCrmSavePill("saving", "Saving…");
+  const { error } = await sb.from("property_overrides")
+    .upsert(patch, { onConflict: "normalized_address" });
+  if (error) {
+    console.error("saveCrmPropField:", error);
+    setCrmSavePill("error", "Save failed");
+    return;
+  }
+  // Update in-memory cache so subsequent renders show the new value.
+  DATA.propertyOverrides[norm] = patch;
+  setCrmSavePill("saved", "Saved");
+  // Auto-clear the saved pill after 2.5s.
+  setTimeout(() => {
+    if (document.getElementById("crmSavePill")?.textContent === "Saved") setCrmSavePill("", "");
+  }, 2500);
+  // Re-render the table chips so the dashboard shows the corrected values.
+  if (typeof renderLeads === "function") renderLeads();
+}
+
+async function toggleCrmLock(norm, field) {
+  if (!norm) return;
+  const existing = DATA.propertyOverrides[norm] || {};
+  const locked = Array.isArray(existing.locked_fields) ? [...existing.locked_fields] : [];
+  const idx = locked.indexOf(field);
+  if (idx >= 0) locked.splice(idx, 1); else locked.push(field);
+  const patch = {
+    ...existing,
+    normalized_address: norm,
+    locked_fields: locked,
+    updated_by: currentSession?.user?.id || null,
+    updated_at: new Date().toISOString(),
+  };
+  delete patch.created_at;
+  setCrmSavePill("saving", "Updating lock…");
+  const { error } = await sb.from("property_overrides")
+    .upsert(patch, { onConflict: "normalized_address" });
+  if (error) {
+    console.error("toggleCrmLock:", error);
+    setCrmSavePill("error", "Lock failed");
+    return;
+  }
+  DATA.propertyOverrides[norm] = patch;
+  setCrmSavePill("saved", "Locked");
+  setTimeout(() => {
+    if (document.getElementById("crmSavePill")?.textContent === "Locked") setCrmSavePill("", "");
+  }, 2000);
+  // Re-render this tab so the lock icon flips.
+  if (crmContactId) renderPropertyTab(crmContactId);
+}
+
+// Esc closes the CRM panel.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && crmOpen) {
+    e.preventDefault();
+    closeCrmPanel();
+  }
+});
+
+// Bridge: when the dashboard renders chips inline (renderPropertyChips
+// in admin.html), it reads DATA.propertyEnrichment. Let's also check
+// DATA.propertyOverrides so override values appear in the row chips too.
+// We monkey-patch propertyEnrichmentFor() if it exists.
+(function wirePropertyOverridesIntoChips() {
+  if (typeof propertyEnrichmentFor !== "function") return;
+  const orig = propertyEnrichmentFor;
+  propertyEnrichmentFor = function(row) {
+    const cached = orig.apply(this, arguments) || null;
+    const addr = fullAddressFor(row);
+    if (!addr) return cached;
+    const norm = normalizeAddress(addr.split(",")[0] || "");
+    const ovr = DATA.propertyOverrides && DATA.propertyOverrides[norm];
+    if (!ovr) return cached;
+    // Merge: override values win over enrichment values.
+    return {
+      ...(cached || {}),
+      bedrooms:        ovr.bedrooms        ?? cached?.bedrooms,
+      bathrooms:       ovr.bathrooms       ?? cached?.bathrooms,
+      sqft:            ovr.sqft            ?? cached?.sqft,
+      year_built:      ovr.year_built      ?? cached?.year_built,
+      estimated_value: ovr.estimated_value ?? cached?.estimated_value,
+      _hasOverride:    true,
+    };
   };
 })();
 </script>
