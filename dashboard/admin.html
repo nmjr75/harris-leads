@@ -2013,6 +2013,38 @@
   }
   .deal-mao-override:focus { outline: none; border-color: var(--accent); }
 
+  /* MAO factor slider row — sits above the MAO card on the Deal tab. */
+  .mao-factor-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 16px; margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .mao-factor-row .lbl {
+    font-size: 0.78rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .mao-factor-row input[type="range"] {
+    flex: 1; min-width: 180px;
+    accent-color: var(--accent);
+    height: 4px;
+  }
+  .mao-factor-value {
+    font-family: ui-monospace, monospace;
+    font-size: 1.05rem; font-weight: 700; color: var(--accent-light);
+    min-width: 64px; text-align: center;
+  }
+  .mao-factor-hint {
+    color: var(--text-muted); font-size: 0.72rem;
+    font-family: ui-monospace, monospace;
+  }
+  .mao-factor-reset {
+    background: var(--surface); color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 10px; font-size: 0.72rem; cursor: pointer;
+  }
+  .mao-factor-reset:hover { color: var(--text); border-color: var(--accent); }
+
   #crmNotesContainer .notes-input-row { align-items: flex-start; }
   #crmNotesContainer .notes-input {
     min-height: 180px;
@@ -6034,6 +6066,11 @@ function _coerceDealValue(field, rawValue) {
     const n = parseFloat(String(rawValue).replace(/[$,]/g, ""));
     return Number.isFinite(n) ? n : null;
   }
+  if (field === "mao_factor") {
+    const n = parseFloat(String(rawValue));
+    if (!Number.isFinite(n)) return null;
+    return Math.max(MAO_FACTOR_MIN, Math.min(MAO_FACTOR_MAX, n));
+  }
   return String(rawValue);
 }
 
@@ -6093,7 +6130,15 @@ async function saveDealField(contactId, field, rawValue) {
 // see at a glance whether the deal is chase-able. MAO = ARV × 0.70
 // − Repair Estimate (70% rule, REI standard). VA can override MAO
 // directly via the mao_override field.
-const MAO_FORMULA_FACTOR = 0.70;
+const MAO_FORMULA_FACTOR = 0.70;       // default when row.mao_factor is null
+const MAO_FACTOR_MIN     = 0.60;
+const MAO_FACTOR_MAX     = 0.78;
+
+function getMaoFactor(row) {
+  const v = row?.mao_factor;
+  if (v == null || v === "" || isNaN(v)) return MAO_FORMULA_FACTOR;
+  return Math.max(MAO_FACTOR_MIN, Math.min(MAO_FACTOR_MAX, Number(v)));
+}
 
 function fmtUSD(n) {
   if (n == null || isNaN(n)) return "—";
@@ -6122,18 +6167,20 @@ function computeMao(row) {
   const arv = Number(row.arv);
   const rep = Number(row.repair_estimate) || 0;
   const fee = getAssignmentFee(row);
+  const factor = getMaoFactor(row);
   const override = row.mao_override;
   if (override != null && override !== "" && !isNaN(override)) {
-    return { value: Number(override), source: "override", fee };
+    return { value: Number(override), source: "override", fee, factor };
   }
   if (!isNaN(arv) && arv > 0) {
     return {
-      value: Math.max(0, arv * MAO_FORMULA_FACTOR - rep - fee),
+      value: Math.max(0, arv * factor - rep - fee),
       source: "formula",
       fee,
+      factor,
     };
   }
-  return { value: null, source: "missing", fee };
+  return { value: null, source: "missing", fee, factor };
 }
 
 function renderDealTab(contactId) {
@@ -6228,11 +6275,29 @@ function renderDealTab(contactId) {
     </div>
 
     <h4 class="crm-section-title" style="margin-top:22px">MAO (Max Allowable Offer)</h4>
+
+    <!-- Per-deal MAO multiplier — adjustable 0.60–0.78 so VAs can dial in
+         per-city aggressiveness (Houston tighter, Tampa looser, etc.). -->
+    <div class="mao-factor-row">
+      <span class="lbl">MAO factor:</span>
+      <input type="range"
+        min="${MAO_FACTOR_MIN}" max="${MAO_FACTOR_MAX}" step="0.01"
+        value="${mao.factor}"
+        id="maoFactorSlider"
+        oninput="onMaoFactorInput('${contactId}', this.value)"
+        onchange="onMaoFactorChange('${contactId}', this.value)" />
+      <span class="mao-factor-value" id="maoFactorValue">× ${mao.factor.toFixed(2)}</span>
+      <span class="mao-factor-hint">${MAO_FACTOR_MIN.toFixed(2)} – ${MAO_FACTOR_MAX.toFixed(2)}</span>
+      <button type="button" class="mao-factor-reset"
+        onclick="onDealMaoFactorReset('${contactId}')"
+        title="Reset to default 0.70">↺ Default</button>
+    </div>
+
     <div class="deal-mao-card">
       <div class="stack">
         <span class="lbl">Computed MAO</span>
         <span class="val ${maoValueClass}">${escapeHtml(fmtUSDExact(mao.value))}</span>
-        <span class="formula">ARV × ${MAO_FORMULA_FACTOR} − Repair − Assignment Fee ${mao.source === "override" ? "(overridden)" : ""}</span>
+        <span class="formula">ARV × <strong>${mao.factor.toFixed(2)}</strong> − Repair − Assignment Fee ${mao.source === "override" ? "(overridden)" : ""}</span>
       </div>
       <div class="stack">
         <span class="lbl">Spread vs Asking</span>
@@ -6276,6 +6341,30 @@ async function onDealMaoOverrideChange(contactId, value) {
 // so we re-render the Deal tab to reflect the new MAO + spread.
 async function onDealAssignmentFeeChange(contactId, value) {
   await onDealMoneyChange(contactId, "assignment_fee", value);
+  renderDealTab(contactId);
+}
+
+// MAO factor slider — update the live "× 0.72" label as the slider drags
+// (no DB write yet), then commit + recompute on release. Avoids hammering
+// Supabase with one write per pixel of slider movement.
+function onMaoFactorInput(contactId, value) {
+  const lbl = document.getElementById("maoFactorValue");
+  if (lbl) lbl.textContent = "× " + Number(value).toFixed(2);
+  setCrmSavePill("saving", "Editing…");
+  const k = `deal::${contactId}::mao_factor`;
+  if (crmSaveTimers[k]) clearTimeout(crmSaveTimers[k]);
+  crmSaveTimers[k] = setTimeout(() => {
+    saveDealField(contactId, "mao_factor", value).then(() => renderDealTab(contactId));
+  }, 400);
+}
+async function onMaoFactorChange(contactId, value) {
+  const k = `deal::${contactId}::mao_factor`;
+  if (crmSaveTimers[k]) { clearTimeout(crmSaveTimers[k]); delete crmSaveTimers[k]; }
+  await saveDealField(contactId, "mao_factor", value);
+  renderDealTab(contactId);
+}
+async function onDealMaoFactorReset(contactId) {
+  await saveDealField(contactId, "mao_factor", null);
   renderDealTab(contactId);
 }
 
