@@ -368,20 +368,32 @@ def parse_panel(text: str) -> dict[str, Any]:
                 out["mortgage_balance"] = v
                 break
 
-    # Last sale (price + date). Labels: "Last Sale Date", "Last Sale Price",
-    # "Sale Date", "Sale Price".
-    m = re.search(r"LAST\s+SALE\s+PRICE\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper) \
-        or re.search(r"SALE\s+PRICE\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
-    if m: out["last_sale_price"] = parse_money("$" + m.group(1))
-
-    m = re.search(r"LAST\s+SALE\s+DATE\s*[:\n]+\s*([\d/\-]{6,10})", upper) \
-        or re.search(r"SALE\s+DATE\s*[:\n]+\s*([\d/\-]{6,10})", upper)
+    # Last sale (price + date) — DataSift renders Transaction History as a
+    # 5-column table (Sale Date / Sale Price / Buyer / Seller / Cash Sale)
+    # with each row's columns split across consecutive lines:
+    #     Transaction History
+    #     Show less
+    #     Sale Date
+    #     Sale Price
+    #     Buyer
+    #     Seller
+    #     Cash Sale
+    #     05/18/16
+    #     $162,200
+    #     HENRY ISSAAC
+    #     ...
+    # The most recent sale is the FIRST date+price pair after the
+    # "Transaction History" header. Match that pattern directly.
+    m = re.search(
+        r"TRANSACTION\s+HISTORY[\s\S]{0,400}?"
+        r"(\d{1,2}/\d{1,2}/\d{2,4})\s*\n\s*\$\s*([\d,]+(?:\.\d+)?)",
+        upper,
+    )
     if m:
-        # Accept "MM/DD/YYYY" or "YYYY-MM-DD" — pass through as ISO if possible.
         ds = m.group(1)
         try:
             from datetime import datetime as _dt
-            for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y"):
+            for fmt in ("%m/%d/%y", "%m/%d/%Y"):
                 try:
                     out["last_sale_date"] = _dt.strptime(ds, fmt).date().isoformat()
                     break
@@ -389,6 +401,7 @@ def parse_panel(text: str) -> dict[str, Any]:
                     continue
         except Exception:
             pass
+        out["last_sale_price"] = parse_money("$" + m.group(2))
 
     # Tax delinquent value + year.
     m = re.search(r"TAX\s+DELINQUENT\s+VALUE\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
