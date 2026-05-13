@@ -2081,6 +2081,33 @@
     align-self: flex-start;
   }
 
+  /* Tax & Sale records section — read-only chips below the override grid */
+  .tax-sale-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 720px) {
+    .tax-sale-grid { grid-template-columns: 1fr; }
+  }
+  .tax-sale-cell {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .tax-sale-cell .lbl {
+    font-size: 0.7rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+  }
+  .tax-sale-cell .val {
+    font-size: 1.05rem; font-weight: 600; color: var(--text);
+    font-family: ui-monospace, monospace;
+  }
+  .tax-sale-cell .val .empty {
+    color: rgba(148,163,184,.5); font-style: italic; font-weight: 400;
+    font-family: inherit;
+  }
+
   /* ── Access Control modal (owner-only) ─────────────────────────── */
   .acl-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,.55);
@@ -3011,7 +3038,8 @@ async function loadPropertyEnrichment() {
   const { data, error } = await sb.from("property_enrichment").select(
     "normalized_address, bedrooms, bathrooms, sqft, year_built, " +
     "structure_type, ownership_type, estimated_value, equity_pct, " +
-    "mls_status, days_on_market, owner_occupied, off_market, source"
+    "mls_status, days_on_market, owner_occupied, off_market, source, " +
+    "mortgage_balance, county_assessed_value, last_sale_price, last_sale_date"
   );
   if (error) {
     if (error.code === "42P01") {
@@ -5769,6 +5797,22 @@ function renderPropertyTab(contactId) {
         <div>${inputFor(f.key, f.type)}</div>
         <div>${lockBtn(f.key)}</div>
       `).join("")}
+    </div>
+
+    <h4 class="crm-section-title" style="margin-top:22px">Tax & Sale Records (from DataSift)</h4>
+    <div class="tax-sale-grid">
+      <div class="tax-sale-cell">
+        <span class="lbl">County Assessed Value</span>
+        <span class="val">${cached.county_assessed_value != null ? "$" + Number(cached.county_assessed_value).toLocaleString() : "<span class='empty'>—</span>"}</span>
+      </div>
+      <div class="tax-sale-cell">
+        <span class="lbl">Last Sale Price</span>
+        <span class="val">${cached.last_sale_price != null ? "$" + Number(cached.last_sale_price).toLocaleString() : "<span class='empty'>—</span>"}</span>
+      </div>
+      <div class="tax-sale-cell">
+        <span class="lbl">Last Sale Date</span>
+        <span class="val">${cached.last_sale_date ? escapeHtml(new Date(cached.last_sale_date).toLocaleDateString("en-US", { year:"numeric", month:"short", day:"numeric" })) : "<span class='empty'>—</span>"}</span>
+      </div>
     </div>
 
     <div id="crmNotesContainer" style="margin-top:22px">
