@@ -2109,7 +2109,34 @@
       <span class="filter-pill" data-call-range="yesterday" onclick="setCallRange('yesterday')">Yesterday</span>
       <span class="filter-pill" data-call-range="7d" onclick="setCallRange('7d')">Last 7 days</span>
       <span class="filter-pill" data-call-range="30d" onclick="setCallRange('30d')">Last 30 days</span>
+      <span class="filter-pill" data-call-range="custom" onclick="openCustomRangePicker()" id="customRangePill">📅 Custom…</span>
     </div>
+
+    <!-- Custom date range picker (collapsed by default; shown when Custom pill clicked) -->
+    <div class="filter-bar" id="customRangeRow" style="display:none">
+      <span class="stage-filter-label">From:</span>
+      <input type="date" id="callRangeStart" onchange="applyCustomRange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.78rem">
+      <span class="stage-filter-label" style="margin-left:8px">To:</span>
+      <input type="date" id="callRangeEnd" onchange="applyCustomRange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.78rem">
+      <span id="customRangeLabel" style="color:var(--text-muted);font-size:0.74rem;margin-left:10px"></span>
+    </div>
+
+    <!-- Quality threshold filter (qualified conversations) -->
+    <div class="filter-bar">
+      <span class="stage-filter-label">Min duration:</span>
+      <span class="filter-pill active" data-call-min="0"   onclick="setCallMinDuration(0)">All</span>
+      <span class="filter-pill"        data-call-min="30"  onclick="setCallMinDuration(30)">30s+ <small style="opacity:.7">(qualified)</small></span>
+      <span class="filter-pill"        data-call-min="60"  onclick="setCallMinDuration(60)">1m+</span>
+      <span class="filter-pill"        data-call-min="120" onclick="setCallMinDuration(120)">2m+</span>
+      <span class="filter-pill"        data-call-min="300" onclick="setCallMinDuration(300)">5m+</span>
+    </div>
+
+    <!-- Per-VA totals for the selected date range. Computed client-side from
+         the loaded calls array so it always matches what's shown below. -->
+    <div class="filter-bar" id="callRangeSummaryRow" style="display:none;background:transparent;padding-bottom:0">
+      <div id="callRangeSummary" style="display:flex;flex-wrap:wrap;gap:10px;width:100%"></div>
+    </div>
+
     <div class="filter-bar" id="callAgentFilterBar" style="display:none">
       <span class="stage-filter-label">Agent:</span>
       <span class="filter-pill active" data-call-agent="all" onclick="setCallAgentFilter('all')">All <span class="count" data-call-agent-count="all">0</span></span>
@@ -2320,8 +2347,15 @@ let DATA = {
   calls: [],
 };
 // Call Activity tab state.
-let currentCallRange = "today";  // "today" | "yesterday" | "7d" | "30d"
+let currentCallRange = "today";  // "today" | "yesterday" | "7d" | "30d" | "custom"
 let currentCallAgentFilter = "all";
+// Custom date range (when currentCallRange === "custom"). Both are ISO date
+// strings (YYYY-MM-DD). null = unset.
+let customRangeStart = null;
+let customRangeEnd   = null;
+// Minimum-duration filter for the call drill-down. 30 = qualified
+// conversations, 60/120/300 for longer thresholds. 0 = show every call.
+let currentCallMinDuration = 0;
 // My Tasks panel state. open=true when the slide-out is visible. assignee
 // is the email we're showing tasks for; defaults to the current user but
 // admins/owner can switch via the dropdown to audit other VAs.
@@ -2379,10 +2413,18 @@ function applyRoleVisibility() {
   hide("tabBtnDeletions", isAdminOrAssignee);
   // Assignment filter bar: managers only.
   hide("assignmentFilterRow", isAssigneeRole);
-  // Call Activity agent filter bar: managers only (assignees see only
-  // their own calls thanks to RLS, so the filter is meaningless to them).
+  // Call Activity tab: Owner + Admin only (Nelson + Bernabé). Joseph/Walter
+  // should not see calls at all — they don't need to audit each other. Hide
+  // the tab button entirely so it can't even be clicked.
+  hide("tabBtnCalls", isAssigneeRole);
+  // Per-VA top-of-page call cards row: same restriction.
+  hide("callActivityRow", isAssigneeRole);
+  // Call Activity agent filter bar: managers only.
   hide("callAgentFilterBar", isAssigneeRole);
   if (isAdminOrAssignee && currentTab === "deletions") setTab("leads");
+  // If an assignee is somehow on the calls tab (refresh while on it),
+  // bounce them back to the leads tab.
+  if (isAssigneeRole && currentTab === "calls") setTab("leads");
 }
 
 async function checkAuth() {
@@ -3314,20 +3356,28 @@ async function loadCallsTodayByUser() {
 }
 
 // Drill-down call list. Pulls from ghl_calls filtered by date range +
-// optional agent. Triggered when the Call Activity tab is opened or a
-// filter changes.
+// optional agent + minimum duration. Triggered when the Call Activity
+// tab is opened or any filter changes. Bumped to limit 2000 so multi-week
+// ranges + per-VA summary aggregation work without truncation.
 async function loadCalls() {
-  const since = callRangeSince(currentCallRange);
-  let q = sb.from("ghl_calls").select("*").gte("started_at", since)
-    .order("started_at", { ascending: false }).limit(500);
+  const window = callRangeWindow(currentCallRange);
+  let q = sb.from("ghl_calls").select("*")
+    .gte("started_at", window.since)
+    .order("started_at", { ascending: false })
+    .limit(2000);
+  if (window.until) q = q.lt("started_at", window.until);
   if (currentCallAgentFilter && currentCallAgentFilter !== "all") {
     q = q.eq("agent_email", currentCallAgentFilter);
+  }
+  if (currentCallMinDuration > 0) {
+    q = q.gte("duration_seconds", currentCallMinDuration);
   }
   const { data, error } = await q;
   if (error) {
     if (error.code === "42P01") {
       DATA.calls = [];
       renderCallsTable();
+      renderCallRangeSummary();
       return;
     }
     console.error("loadCalls:", error);
@@ -3335,27 +3385,43 @@ async function loadCalls() {
   }
   DATA.calls = data || [];
   renderCallsTable();
+  renderCallRangeSummary();
 }
 
-function callRangeSince(range) {
+// Returns { since, until } as ISO timestamps. until is exclusive — null
+// means "no upper bound" (open-ended through now). All boundaries are
+// computed in Central Time so "Today" matches the VA's wall clock.
+function callRangeWindow(range) {
   const now = new Date();
   const tz = "America/Chicago";
-  // Compute "today" CT midnight as a UTC ISO timestamp.
   const todayCT = new Date(now.toLocaleString("en-US", { timeZone: tz }));
   todayCT.setHours(0, 0, 0, 0);
-  if (range === "today")     return todayCT.toISOString();
+  const tomorrowCT = new Date(todayCT); tomorrowCT.setDate(tomorrowCT.getDate() + 1);
+  if (range === "today")     return { since: todayCT.toISOString(), until: null };
   if (range === "yesterday") {
     const y = new Date(todayCT); y.setDate(y.getDate() - 1);
-    return y.toISOString();
+    return { since: y.toISOString(), until: todayCT.toISOString() };
   }
   if (range === "7d") {
-    const d = new Date(todayCT); d.setDate(d.getDate() - 7); return d.toISOString();
+    const d = new Date(todayCT); d.setDate(d.getDate() - 7);
+    return { since: d.toISOString(), until: null };
   }
   if (range === "30d") {
-    const d = new Date(todayCT); d.setDate(d.getDate() - 30); return d.toISOString();
+    const d = new Date(todayCT); d.setDate(d.getDate() - 30);
+    return { since: d.toISOString(), until: null };
   }
-  return todayCT.toISOString();
+  if (range === "custom" && customRangeStart) {
+    const start = new Date(`${customRangeStart}T00:00:00`);
+    const endStr = customRangeEnd || customRangeStart;
+    const end   = new Date(`${endStr}T00:00:00`);
+    end.setDate(end.getDate() + 1); // make end-date inclusive
+    return { since: start.toISOString(), until: end.toISOString() };
+  }
+  return { since: todayCT.toISOString(), until: null };
 }
+
+// Back-compat alias — old code paths still call callRangeSince().
+function callRangeSince(range) { return callRangeWindow(range).since; }
 
 function formatDuration(seconds) {
   if (seconds == null || seconds < 0) return "—";
@@ -3430,6 +3496,9 @@ function renderCallActivityRow() {
 }
 
 function setCallRange(range) {
+  // Hide custom-range picker unless explicitly switching TO custom.
+  const customRow = document.getElementById("customRangeRow");
+  if (customRow) customRow.style.display = (range === "custom") ? "" : "none";
   currentCallRange = range;
   document.querySelectorAll('.filter-pill[data-call-range]').forEach(el => el.classList.toggle("active", el.dataset.callRange === range));
   loadCalls();
@@ -3439,6 +3508,158 @@ function setCallAgentFilter(email) {
   currentCallAgentFilter = email;
   document.querySelectorAll('.filter-pill[data-call-agent]').forEach(el => el.classList.toggle("active", el.dataset.callAgent === email));
   loadCalls();
+}
+
+function setCallMinDuration(seconds) {
+  currentCallMinDuration = Number(seconds) || 0;
+  document.querySelectorAll('.filter-pill[data-call-min]').forEach(el => {
+    el.classList.toggle("active", Number(el.dataset.callMin) === currentCallMinDuration);
+  });
+  loadCalls();
+}
+
+// "📅 Custom…" pill opens the start+end date inputs. Default the inputs
+// to the last 7 days so the picker starts somewhere sensible.
+function openCustomRangePicker() {
+  const startEl = document.getElementById("callRangeStart");
+  const endEl   = document.getElementById("callRangeEnd");
+  const now = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+  if (!startEl.value) {
+    const a = new Date(now); a.setDate(a.getDate() - 7);
+    startEl.value = fmt(a);
+  }
+  if (!endEl.value) endEl.value = fmt(now);
+  customRangeStart = startEl.value;
+  customRangeEnd   = endEl.value;
+  setCallRange("custom");
+  updateCustomRangeLabel();
+}
+
+function applyCustomRange() {
+  const startEl = document.getElementById("callRangeStart");
+  const endEl   = document.getElementById("callRangeEnd");
+  customRangeStart = startEl.value || null;
+  customRangeEnd   = endEl.value   || customRangeStart;
+  // Swap if user reversed them.
+  if (customRangeStart && customRangeEnd && customRangeEnd < customRangeStart) {
+    [customRangeStart, customRangeEnd] = [customRangeEnd, customRangeStart];
+    startEl.value = customRangeStart;
+    endEl.value   = customRangeEnd;
+  }
+  updateCustomRangeLabel();
+  if (currentCallRange === "custom") loadCalls();
+}
+
+function updateCustomRangeLabel() {
+  const el = document.getElementById("customRangeLabel");
+  if (!el) return;
+  if (!customRangeStart) { el.textContent = ""; return; }
+  const fmt = s => {
+    const [y, m, d] = s.split("-");
+    return new Date(+y, +m - 1, +d).toLocaleDateString("en-US",
+      { month: "short", day: "numeric", year: "numeric" });
+  };
+  const end = customRangeEnd || customRangeStart;
+  if (customRangeStart === end) {
+    el.textContent = fmt(customRangeStart);
+  } else {
+    el.textContent = `${fmt(customRangeStart)} – ${fmt(end)}`;
+  }
+  // Days in range
+  const start = new Date(customRangeStart);
+  const last  = new Date(end);
+  const days  = Math.round((last - start) / 86400000) + 1;
+  el.textContent += ` · ${days} day${days === 1 ? "" : "s"}`;
+}
+
+// Per-VA summary cards for the SELECTED date range. Aggregates the
+// already-loaded DATA.calls array (so the summary always matches the
+// drill-down list below). Shown when range != "today" (the existing
+// "today" cards row at the top already covers that case).
+function renderCallRangeSummary() {
+  const wrap = document.getElementById("callRangeSummary");
+  const row  = document.getElementById("callRangeSummaryRow");
+  if (!wrap || !row) return;
+  // Hide for "today" — the top-of-page card row already shows today's data.
+  if (currentCallRange === "today") {
+    row.style.display = "none";
+    return;
+  }
+  const calls = DATA.calls || [];
+  // Bucket by agent_email.
+  const byAgent = {};
+  for (const c of calls) {
+    const key = (c.agent_email || "unknown").toLowerCase();
+    if (!byAgent[key]) {
+      byAgent[key] = {
+        email: key,
+        label: (ASSIGNEES.find(a => a.email === key)?.label) || c.agent_name || key,
+        total: 0, outbound: 0, inbound: 0,
+        qualified: 0,   // duration >= 30s
+        seconds: 0,
+        connected: 0,
+      };
+    }
+    const b = byAgent[key];
+    b.total += 1;
+    if ((c.direction || "").toLowerCase() === "inbound") b.inbound += 1;
+    else b.outbound += 1;
+    if ((c.duration_seconds || 0) >= 30) b.qualified += 1;
+    if ((c.duration_seconds || 0) > 0) b.connected += 1;
+    b.seconds += (c.duration_seconds || 0);
+  }
+
+  // Compose label for the range.
+  let label = "selected range";
+  if (currentCallRange === "yesterday") label = "yesterday";
+  else if (currentCallRange === "7d") label = "last 7 days";
+  else if (currentCallRange === "30d") label = "last 30 days";
+  else if (currentCallRange === "custom" && customRangeStart) {
+    const end = customRangeEnd || customRangeStart;
+    label = customRangeStart === end ? customRangeStart : `${customRangeStart} → ${end}`;
+  }
+
+  // Order: known assignees first, then any others.
+  const knownEmails = ASSIGNEES.map(a => a.email);
+  const ordered = [
+    ...knownEmails.map(e => byAgent[e]).filter(Boolean),
+    ...Object.values(byAgent).filter(b => !knownEmails.includes(b.email)),
+  ];
+
+  if (ordered.length === 0) {
+    wrap.innerHTML = `<div style="color:var(--text-muted);font-size:0.78rem;padding:8px">No calls in this range yet.</div>`;
+    row.style.display = "";
+    return;
+  }
+
+  wrap.innerHTML = ordered.map(b => `
+    <div class="call-card" style="min-width:200px;flex:1">
+      <div class="agent-name">
+        <span class="agent-dot ${b.total ? '' : 'idle'}"></span>
+        📞 ${escapeHtml(b.label)} — ${escapeHtml(label)}
+      </div>
+      <div class="agent-stats">
+        <div class="stat-block">
+          <div class="stat-num">${b.outbound}</div>
+          <div class="stat-name">Dials made</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-num">${formatDuration(b.seconds)}</div>
+          <div class="stat-name">Talk time</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-num" style="color:rgb(74,222,128)">${b.qualified}</div>
+          <div class="stat-name">30s+ qualified</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-num">${b.inbound}</div>
+          <div class="stat-name">Inbound</div>
+        </div>
+      </div>
+    </div>
+  `).join("");
+  row.style.display = "";
 }
 
 function reiReplyContactUrl(contactId) {
