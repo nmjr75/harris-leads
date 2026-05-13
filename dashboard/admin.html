@@ -1813,6 +1813,21 @@
     .crm-prop-grid .col-cached-head { display: none; }
   }
 
+  /* Inside the CRM panel, give the notes textarea a much larger writing
+     surface (the inline expanded-row notes panel stays compact). User can
+     still drag the bottom-right corner to grow it further. */
+  #crmNotesContainer .notes-input-row { align-items: flex-start; }
+  #crmNotesContainer .notes-input {
+    min-height: 180px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    padding: 12px 14px;
+  }
+  #crmNotesContainer .btn-save-note {
+    padding: 12px 22px;
+    align-self: flex-start;
+  }
+
   /* ── Access Control modal (owner-only) ─────────────────────────── */
   .acl-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,.55);
