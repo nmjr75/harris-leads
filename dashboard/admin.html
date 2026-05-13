@@ -4914,6 +4914,14 @@ function subscribeToNewScores() {
       ) {
         loadNotesFor(expandedDetail.convId).then(renderLeads);
       }
+      // CRM Property tab also embeds the same notes panel — re-render its
+      // copy when a note lands for the currently-open contact so Save +
+      // REI-Reply-webhook notes flow into the UI without re-clicking
+      // Details. Match by contact_id, same as above.
+      if (crmOpen && crmContactId && noteContactId === crmContactId) {
+        const row = findLeadByContactId(crmContactId);
+        if (row) renderCrmNotesSection(row);
+      }
     })
     // New stage move. Refresh the row's stage badge; if the notes panel
     // is open for that contact, reload its stage history too.
@@ -5408,25 +5416,47 @@ function renderPropertyTab(contactId) {
       `).join("")}
     </div>
 
-    <h4 class="crm-section-title" style="margin-top:22px">Notes</h4>
-    <div style="display:flex;gap:10px;align-items:flex-start">
-      <textarea class="override${notesLocked ? ' locked' : ''}"
-        id="crmNotesArea"
-        rows="10"
-        style="width:100%;min-height:220px;resize:vertical;font-family:inherit;font-size:0.88rem;line-height:1.45;padding:10px 12px"
-        placeholder="Free-form notes about this property. Anything that doesn't fit the structured fields above — condition details, conversation context, repair notes, photos to take, follow-up items, etc."
-        oninput="onCrmPropInput('${norm}','free_form_notes',this.value)"
-        onchange="onCrmPropChange('${norm}','free_form_notes',this.value)">${escapeHtml(notesValue)}</textarea>
-      <button class="crm-lock ${notesLocked ? 'active' : ''}"
-        onclick="toggleCrmLock('${norm}','free_form_notes')"
-        style="flex-shrink:0;margin-top:4px"
-        title="${notesLocked ? 'Notes locked.' : 'Lock notes from being overwritten.'}">
-        ${notesLocked ? '🔒' : '🔓'}
-      </button>
+    <div id="crmNotesContainer" style="margin-top:22px">
+      <div class="notes-empty">Loading notes…</div>
     </div>
 
     ${lastEditedLine}
   `;
+
+  // Render the shared notes panel inside the CRM tab. Same component the
+  // inline-expanded row uses → saves route through create-ghl-note Edge
+  // Function → notes appear in REI Reply with date/time/author AND show
+  // up in the row-level Notes panel automatically. No duplicate notes
+  // flow; one source of truth for the contact's note history.
+  renderCrmNotesSection(row);
+}
+
+// Loads + renders the shared notes panel inside the CRM Property tab.
+// Reuses the row-level renderNotesPanel + saveNote functions so notes
+// authored here are indistinguishable from notes authored from the inline
+// notes button — both get user-stamped, dated, persisted to Supabase, AND
+// pushed to REI Reply via create-ghl-note.
+async function renderCrmNotesSection(row) {
+  const container = document.getElementById("crmNotesContainer");
+  if (!container || !row) return;
+  const cid = row.conversation_id
+    || (row.contact_id ? `contact:${row.contact_id}` : null);
+  if (!cid) {
+    container.innerHTML = `<div class="notes-empty">No conversation attached to this contact — notes can't be saved here. Use REI Reply directly.</div>`;
+    return;
+  }
+  // Make sure row.conversation_id is set so renderNotesPanel resolves it.
+  const rowForPanel = { ...row, conversation_id: cid };
+  // Trigger the same lazy-load the inline panel uses; loadNotesFor handles
+  // synthetic contact:* IDs by resolving back to the real contact_id.
+  if (DATA.notes[cid] === undefined || DATA.stageHistory[cid] === undefined) {
+    await Promise.all([
+      loadNotesFor(cid),
+      typeof loadStageHistoryFor === "function" ? loadStageHistoryFor(cid) : Promise.resolve(),
+    ]);
+  }
+  // renderNotesPanel returns the HTML for the same component used inline.
+  container.innerHTML = renderNotesPanel(rowForPanel);
 }
 
 // ── Auto-save (debounced 800ms) ────────────────────────────────────
