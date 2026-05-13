@@ -1816,6 +1816,122 @@
   /* Inside the CRM panel, give the notes textarea a much larger writing
      surface (the inline expanded-row notes panel stays compact). User can
      still drag the bottom-right corner to grow it further. */
+  /* ── Four Pillars qualification grid ─────────────────────────── */
+  .pillar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .pillar-grid { grid-template-columns: 1fr; }
+  }
+  .pillar-cell {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    transition: border-color .15s ease;
+  }
+  .pillar-cell.score-1 { border-color: rgba(239, 68, 68, 0.55); }
+  .pillar-cell.score-2 { border-color: rgba(245, 158, 11, 0.55); }
+  .pillar-cell.score-3 { border-color: rgba(34, 197, 94, 0.55); }
+  .pillar-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+  }
+  .pillar-title {
+    font-size: 0.92rem; font-weight: 600; color: var(--text);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pillar-icon { font-size: 1.05rem; }
+  .pillar-question {
+    color: var(--text-muted); font-size: 0.74rem;
+    line-height: 1.35;
+  }
+  .pillar-score-row {
+    display: flex; gap: 6px;
+  }
+  .pillar-score-btn {
+    flex: 1; padding: 7px 0; border-radius: 7px; cursor: pointer;
+    font-size: 0.74rem; font-weight: 700; letter-spacing: 0.03em;
+    text-transform: uppercase;
+    background: var(--surface); color: var(--text-muted);
+    border: 1px solid var(--border);
+    transition: all .12s ease;
+  }
+  .pillar-score-btn:hover { color: var(--text); border-color: rgba(124,92,252,.5); }
+  .pillar-score-btn.active.cold {
+    background: rgba(239, 68, 68, 0.16); color: rgb(252, 165, 165);
+    border-color: rgba(239, 68, 68, 0.5);
+  }
+  .pillar-score-btn.active.warm {
+    background: rgba(245, 158, 11, 0.16); color: rgb(252, 211, 77);
+    border-color: rgba(245, 158, 11, 0.5);
+  }
+  .pillar-score-btn.active.hot {
+    background: rgba(34, 197, 94, 0.16); color: rgb(134, 239, 172);
+    border-color: rgba(34, 197, 94, 0.5);
+  }
+  .pillar-notes {
+    width: 100%; background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 8px 10px; font-size: 0.82rem; font-family: inherit;
+    resize: vertical; min-height: 48px; line-height: 1.4;
+  }
+  .pillar-notes:focus { outline: none; border-color: var(--accent); }
+  .pillar-deal-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    .pillar-deal-row { grid-template-columns: 1fr; }
+  }
+  .pillar-deal-cell {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .pillar-deal-cell label {
+    display: block; font-size: 0.74rem; color: var(--text-muted);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .pillar-deal-cell input {
+    width: 100%; box-sizing: border-box;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 9px 12px; font-size: 0.95rem; font-family: inherit;
+  }
+  .pillar-deal-cell input:focus { outline: none; border-color: var(--accent); }
+  .pillar-score-header {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;
+  }
+  .pillar-score-header .label {
+    font-size: 0.78rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .pillar-score-header .total {
+    font-size: 1.65rem; font-weight: 700; color: var(--text);
+  }
+  .pillar-score-header .total .max {
+    font-size: 0.95rem; color: var(--text-muted); font-weight: 500;
+  }
+  .pillar-score-header.tier-cold .total { color: rgb(252, 165, 165); }
+  .pillar-score-header.tier-warm .total { color: rgb(252, 211, 77); }
+  .pillar-score-header.tier-hot  .total { color: rgb(134, 239, 172); }
+  .pillar-score-header .tier-label {
+    font-size: 0.78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .pillar-score-header.tier-cold .tier-label { color: rgb(252, 165, 165); }
+  .pillar-score-header.tier-warm .tier-label { color: rgb(252, 211, 77); }
+  .pillar-score-header.tier-hot  .tier-label { color: rgb(134, 239, 172); }
+
   #crmNotesContainer .notes-input-row { align-items: flex-start; }
   #crmNotesContainer .notes-input {
     min-height: 180px;
@@ -3323,6 +3439,7 @@ async function loadAll() {
     loadCallsTodayByUser(),
     loadPropertyEnrichment(),
     loadPropertyOverrides(),
+    loadLeadDealData(),
   ]);
   // Hit List slim-row conversation_id lookup runs after the parallel batch
   // because it depends on both DATA.leads + DATA.hitList being populated.
@@ -5610,6 +5727,249 @@ document.addEventListener("keydown", (e) => {
       estimated_value: ovr.estimated_value ?? cached?.estimated_value,
       _hasOverride:    true,
     };
+  };
+})();
+
+// ── Phase 2: Qualification tab (Four Pillars) ─────────────────────
+// VA-driven scorecard. Each pillar has a 1/2/3 (Cold/Warm/Hot) score
+// + free-text notes. Plus the deal-math fields (asking, agent offer,
+// ARV, repair estimate) that the upcoming Deal tab will visualize.
+// Auto-saves to lead_deal_data on every change.
+
+const PILLARS = [
+  { key: "motivation", label: "Motivation",    icon: "🔥",
+    question: "Why are they selling? Pain level? How committed?" },
+  { key: "timeline",   label: "Timeline",      icon: "⏱️",
+    question: "When do they need to sell by? Asap, 30 days, no rush?" },
+  { key: "condition",  label: "Condition",     icon: "🏚️",
+    question: "Property condition — rent-ready, light, medium, heavy, tear-down?" },
+  { key: "price",      label: "Asking Price",  icon: "💵",
+    question: "Is their number reasonable for this deal?" },
+];
+
+async function loadLeadDealData() {
+  const { data, error } = await sb.from("lead_deal_data").select("*");
+  if (error) {
+    if (error.code === "42P01") {  // table missing (mig 029 not applied)
+      DATA.leadDealData = {};
+      return;
+    }
+    console.error("loadLeadDealData:", error);
+    return;
+  }
+  DATA.leadDealData = {};
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.leadDealData[r.contact_id] = r;
+  }
+}
+
+// Update the panel header's overall-score chip. Sums motivation +
+// timeline + condition + price scores (each 1-3, so total 4-12) and
+// classifies into a tier badge.
+function getDealRow(contactId) {
+  return (DATA.leadDealData && DATA.leadDealData[contactId]) || {};
+}
+
+function computeQualificationTotal(row) {
+  const scores = [row.motivation_score, row.timeline_score, row.condition_score, row.price_score];
+  const set    = scores.filter(s => s != null);
+  const total  = set.reduce((a, b) => a + (Number(b) || 0), 0);
+  const max    = set.length * 3;
+  // Tier: hot = 10+/12 across all 4, warm = 7-9, cold = 4-6, unscored = nothing set.
+  let tier = "unscored";
+  if (set.length === 4) {
+    if (total >= 10) tier = "hot";
+    else if (total >= 7) tier = "warm";
+    else tier = "cold";
+  } else if (total > 0) {
+    if (total >= Math.ceil(set.length * 2.5)) tier = "hot";
+    else if (total >= Math.ceil(set.length * 1.75)) tier = "warm";
+    else tier = "cold";
+  }
+  return { total, max, scored: set.length, tier };
+}
+
+function renderQualificationTab(contactId) {
+  const target = document.getElementById("crmPaneQualification");
+  if (!target) return;
+  const row = getDealRow(contactId);
+  const total = computeQualificationTotal(row);
+  const tierLabel = total.scored === 0
+    ? "Not yet scored"
+    : total.tier === "hot"  ? "🔥 HOT — chase this lead"
+    : total.tier === "warm" ? "⚡ WARM — worth a follow-up"
+    : "❄ COLD — drop unless something changes";
+  const tierClass = total.scored === 0 ? "" : `tier-${total.tier}`;
+
+  const pillarCellHtml = (p) => {
+    const score = row[`${p.key}_score`];
+    const notes = row[`${p.key}_notes`] || "";
+    const sCls  = score ? `score-${score}` : "";
+    const btn = (val, label, kind) => `
+      <button class="pillar-score-btn ${score === val ? `active ${kind}` : ""}"
+        onclick="setPillarScore('${contactId}','${p.key}',${score === val ? "null" : val})">${label}</button>
+    `;
+    return `
+      <div class="pillar-cell ${sCls}">
+        <div class="pillar-head">
+          <div class="pillar-title"><span class="pillar-icon">${p.icon}</span> ${escapeHtml(p.label)}</div>
+        </div>
+        <div class="pillar-question">${escapeHtml(p.question)}</div>
+        <div class="pillar-score-row">
+          ${btn(1, "Cold", "cold")}
+          ${btn(2, "Warm", "warm")}
+          ${btn(3, "Hot",  "hot")}
+        </div>
+        <textarea class="pillar-notes"
+          placeholder="Notes — what did they say?"
+          oninput="onPillarNotesInput('${contactId}','${p.key}',this.value)"
+          onchange="onPillarNotesChange('${contactId}','${p.key}',this.value)">${escapeHtml(notes)}</textarea>
+      </div>
+    `;
+  };
+
+  // Deal-math fields (asking, agent offer, ARV, repair). Phase 3 (Deal
+  // tab) will build the thermometer + MAO calc, but we surface the inputs
+  // here so VAs can capture the numbers during the same call.
+  const moneyField = (key, label, placeholder) => {
+    const v = row[key];
+    return `
+      <div class="pillar-deal-cell">
+        <label>${escapeHtml(label)}</label>
+        <input type="number" step="100" inputmode="decimal"
+          value="${v == null ? "" : escapeHtml(String(v))}"
+          placeholder="${escapeHtml(placeholder)}"
+          oninput="onDealMoneyInput('${contactId}','${key}',this.value)"
+          onchange="onDealMoneyChange('${contactId}','${key}',this.value)" />
+      </div>
+    `;
+  };
+
+  target.innerHTML = `
+    <div class="pillar-score-header ${tierClass}">
+      <div>
+        <div class="label">Qualification score</div>
+        <div class="tier-label">${escapeHtml(tierLabel)}</div>
+      </div>
+      <div class="total">${total.total}<span class="max"> / ${total.max || 12}</span></div>
+    </div>
+
+    <h4 class="crm-section-title">Four Pillars</h4>
+    <div class="pillar-grid">
+      ${PILLARS.map(pillarCellHtml).join("")}
+    </div>
+
+    <h4 class="crm-section-title" style="margin-top:22px">Deal Math (captured now, visualized on the Deal tab)</h4>
+    <div class="pillar-deal-row">
+      ${moneyField("asking_price",    "Their asking price", "e.g. 300000")}
+      ${moneyField("agent_offer",     "Agent's offer (if any)", "e.g. 285000")}
+      ${moneyField("arv",             "ARV (after repair value)", "e.g. 400000")}
+      ${moneyField("repair_estimate", "Repair estimate", "e.g. 35000")}
+    </div>
+
+    ${row.updated_at ? `<div style="color:var(--text-muted);font-size:0.72rem;margin-top:14px">Last edited ${escapeHtml(new Date(row.updated_at).toLocaleString())}</div>` : ""}
+  `;
+}
+
+// Score buttons save immediately (no debounce — single-click action).
+async function setPillarScore(contactId, pillarKey, value) {
+  const field = `${pillarKey}_score`;
+  await saveDealField(contactId, field, value);
+  // Re-render so the pillar gets its color border + the total chip updates.
+  renderQualificationTab(contactId);
+}
+
+// Textarea notes use debounce (same pattern as property override notes).
+function onPillarNotesInput(contactId, pillarKey, value) {
+  setCrmSavePill("saving", "Editing…");
+  const k = `pillar::${contactId}::${pillarKey}`;
+  if (crmSaveTimers[k]) clearTimeout(crmSaveTimers[k]);
+  crmSaveTimers[k] = setTimeout(() => {
+    saveDealField(contactId, `${pillarKey}_notes`, value);
+  }, 800);
+}
+function onPillarNotesChange(contactId, pillarKey, value) {
+  const k = `pillar::${contactId}::${pillarKey}`;
+  if (crmSaveTimers[k]) { clearTimeout(crmSaveTimers[k]); delete crmSaveTimers[k]; }
+  saveDealField(contactId, `${pillarKey}_notes`, value);
+}
+
+// Deal-math money inputs: same debounce pattern.
+function onDealMoneyInput(contactId, field, value) {
+  setCrmSavePill("saving", "Editing…");
+  const k = `deal::${contactId}::${field}`;
+  if (crmSaveTimers[k]) clearTimeout(crmSaveTimers[k]);
+  crmSaveTimers[k] = setTimeout(() => {
+    saveDealField(contactId, field, value);
+  }, 800);
+}
+function onDealMoneyChange(contactId, field, value) {
+  const k = `deal::${contactId}::${field}`;
+  if (crmSaveTimers[k]) { clearTimeout(crmSaveTimers[k]); delete crmSaveTimers[k]; }
+  saveDealField(contactId, field, value);
+}
+
+function _coerceDealValue(field, rawValue) {
+  if (rawValue === "" || rawValue == null) return null;
+  if (field.endsWith("_score")) {
+    const n = parseInt(rawValue, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (["asking_price","agent_offer","arv","repair_estimate","mao_override"].includes(field)) {
+    const n = parseFloat(String(rawValue).replace(/[$,]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  return String(rawValue);
+}
+
+async function saveDealField(contactId, field, rawValue) {
+  if (!contactId) return;
+  const coerced = _coerceDealValue(field, rawValue);
+  const existing = DATA.leadDealData[contactId] || { contact_id: contactId };
+  const patch = {
+    ...existing,
+    contact_id: contactId,
+    [field]: coerced,
+    updated_by: currentSession?.user?.id || null,
+    updated_at: new Date().toISOString(),
+  };
+  delete patch.created_at;  // server-managed
+
+  setCrmSavePill("saving", "Saving…");
+  const { error } = await sb.from("lead_deal_data")
+    .upsert(patch, { onConflict: "contact_id" });
+  if (error) {
+    console.error("saveDealField:", error);
+    setCrmSavePill("error", "Save failed");
+    return;
+  }
+  DATA.leadDealData[contactId] = patch;
+  setCrmSavePill("saved", "Saved");
+  setTimeout(() => {
+    if (document.getElementById("crmSavePill")?.textContent === "Saved") setCrmSavePill("", "");
+  }, 2000);
+}
+
+// Hook the existing tab switcher so Qualification renders fresh data on
+// each switch (the user may have edited the property tab in between).
+(function wireQualificationTabRender() {
+  if (typeof switchCrmTab !== "function") return;
+  const orig = switchCrmTab;
+  switchCrmTab = function(tab) {
+    orig.apply(this, arguments);
+    if (tab === "qualification" && crmContactId) {
+      renderQualificationTab(crmContactId);
+    }
+  };
+})();
+// Also render Qualification once on first open so the tab is hot if user
+// switches to it. openCrmPanel already calls renderPropertyTab; piggyback.
+(function wirePrefetchQualificationOnOpen() {
+  if (typeof openCrmPanel !== "function") return;
+  const orig = openCrmPanel;
+  openCrmPanel = function(contactId) {
+    orig.apply(this, arguments);
+    if (contactId) renderQualificationTab(contactId);
   };
 })();
 </script>
