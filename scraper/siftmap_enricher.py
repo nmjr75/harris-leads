@@ -538,22 +538,71 @@ async def search_via_input(page: Page, full_address: str) -> bool:
 
 async def click_owner_tab(page: Page) -> bool:
     """Click the Owner tab on the SiftMap detail panel so its content
-    (mortgage balance + owner details) becomes part of the panel text.
-    Returns True if the click landed."""
-    for sel in [
-        'button:has-text("Owner")',
-        '[role="tab"]:has-text("Owner")',
-        'div:has-text("Owner") >> visible=true',
-    ]:
-        try:
-            loc = page.locator(sel).first
-            if await loc.count() > 0 and await loc.is_visible():
-                await loc.click()
-                await page.wait_for_timeout(2500)
-                return True
-        except Exception:
-            continue
-    return False
+    (mortgage balance + owner details + last sale + county value) becomes
+    part of the panel text.
+
+    The old selector list (button:has-text("Owner") / div:has-text("Owner"))
+    failed because SiftMap renders tabs as custom styled-components whose
+    text is buried 2-3 levels deep inside a clickable parent. The fix:
+    find the literal "Owner" text node, walk UP to the first clickable
+    ancestor (button, role=tab, or pointer-cursor element), and click it.
+    """
+    try:
+        text_loc = page.get_by_text("Owner", exact=True).first
+        if await text_loc.count() == 0:
+            log.warning("Owner tab — no text node 'Owner' found")
+            return False
+        clicked = await text_loc.evaluate("""(node) => {
+            let n = node;
+            for (let i = 0; i < 8; i++) {
+                if (!n) break;
+                const tag = (n.tagName || "").toLowerCase();
+                const role = n.getAttribute ? n.getAttribute("role") : null;
+                const cursor = (window.getComputedStyle && n instanceof Element)
+                    ? window.getComputedStyle(n).cursor : "";
+                if (tag === "button" || role === "tab" || role === "button" || cursor === "pointer") {
+                    n.click();
+                    return { ok: true, depth: i, tag, role, cursor };
+                }
+                n = n.parentElement;
+            }
+            // No clickable ancestor found within 8 levels — click the
+            // text node directly as a last resort.
+            try { node.click(); return { ok: true, depth: -1, tag: "fallback" }; }
+            catch (e) { return { ok: false, error: String(e) }; }
+        }""")
+        if clicked and clicked.get("ok"):
+            log.info("Owner tab clicked (depth=%s, tag=%s, role=%s)",
+                     clicked.get("depth"), clicked.get("tag"), clicked.get("role"))
+            # Wait long enough for the React state change + content render.
+            await page.wait_for_timeout(3500)
+            # Best-effort wait for Owner-only content to appear.
+            try:
+                await page.wait_for_selector(
+                    'text=/mortgage|last\\s+sale|owner\\s+occupied|county\\s+value|assessed/i',
+                    timeout=4000,
+                )
+            except Exception:
+                pass
+            return True
+        log.warning("Owner tab click failed: %r", clicked)
+        return False
+    except Exception as e:
+        log.debug("click_owner_tab exception: %s", e)
+        return False
+
+
+async def grab_all_text(page: Page) -> str | None:
+    """Capture EVERY rendered text node on the page — visible AND hidden —
+    via textContent on the body. Some React SPAs pre-render all tab panels
+    and hide non-active ones via CSS display:none; inner_text() skips
+    hidden text but textContent doesn't. If Owner-tab data is already in
+    the DOM (just not visible), this catches it without needing to click.
+    """
+    try:
+        return await page.evaluate("() => document.body.textContent || ''")
+    except Exception:
+        return None
 
 
 async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | None:
@@ -575,17 +624,47 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
     # Capture Property tab (default view) first.
     property_text = await find_property_panel_text(page) or ""
 
-    # Then click Owner tab so its content joins the panel text. Mortgage
-    # balance + sale history typically live behind that tab.
+    # Two-pronged Owner-tab capture:
+    #   1. grab_all_text() pulls textContent from the entire body — catches
+    #      Owner-tab content that React pre-rendered but hid via CSS.
+    #   2. Click the Owner tab and re-grab inner_text — catches the case
+    #      where Owner content is lazy-loaded only when the tab is active.
+    # Combining both is defensive: we won't miss mortgage / county / sale
+    # data whichever rendering pattern SiftMap uses.
     owner_text = ""
+    full_dom_text = ""
+    try:
+        full_dom_text = (await grab_all_text(page)) or ""
+    except Exception as e:
+        log.debug("grab_all_text failed: %s", e)
+
     try:
         if await click_owner_tab(page):
             owner_text = await find_property_panel_text(page) or ""
+            # Also re-grab textContent after the click — content that wasn't
+            # in the DOM until tab activation now is.
+            try:
+                post_click_dom = (await grab_all_text(page)) or ""
+                if len(post_click_dom) > len(full_dom_text):
+                    full_dom_text = post_click_dom
+            except Exception:
+                pass
     except Exception as e:
         log.debug("click_owner_tab failed: %s", e)
 
-    combined = (property_text + "\n\n=== OWNER TAB ===\n\n" + owner_text).strip() \
-        if owner_text else property_text
+    # Combine all sources. Use the longest non-empty blob as the primary
+    # text for parsing, fall back to property_text alone if everything
+    # else came up empty.
+    sources = [
+        ("PROPERTY",  property_text),
+        ("OWNER",     owner_text),
+        ("FULL_DOM",  full_dom_text),
+    ]
+    combined_parts = []
+    for label, text in sources:
+        if text and len(text.strip()) > 50:
+            combined_parts.append(f"\n\n=== {label} ===\n\n{text.strip()}")
+    combined = "".join(combined_parts).strip() or property_text
 
     now_iso = datetime.now(timezone.utc).isoformat()
     if not combined or len(combined) < 50:
