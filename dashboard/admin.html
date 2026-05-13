@@ -2045,6 +2045,30 @@
   }
   .mao-factor-reset:hover { color: var(--text); border-color: var(--accent); }
 
+  /* Assignment Fee stepper — −/+ buttons flanking the numeric input. */
+  .fee-stepper {
+    display: inline-flex; align-items: stretch; gap: 0;
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; background: var(--surface);
+    width: fit-content;
+  }
+  .fee-stepper-btn {
+    background: var(--surface2); color: var(--text);
+    border: 0; cursor: pointer;
+    font-size: 1.1rem; font-weight: 700;
+    width: 34px;
+    transition: background .12s ease;
+  }
+  .fee-stepper-btn:hover { background: rgba(124,92,252,.18); color: var(--accent-light); }
+  .fee-stepper-input {
+    border: 0 !important; border-left: 1px solid var(--border) !important;
+    border-right: 1px solid var(--border) !important;
+    border-radius: 0 !important;
+    width: 100px !important;
+    text-align: center;
+  }
+  .fee-stepper-input:focus { box-shadow: none !important; outline: none !important; }
+
   #crmNotesContainer .notes-input-row { align-items: flex-start; }
   #crmNotesContainer .notes-input {
     min-height: 180px;
@@ -6308,12 +6332,20 @@ function renderDealTab(contactId) {
         }</span>
       </div>
       <div class="stack">
-        <span class="lbl">Assignment Fee (default $15K)</span>
-        <input type="number" step="500" class="deal-mao-override"
-          value="${row.assignment_fee == null ? "" : escapeHtml(String(row.assignment_fee))}"
-          placeholder="${DEFAULT_ASSIGNMENT_FEE}"
-          oninput="onDealMoneyInput('${contactId}','assignment_fee',this.value)"
-          onchange="onDealAssignmentFeeChange('${contactId}',this.value)" />
+        <span class="lbl">Assignment Fee ${row.assignment_fee == null ? "<small style='font-weight:400;color:var(--text-muted);text-transform:none;letter-spacing:0;'>(default)</small>" : ""}</span>
+        <div class="fee-stepper">
+          <button type="button" class="fee-stepper-btn"
+            onclick="adjustAssignmentFee('${contactId}', -1000)"
+            title="Decrease by $1,000">−</button>
+          <input type="number" step="1000" min="0" class="deal-mao-override fee-stepper-input"
+            id="assignmentFeeInput"
+            value="${mao.fee}"
+            oninput="onDealMoneyInput('${contactId}','assignment_fee',this.value)"
+            onchange="onDealAssignmentFeeChange('${contactId}',this.value)" />
+          <button type="button" class="fee-stepper-btn"
+            onclick="adjustAssignmentFee('${contactId}', 1000)"
+            title="Increase by $1,000">+</button>
+        </div>
       </div>
       <div class="stack">
         <span class="lbl">Override MAO</span>
@@ -6341,6 +6373,17 @@ async function onDealMaoOverrideChange(contactId, value) {
 // so we re-render the Deal tab to reflect the new MAO + spread.
 async function onDealAssignmentFeeChange(contactId, value) {
   await onDealMoneyChange(contactId, "assignment_fee", value);
+  renderDealTab(contactId);
+}
+
+// −/+ stepper buttons next to the Assignment Fee input. Reads the current
+// effective fee (override OR default $15K), adjusts by delta, clamps at 0,
+// and persists. Saves + re-renders the Deal tab.
+async function adjustAssignmentFee(contactId, delta) {
+  const row = getDealRow(contactId);
+  const current = getAssignmentFee(row);
+  const next = Math.max(0, current + delta);
+  await saveDealField(contactId, "assignment_fee", next);
   renderDealTab(contactId);
 }
 
