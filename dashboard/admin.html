@@ -2088,6 +2088,91 @@
     transition: opacity .15s ease;
   }
   .acl-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  /* ── Comps tab ─────────────────────────────────────────────────── */
+  .comp-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .comp-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .comp-card-title {
+    font-size: 0.78rem; font-weight: 700; color: var(--text);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .comp-slot-badge {
+    background: rgba(124,92,252,.16); color: var(--accent-light);
+    border: 1px solid rgba(124,92,252,.4);
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700;
+  }
+  .comp-computed {
+    font-size: 0.74rem; color: var(--text-muted);
+    font-family: ui-monospace, monospace;
+  }
+  .comp-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 8px 12px;
+  }
+  @media (max-width: 720px) {
+    .comp-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .comp-grid .field { display: flex; flex-direction: column; gap: 3px; }
+  .comp-grid .field label {
+    font-size: 0.7rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+  }
+  .comp-grid input {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font-size: 0.88rem; font-family: inherit;
+    width: 100%; box-sizing: border-box;
+  }
+  .comp-grid input:focus { outline: none; border-color: var(--accent); }
+  .comp-adjustment-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 8px 12px;
+    margin-top: 10px;
+  }
+  @media (max-width: 720px) {
+    .comp-adjustment-row { grid-template-columns: 1fr; }
+  }
+  .comp-summary-card {
+    background: linear-gradient(135deg, rgba(124,92,252,.18), rgba(124,92,252,.05));
+    border: 1px solid rgba(124,92,252,.4);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-top: 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 14px;
+  }
+  .comp-summary-card .stack { display: flex; flex-direction: column; gap: 3px; }
+  .comp-summary-card .lbl {
+    font-size: 0.74rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .comp-summary-card .val {
+    font-size: 1.5rem; font-weight: 700; color: var(--text);
+  }
+  .comp-push-arv {
+    background: var(--accent); color: #fff;
+    border: 0; border-radius: 8px;
+    padding: 11px 18px; cursor: pointer;
+    font-size: 0.85rem; font-weight: 600;
+    transition: filter .12s ease;
+  }
+  .comp-push-arv:hover { filter: brightness(1.15); }
+  .comp-push-arv:disabled {
+    background: var(--surface2); color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
   .acl-modal {
     position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, -50%) scale(.97);
@@ -3577,6 +3662,7 @@ async function loadAll() {
     loadPropertyEnrichment(),
     loadPropertyOverrides(),
     loadLeadDealData(),
+    loadLeadComps(),
   ]);
   // Hit List slim-row conversation_id lookup runs after the parallel batch
   // because it depends on both DATA.leads + DATA.hitList being populated.
@@ -6441,6 +6527,265 @@ async function onDealMaoFactorReset(contactId) {
   openCrmPanel = function(contactId) {
     orig.apply(this, arguments);
     if (contactId) renderDealTab(contactId);
+  };
+})();
+
+// ── Phase 4: Comps tab ─────────────────────────────────────────────
+// Up to 3 editable comp rows per contact. Each row: Address / Sold Date
+// / Sale Price / Sqft / Adjustment Notes / Adjustment Amount. Auto-
+// computed $/sqft + adjusted value. Bottom summary shows average across
+// rows with valid data + a "Push to ARV" button that copies the average
+// into the Deal tab's ARV field.
+
+async function loadLeadComps() {
+  const { data, error } = await sb.from("lead_comps")
+    .select("*")
+    .order("contact_id", { ascending: true })
+    .order("slot", { ascending: true });
+  if (error) {
+    if (error.code === "42P01") { DATA.leadComps = {}; return; }
+    console.error("loadLeadComps:", error);
+    return;
+  }
+  DATA.leadComps = {};
+  for (const r of (data || [])) {
+    if (!r.contact_id) continue;
+    if (!DATA.leadComps[r.contact_id]) DATA.leadComps[r.contact_id] = [];
+    DATA.leadComps[r.contact_id].push(r);
+  }
+}
+
+function getCompForSlot(contactId, slot) {
+  const arr = DATA.leadComps?.[contactId] || [];
+  return arr.find(c => c.slot === slot) || null;
+}
+
+function computeAdjusted(comp) {
+  if (!comp) return null;
+  const sale = Number(comp.sale_price);
+  const adj  = Number(comp.adjustment_amount) || 0;
+  if (!Number.isFinite(sale) || sale <= 0) return null;
+  return sale + adj;
+}
+
+function computeAverageArv(contactId) {
+  const arr = DATA.leadComps?.[contactId] || [];
+  const adjusted = arr.map(computeAdjusted).filter(v => v != null && v > 0);
+  if (adjusted.length === 0) return null;
+  return adjusted.reduce((a, b) => a + b, 0) / adjusted.length;
+}
+
+function renderCompsTab(contactId) {
+  const target = document.getElementById("crmPaneComps");
+  if (!target) return;
+
+  const compCard = (slot) => {
+    const c = getCompForSlot(contactId, slot) || {};
+    const sale   = Number(c.sale_price);
+    const sqft   = Number(c.sqft);
+    const adjAmt = Number(c.adjustment_amount) || 0;
+    const ppsf   = (Number.isFinite(sale) && sale > 0 && Number.isFinite(sqft) && sqft > 0)
+      ? sale / sqft : null;
+    const adjusted = (Number.isFinite(sale) && sale > 0) ? sale + adjAmt : null;
+    const summary = [
+      ppsf != null ? `$${Math.round(ppsf)}/sqft` : null,
+      adjusted != null ? `Adj: ${fmtUSDExact(adjusted)}` : null,
+    ].filter(Boolean).join("  ·  ");
+
+    return `
+      <div class="comp-card">
+        <div class="comp-card-head">
+          <div class="comp-card-title">
+            <span class="comp-slot-badge">Comp ${slot}</span>
+          </div>
+          <div class="comp-computed">${escapeHtml(summary || "(needs sale price + sqft)")}</div>
+        </div>
+        <div class="comp-grid">
+          <div class="field">
+            <label>Address</label>
+            <input type="text" value="${escapeHtml(c.address || "")}"
+              placeholder="1234 Maple St, Houston, TX"
+              oninput="onCompInput('${contactId}',${slot},'address',this.value)"
+              onchange="onCompChange('${contactId}',${slot},'address',this.value)" />
+          </div>
+          <div class="field">
+            <label>Sold Date</label>
+            <input type="date" value="${escapeHtml(c.sold_date || "")}"
+              onchange="onCompChange('${contactId}',${slot},'sold_date',this.value)" />
+          </div>
+          <div class="field">
+            <label>Sale Price</label>
+            <input type="number" step="1000" inputmode="decimal"
+              value="${c.sale_price == null ? "" : escapeHtml(String(c.sale_price))}"
+              placeholder="e.g. 375000"
+              oninput="onCompInput('${contactId}',${slot},'sale_price',this.value)"
+              onchange="onCompChange('${contactId}',${slot},'sale_price',this.value)" />
+          </div>
+          <div class="field">
+            <label>Sqft</label>
+            <input type="number" step="10" inputmode="numeric"
+              value="${c.sqft == null ? "" : escapeHtml(String(c.sqft))}"
+              placeholder="e.g. 1850"
+              oninput="onCompInput('${contactId}',${slot},'sqft',this.value)"
+              onchange="onCompChange('${contactId}',${slot},'sqft',this.value)" />
+          </div>
+        </div>
+        <div class="comp-adjustment-row">
+          <div class="field">
+            <label>Adjustment notes</label>
+            <input type="text" value="${escapeHtml(c.adjustment_notes || "")}"
+              placeholder="e.g. -$8K worse condition · +$5K extra bed"
+              oninput="onCompInput('${contactId}',${slot},'adjustment_notes',this.value)"
+              onchange="onCompChange('${contactId}',${slot},'adjustment_notes',this.value)" />
+          </div>
+          <div class="field">
+            <label>Adjustment amount (+/−)</label>
+            <input type="number" step="500" inputmode="decimal"
+              value="${c.adjustment_amount == null ? "" : escapeHtml(String(c.adjustment_amount))}"
+              placeholder="0"
+              oninput="onCompInput('${contactId}',${slot},'adjustment_amount',this.value)"
+              onchange="onCompChange('${contactId}',${slot},'adjustment_amount',this.value)" />
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const avg = computeAverageArv(contactId);
+  const dealRow = getDealRow(contactId);
+  const currentArv = Number(dealRow.arv);
+  const arvHasValue = Number.isFinite(currentArv) && currentArv > 0;
+  const matchClass = (avg != null && arvHasValue && Math.abs(avg - currentArv) < 1) ? "matches" : "";
+
+  target.innerHTML = `
+    <h4 class="crm-section-title">Three Comps — used to derive ARV</h4>
+    ${compCard(1)}
+    ${compCard(2)}
+    ${compCard(3)}
+
+    <div class="comp-summary-card ${matchClass}">
+      <div class="stack">
+        <span class="lbl">Avg adjusted value (across filled comps)</span>
+        <span class="val">${escapeHtml(fmtUSDExact(avg))}</span>
+      </div>
+      <div class="stack">
+        <span class="lbl">Current ARV (Deal tab)</span>
+        <span class="val" style="${arvHasValue ? '' : 'color:var(--text-muted)'}">${escapeHtml(arvHasValue ? fmtUSDExact(currentArv) : "—")}</span>
+      </div>
+      <button class="comp-push-arv"
+        onclick="pushCompAverageToArv('${contactId}')"
+        ${avg == null ? "disabled" : ""}
+        title="Copy the average adjusted value into the Deal tab's ARV field">
+        → Push to ARV
+      </button>
+    </div>
+  `;
+}
+
+// Coerce comp field values to the right type before save.
+function _coerceCompValue(field, raw) {
+  if (raw === "" || raw == null) return null;
+  if (field === "sqft") {
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (field === "sale_price" || field === "adjustment_amount") {
+    const n = parseFloat(String(raw).replace(/[$,]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  if (field === "sold_date") {
+    return String(raw); // date input emits YYYY-MM-DD
+  }
+  return String(raw);
+}
+
+async function saveCompField(contactId, slot, field, rawValue) {
+  if (!contactId || !slot) return;
+  const coerced = _coerceCompValue(field, rawValue);
+  const existing = getCompForSlot(contactId, slot) || { contact_id: contactId, slot };
+  const patch = {
+    ...existing,
+    contact_id: contactId,
+    slot,
+    [field]: coerced,
+    updated_by: currentSession?.user?.id || null,
+    updated_at: new Date().toISOString(),
+  };
+  delete patch.created_at;
+  delete patch.id;  // serial PK — let DB manage
+
+  setCrmSavePill("saving", "Saving…");
+  const { data, error } = await sb.from("lead_comps")
+    .upsert(patch, { onConflict: "contact_id,slot" })
+    .select()
+    .maybeSingle();
+  if (error) {
+    console.error("saveCompField:", error);
+    setCrmSavePill("error", "Save failed");
+    return;
+  }
+  // Update in-memory cache.
+  if (!DATA.leadComps[contactId]) DATA.leadComps[contactId] = [];
+  const arr = DATA.leadComps[contactId];
+  const idx = arr.findIndex(c => c.slot === slot);
+  const saved = data || patch;
+  if (idx >= 0) arr[idx] = saved; else arr.push(saved);
+  setCrmSavePill("saved", "Saved");
+  setTimeout(() => {
+    if (document.getElementById("crmSavePill")?.textContent === "Saved") setCrmSavePill("", "");
+  }, 1500);
+}
+
+function onCompInput(contactId, slot, field, value) {
+  setCrmSavePill("saving", "Editing…");
+  const k = `comp::${contactId}::${slot}::${field}`;
+  if (crmSaveTimers[k]) clearTimeout(crmSaveTimers[k]);
+  crmSaveTimers[k] = setTimeout(() => {
+    saveCompField(contactId, slot, field, value).then(() => {
+      // Only re-render numeric updates that affect the summary card.
+      if (field === "sale_price" || field === "sqft" || field === "adjustment_amount") {
+        renderCompsTab(contactId);
+      }
+    });
+  }, 800);
+}
+async function onCompChange(contactId, slot, field, value) {
+  const k = `comp::${contactId}::${slot}::${field}`;
+  if (crmSaveTimers[k]) { clearTimeout(crmSaveTimers[k]); delete crmSaveTimers[k]; }
+  await saveCompField(contactId, slot, field, value);
+  renderCompsTab(contactId);
+}
+
+// Push the average adjusted value into the Deal tab's ARV field. Saves
+// to lead_deal_data and triggers a full Deal tab re-render so the
+// thermometer reflects the new ARV.
+async function pushCompAverageToArv(contactId) {
+  const avg = computeAverageArv(contactId);
+  if (avg == null) return;
+  const rounded = Math.round(avg);
+  await saveDealField(contactId, "arv", rounded);
+  setCrmSavePill("saved", `ARV set to ${fmtUSDExact(rounded)}`);
+  setTimeout(() => setCrmSavePill("", ""), 2500);
+  // Re-render both tabs so user sees the change reflected.
+  renderCompsTab(contactId);
+  if (typeof renderDealTab === "function") renderDealTab(contactId);
+}
+
+// Hook tab switch + panel open so Comps tab renders fresh on every entry.
+(function wireCompsTabRender() {
+  if (typeof switchCrmTab !== "function") return;
+  const orig = switchCrmTab;
+  switchCrmTab = function(tab) {
+    orig.apply(this, arguments);
+    if (tab === "comps" && crmContactId) renderCompsTab(crmContactId);
+  };
+})();
+(function wirePrefetchCompsOnOpen() {
+  if (typeof openCrmPanel !== "function") return;
+  const orig = openCrmPanel;
+  openCrmPanel = function(contactId) {
+    orig.apply(this, arguments);
+    if (contactId) renderCompsTab(contactId);
   };
 })();
 </script>
