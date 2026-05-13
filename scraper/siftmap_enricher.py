@@ -339,10 +339,24 @@ def parse_panel(text: str) -> dict[str, Any]:
     if signals:
         out["distressor_signals"] = signals
 
-    # County assessed value — SiftMap sometimes shows it as "County Value"
-    # or "Assessed Value". Try both, take the dollar amount.
-    m = re.search(r"(?:COUNTY\s+VALUE|ASSESSED\s+VALUE)\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
-    if m: out["county_assessed_value"] = parse_money("$" + m.group(1))
+    # County assessed value — SiftMap exposes this in the Tax Details
+    # collapsed section. Labels vary by county: "Assessed Value",
+    # "Total Assessed Value", "County Value", "Appraised Value", "Total
+    # Assessment". Match any of them and take the largest dollar value
+    # found (so we don't grab a $0 line by mistake).
+    _county_labels = [
+        "TOTAL ASSESSED VALUE", "ASSESSED VALUE",
+        "TOTAL ASSESSMENT", "COUNTY VALUE",
+        "APPRAISED VALUE", "TAX ASSESSED VALUE",
+        "TOTAL VALUE",
+    ]
+    for label in _county_labels:
+        m = re.search(re.escape(label) + r"\s*[:\n]+\s*\$?([\d,]+(?:\.\d+)?[KM]?)", upper)
+        if m:
+            v = parse_money("$" + m.group(1))
+            if v and v > 1000:
+                out["county_assessed_value"] = v
+                break
 
     # Mortgage balance (Owner tab). Labels vary: "Mortgage Balance",
     # "Outstanding Mortgage", "Loan Balance".
@@ -605,6 +619,95 @@ async def grab_all_text(page: Page) -> str | None:
         return None
 
 
+async def click_tab_by_text(page: Page, tab_label: str) -> bool:
+    """Generic version of click_owner_tab — finds a tab by its visible text
+    label and clicks it. Used for History tab (last sale data) and any
+    future tab additions."""
+    try:
+        text_loc = page.get_by_text(tab_label, exact=True).first
+        if await text_loc.count() == 0:
+            log.warning("%s tab — no text node found", tab_label)
+            return False
+        clicked = await text_loc.evaluate("""(node) => {
+            let n = node;
+            for (let i = 0; i < 8; i++) {
+                if (!n) break;
+                const tag = (n.tagName || "").toLowerCase();
+                const role = n.getAttribute ? n.getAttribute("role") : null;
+                const cursor = (window.getComputedStyle && n instanceof Element)
+                    ? window.getComputedStyle(n).cursor : "";
+                if (tag === "button" || role === "tab" || role === "button" || cursor === "pointer") {
+                    n.click();
+                    return { ok: true, depth: i, tag };
+                }
+                n = n.parentElement;
+            }
+            try { node.click(); return { ok: true, depth: -1, tag: "fallback" }; }
+            catch (e) { return { ok: false, error: String(e) }; }
+        }""")
+        if clicked and clicked.get("ok"):
+            log.info("%s tab clicked (depth=%s, tag=%s)",
+                     tab_label, clicked.get("depth"), clicked.get("tag"))
+            await page.wait_for_timeout(3500)
+            return True
+        return False
+    except Exception as e:
+        log.debug("click_tab_by_text(%s) exception: %s", tab_label, e)
+        return False
+
+
+async def expand_tax_details(page: Page) -> bool:
+    """Click the 'Show more' link inside the Tax Details section on the
+    Property tab so the assessed value, total tax, and other county-data
+    fields become visible. The same 'Show more' text appears under several
+    sections (Land Details, Tax Details, Foreclosure Details), so we need
+    to scope by proximity to the 'Tax Details' label."""
+    try:
+        # Find the 'Tax Details' heading then click the nearest 'Show more'
+        # within its container (or sibling).
+        result = await page.evaluate("""() => {
+            const headings = [...document.querySelectorAll('*')].filter(el =>
+                (el.textContent || '').trim() === 'Tax Details'
+                && el.children.length === 0
+            );
+            if (headings.length === 0) return { ok: false, reason: 'no Tax Details label' };
+            const heading = headings[0];
+            // Walk up to a container, then search descendants for "Show more".
+            for (let i = 0; i < 6; i++) {
+                const parent = heading.parentElement;
+                if (!parent) break;
+                const showMore = [...parent.querySelectorAll('*')].find(el =>
+                    el.children.length === 0
+                    && /^show more$/i.test((el.textContent || '').trim())
+                );
+                if (showMore) {
+                    // Click the show-more element (or the nearest clickable parent).
+                    let target = showMore;
+                    for (let j = 0; j < 4; j++) {
+                        const cursor = window.getComputedStyle(target).cursor;
+                        if (target.tagName === 'BUTTON' || cursor === 'pointer') break;
+                        if (!target.parentElement) break;
+                        target = target.parentElement;
+                    }
+                    target.click();
+                    return { ok: true };
+                }
+                heading.parentElement && (heading.parentElement = parent.parentElement);
+                if (i >= 3) break;
+            }
+            return { ok: false, reason: 'no Show more found near Tax Details' };
+        }""")
+        if result and result.get("ok"):
+            log.info("Tax Details 'Show more' clicked")
+            await page.wait_for_timeout(1500)
+            return True
+        log.debug("expand_tax_details: %s", result.get("reason") if result else "no result")
+        return False
+    except Exception as e:
+        log.debug("expand_tax_details exception: %s", e)
+        return False
+
+
 async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | None:
     raw = (addr.get("raw_address") or "").strip()
     city = (addr.get("city") or "").strip() or None
@@ -632,17 +735,28 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
     # Combining both is defensive: we won't miss mortgage / county / sale
     # data whichever rendering pattern SiftMap uses.
     owner_text = ""
+    history_text = ""
     full_dom_text = ""
+
+    # Step 1: expand "Show more" on the Tax Details section of the Property
+    # tab so county-assessed-value / total-tax / etc. become visible in the
+    # inner_text. Re-grab the Property tab text after expansion.
+    try:
+        if await expand_tax_details(page):
+            property_text = (await find_property_panel_text(page)) or property_text
+    except Exception as e:
+        log.debug("expand_tax_details failed: %s", e)
+
+    # Step 2: capture textContent (visible + hidden) before any tab clicks.
     try:
         full_dom_text = (await grab_all_text(page)) or ""
     except Exception as e:
         log.debug("grab_all_text failed: %s", e)
 
+    # Step 3: click Owner tab → capture mortgage / total equity / owner name.
     try:
         if await click_owner_tab(page):
             owner_text = await find_property_panel_text(page) or ""
-            # Also re-grab textContent after the click — content that wasn't
-            # in the DOM until tab activation now is.
             try:
                 post_click_dom = (await grab_all_text(page)) or ""
                 if len(post_click_dom) > len(full_dom_text):
@@ -652,12 +766,26 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
     except Exception as e:
         log.debug("click_owner_tab failed: %s", e)
 
-    # Combine all sources. Use the longest non-empty blob as the primary
-    # text for parsing, fall back to property_text alone if everything
-    # else came up empty.
+    # Step 4: click History tab → capture last sale price + date.
+    try:
+        if await click_tab_by_text(page, "History"):
+            history_text = await find_property_panel_text(page) or ""
+            try:
+                post_click_dom = (await grab_all_text(page)) or ""
+                if len(post_click_dom) > len(full_dom_text):
+                    full_dom_text = post_click_dom
+            except Exception:
+                pass
+    except Exception as e:
+        log.debug("click_tab_by_text(History) failed: %s", e)
+
+    # Combine all sources. Source labels are preserved in raw_panel_text so
+    # we can debug parser regex failures by reading exactly which section
+    # the data came from.
     sources = [
         ("PROPERTY",  property_text),
         ("OWNER",     owner_text),
+        ("HISTORY",   history_text),
         ("FULL_DOM",  full_dom_text),
     ]
     combined_parts = []
