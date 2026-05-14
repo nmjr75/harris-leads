@@ -1793,6 +1793,25 @@
   }
   .crm-coming-soon p { font-size: 0.82rem; margin: 0; max-width: 360px; margin-inline: auto; }
 
+  /* Banner shown at the top of the Property tab when DataSift couldn't
+     resolve this address (out-of-coverage state or malformed input).
+     Distinguishes "we tried and failed" from "we haven't tried yet" so
+     the user knows whether to fix the address or wait for the cron. */
+  .crm-property-banner {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 14px; margin-bottom: 14px;
+    border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.45);
+    background: rgba(245, 158, 11, 0.10);
+    color: var(--text);
+    font-size: 0.82rem; line-height: 1.45;
+  }
+  .crm-property-banner .icon { font-size: 1rem; line-height: 1.2; }
+  .crm-property-banner strong { color: #f59e0b; font-weight: 600; }
+  .crm-property-banner code {
+    background: rgba(0,0,0,0.25); padding: 1px 5px; border-radius: 3px;
+    font-size: 0.78rem;
+  }
+
   /* Row button trigger */
   .btn-crm-details {
     background: rgba(124, 92, 252, 0.10);
@@ -3032,6 +3051,36 @@ async function loadContactAddresses() {
 // not just Harris.
 function normalizeAddress(s) {
   return (s || "").replace(/[^A-Za-z0-9]+/g, "").toUpperCase();
+}
+
+// Dominant first digit of each state's ZIP code range. Used to surface
+// obvious data-entry errors like "Oak Forest, IL 50452" (50xxx is Iowa;
+// IL is 60xxx). Heuristic — won't catch every edge case (e.g. military
+// APO addresses, the few NJ zips that start with 0 instead of 07) but
+// it's reliable for the typo class we see most often: state correct,
+// zip pasted from the wrong row.
+const STATE_ZIP_FIRST_DIGIT = {
+  AL:"3", AK:"9", AZ:"8", AR:"7", CA:"9", CO:"8", CT:"0", DE:"1",
+  DC:"2", FL:"3", GA:"3", HI:"9", ID:"8", IL:"6", IN:"4", IA:"5",
+  KS:"6", KY:"4", LA:"7", ME:"0", MD:"2", MA:"0", MI:"4", MN:"5",
+  MS:"3", MO:"6", MT:"5", NE:"6", NV:"8", NH:"0", NJ:"0", NM:"8",
+  NY:"1", NC:"2", ND:"5", OH:"4", OK:"7", OR:"9", PA:"1", RI:"0",
+  SC:"2", SD:"5", TN:"3", TX:"7", UT:"8", VT:"0", VA:"2", WA:"9",
+  WV:"2", WI:"5", WY:"8",
+};
+function zipStateMismatch(state, zip) {
+  const s = (state || "").trim().toUpperCase();
+  const z = (zip || "").trim();
+  if (!s || !z || !/^\d{5}/.test(z)) return null;
+  const expected = STATE_ZIP_FIRST_DIGIT[s];
+  if (!expected) return null;          // unknown state code, can't judge
+  if (z[0] === expected) return null;  // looks consistent
+  // Map back from the actual first digit to a likely state list, so the
+  // banner can suggest what zip's first digit actually represents.
+  const likely = Object.entries(STATE_ZIP_FIRST_DIGIT)
+    .filter(([, d]) => d === z[0])
+    .map(([k]) => k);
+  return { state: s, zip: z, expectedFirstDigit: expected, likelyStates: likely };
 }
 
 async function loadPropertyEnrichment() {
@@ -5777,6 +5826,45 @@ function renderPropertyTab(contactId) {
     ? `<div style="color:var(--text-muted);font-size:0.72rem;margin-top:14px">Last edited ${escapeHtml(new Date(ovr.updated_at).toLocaleString())}</div>`
     : "";
 
+  // Lookup status + address-quality banner.
+  // The enricher writes source='siftmap_address_mismatch' when the panel
+  // text doesn't reference the address (DataSift returned a generic page
+  // because the address isn't in their DB), and source='siftmap_no_panel'
+  // when no detail panel rendered at all. Either way the grid below will
+  // be all blanks — without this banner the user can't tell if we tried.
+  // Also flag obvious zip↔state typos (e.g. IL 50452 — 50xxx is Iowa).
+  const addrParts = DATA.contactAddress[row.conversation_id] || {};
+  const zipFlag = zipStateMismatch(addrParts.state, addrParts.postal_code);
+  let banner = "";
+  if (cached.source === "siftmap_address_mismatch" || cached.source === "siftmap_no_panel") {
+    const zipNote = zipFlag
+      ? ` This contact's zip <code>${escapeHtml(zipFlag.zip)}</code> doesn't match state <code>${escapeHtml(zipFlag.state)}</code> (${zipFlag.state} zips start with <code>${zipFlag.expectedFirstDigit}</code>; <code>${zipFlag.zip[0]}</code> is typically ${zipFlag.likelyStates.slice(0, 4).join(", ") || "another state"}). Fix the address in REI Reply and the next nightly cron will retry.`
+      : ` Use the override column to fill in property data by hand, or fix the address in REI Reply so the next nightly cron can retry.`;
+    banner = `
+      <div class="crm-property-banner">
+        <span class="icon">⚠️</span>
+        <div>
+          <strong>DataSift couldn't find this address.</strong>${zipNote}
+        </div>
+      </div>`;
+  } else if (!cached.normalized_address) {
+    banner = `
+      <div class="crm-property-banner">
+        <span class="icon">⏳</span>
+        <div>
+          <strong>Not enriched yet.</strong> This address will be looked up on the next nightly SiftMap cron (~6 AM UTC). Use the override column in the meantime.
+        </div>
+      </div>`;
+  } else if (zipFlag) {
+    banner = `
+      <div class="crm-property-banner">
+        <span class="icon">⚠️</span>
+        <div>
+          <strong>Possible address typo.</strong> This contact's zip <code>${escapeHtml(zipFlag.zip)}</code> doesn't match state <code>${escapeHtml(zipFlag.state)}</code> (${zipFlag.state} zips start with <code>${zipFlag.expectedFirstDigit}</code>). DataSift data below may be for the wrong property.
+        </div>
+      </div>`;
+  }
+
   // Notes get a dedicated full-width section below the grid — the cramped
   // grid cell wasn't usable for free-form text. The grid is for fields
   // that have a "DataSift cached" counterpart; notes don't.
@@ -5785,6 +5873,7 @@ function renderPropertyTab(contactId) {
   const notesLocked = lockedFields.includes("free_form_notes");
 
   target.innerHTML = `
+    ${banner}
     <h4 class="crm-section-title">Property Data — DataSift cached vs your overrides</h4>
     <div class="crm-prop-grid">
       <div class="col-label-head">Field</div>
