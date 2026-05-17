@@ -1529,6 +1529,60 @@
     font-weight: 600;
   }
 
+  /* Activity chips — call + text counts under the address. Surfaces
+     how many touches we've made and the direction of the last one so
+     a VA can triage the queue without opening Details. */
+  .activity-chips {
+    display: flex; gap: 4px; flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .activity-chip {
+    background: rgba(96, 165, 250, 0.10);
+    border-color: rgba(96, 165, 250, 0.40);
+    color: rgb(147, 197, 253);
+  }
+  .activity-chip.activity-chip-inbound {
+    background: rgba(245, 158, 11, 0.10);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: rgb(252, 211, 77);
+  }
+  .activity-chip.activity-chip-needs-reply {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.65);
+    color: rgb(252, 165, 165);
+    font-weight: 600;
+  }
+
+  /* Communication section inside CRM Details > Property tab. Shows the
+     full call/text breakdown above the property data grid. */
+  .crm-comm-section { margin-bottom: 18px; }
+  .crm-comm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .crm-comm-card {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.02);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .crm-comm-card .lbl {
+    font-size: 0.72rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .crm-comm-card .val { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+  .crm-comm-card .sub { font-size: 0.78rem; color: var(--text-muted); }
+  .crm-comm-card .sub.inbound  { color: rgb(252, 211, 77); }
+  .crm-comm-card .sub.outbound { color: rgb(147, 197, 253); }
+  .crm-comm-card .sub.empty    { color: var(--text-muted); font-style: italic; }
+  .crm-comm-stale {
+    font-size: 0.7rem; color: var(--text-muted);
+    margin-top: 6px; font-style: italic;
+  }
+
   /* Copy-confirmation toast */
   .copy-toast {
     position: fixed;
@@ -3145,6 +3199,88 @@ function renderPropertyChips(row) {
   return `<div class="prop-chips">${chips.join("")}</div>`;
 }
 
+// Per-contact call + text activity summary (migration 037). Aggregates
+// ghl_calls (real-time webhook) + latest snapshot per conversation from
+// ghl_conversation_snapshots (batch worker). Powers the activity chips
+// on each lead row + the Communication section in CRM Details.
+async function loadContactActivity() {
+  const { data, error } = await sb.from("ghl_contact_activity_summary").select("*");
+  if (error) {
+    if (error.code === "42P01") {
+      // Migration 037 not applied yet — skip silently so the rest of
+      // the dashboard still renders.
+      DATA.contactActivity = {};
+      return;
+    }
+    console.error("loadContactActivity:", error);
+    return;
+  }
+  DATA.contactActivity = {};
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.contactActivity[r.contact_id] = r;
+  }
+}
+
+function activityFor(row) {
+  if (!row?.contact_id || !DATA.contactActivity) return null;
+  return DATA.contactActivity[row.contact_id] || null;
+}
+
+// Format an ISO timestamp as a compact relative-or-absolute label
+// suitable for inline chips. Examples:
+//   2 minutes ago  -> "2m ago"
+//   3 hours ago    -> "3h ago"
+//   today, 3:42pm  -> "3:42 PM"
+//   yesterday      -> "Yesterday 3:42 PM"
+//   older          -> "May 15"
+function fmtActivityTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const diffMin = Math.floor((now - d) / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 24*60) return `${Math.floor(diffMin/60)}h ago`;
+  const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  const fmtTime = (x) => x.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
+  if (d.toDateString() === yest.toDateString()) return "Yesterday " + fmtTime(d);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Chicago" });
+}
+
+function renderActivityChips(row) {
+  const a = activityFor(row);
+  if (!a) return "";
+  const chips = [];
+
+  if ((a.call_count_total || 0) > 0) {
+    const arrow = a.last_call_direction === "inbound" ? "←" : "→";
+    const cls = a.last_call_direction === "inbound" ? "activity-chip activity-chip-inbound" : "activity-chip";
+    const tip = `${a.call_count_total} calls · ${a.call_count_outbound || 0} out / ${a.call_count_inbound || 0} in` +
+                (a.last_call_at ? ` · last ${fmtActivityTime(a.last_call_at)} ${a.last_call_direction || ""}` : "");
+    const tail = a.last_call_at ? ` · ${fmtActivityTime(a.last_call_at)} ${arrow}` : "";
+    chips.push(`<span class="prop-chip ${cls}" title="${escapeHtml(tip)}">📞 ${a.call_count_total}${tail}</span>`);
+  }
+
+  if ((a.text_count_total || 0) > 0 && a.last_text_at) {
+    const arrow = a.last_text_direction === "inbound" ? "←" : "→";
+    const ageMs = Date.now() - new Date(a.last_text_at).getTime();
+    const inboundRecent = a.last_text_direction === "inbound" && ageMs < 24*3600*1000;
+    const cls = inboundRecent
+      ? "activity-chip activity-chip-needs-reply"
+      : (a.last_text_direction === "inbound" ? "activity-chip activity-chip-inbound" : "activity-chip");
+    const stale = (a.snapshot_age_seconds && a.snapshot_age_seconds > 6*3600)
+      ? ` · snapshot ${Math.floor(a.snapshot_age_seconds/3600)}h old`
+      : "";
+    const tip = `${a.text_count_total} texts · ${a.text_count_outbound || 0} out / ${a.text_count_inbound || 0} in` +
+                ` · last ${fmtActivityTime(a.last_text_at)} ${a.last_text_direction || ""}${stale}`;
+    chips.push(`<span class="prop-chip ${cls}" title="${escapeHtml(tip)}">💬 ${a.text_count_total} · ${fmtActivityTime(a.last_text_at)} ${arrow}</span>`);
+  }
+
+  if (chips.length === 0) return "";
+  return `<div class="activity-chips">${chips.join("")}</div>`;
+}
+
 // Per-conversation metadata (created date + last activity timestamp) from
 // the ghl_conversation_metadata view (migration 011). Rendered under the
 // contact name in the leads table.
@@ -3740,6 +3876,7 @@ async function loadAll() {
     loadPropertyOverrides(),
     loadLeadDealData(),
     loadLeadComps(),
+    loadContactActivity(),
   ]);
   // Hit List slim-row conversation_id lookup runs after the parallel batch
   // because it depends on both DATA.leads + DATA.hitList being populated.
@@ -4889,7 +5026,8 @@ function renderLeads() {
                 <a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(fullAddr).replace(/'/g, "\\'")}')" title="Open in REI AI Leads (address copied to clipboard — paste into search box)">🏠 ${escapeHtml(fullAddr)}</a>
               </div>
               ${renderPropertyChips(r)}
-            ` : "";
+              ${renderActivityChips(r)}
+            ` : `${renderActivityChips(r)}`;
           })()}
           <div class="signal-chips">${renderSignals(r)}</div>
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
@@ -5872,8 +6010,47 @@ function renderPropertyTab(contactId) {
   const notesValue = ovr.free_form_notes == null ? "" : String(ovr.free_form_notes);
   const notesLocked = lockedFields.includes("free_form_notes");
 
+  // Communication summary — per-contact call + text rollup from
+  // ghl_contact_activity_summary view (migration 037). Shown at the
+  // top of the Property tab so a VA sees touch history before they
+  // open the conversation transcript.
+  const a = activityFor(row) || {};
+  const callTotal   = a.call_count_total || 0;
+  const callOut     = a.call_count_outbound || 0;
+  const callIn      = a.call_count_inbound || 0;
+  const textTotal   = a.text_count_total || 0;
+  const textOut     = a.text_count_outbound || 0;
+  const textIn      = a.text_count_inbound || 0;
+  const lastCallSub = a.last_call_at
+    ? `<span class="sub ${a.last_call_direction === 'inbound' ? 'inbound' : 'outbound'}">Last: ${escapeHtml(fmtActivityTime(a.last_call_at))} ${a.last_call_direction === 'inbound' ? '← in' : '→ out'}${a.last_call_duration_seconds ? ` · ${a.last_call_duration_seconds}s` : ''}${a.last_call_status ? ` · ${escapeHtml(a.last_call_status)}` : ''}</span>`
+    : `<span class="sub empty">No calls yet</span>`;
+  const lastTextSub = a.last_text_at
+    ? `<span class="sub ${a.last_text_direction === 'inbound' ? 'inbound' : 'outbound'}">Last: ${escapeHtml(fmtActivityTime(a.last_text_at))} ${a.last_text_direction === 'inbound' ? '← in' : '→ out'}</span>`
+    : `<span class="sub empty">No texts yet</span>`;
+  const staleNote = (a.snapshot_age_seconds && a.snapshot_age_seconds > 6*3600)
+    ? `<div class="crm-comm-stale">⏱ Text counts based on snapshot from ${escapeHtml(fmtActivityTime(a.last_snapshot_pulled_at))}; live count may be higher.</div>`
+    : "";
+  const commSection = `
+    <div class="crm-comm-section">
+      <h4 class="crm-section-title">Communication</h4>
+      <div class="crm-comm-grid">
+        <div class="crm-comm-card">
+          <span class="lbl">📞 Calls</span>
+          <span class="val">${callTotal} · ${callOut} out / ${callIn} in</span>
+          ${lastCallSub}
+        </div>
+        <div class="crm-comm-card">
+          <span class="lbl">💬 Texts</span>
+          <span class="val">${textTotal} · ${textOut} out / ${textIn} in</span>
+          ${lastTextSub}
+        </div>
+      </div>
+      ${staleNote}
+    </div>`;
+
   target.innerHTML = `
     ${banner}
+    ${commSection}
     <h4 class="crm-section-title">Property Data — DataSift cached vs your overrides</h4>
     <div class="crm-prop-grid">
       <div class="col-label-head">Field</div>
