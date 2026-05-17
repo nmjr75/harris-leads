@@ -528,13 +528,22 @@ async def search_via_input(page: Page, full_address: str) -> bool:
         log.warning("Could not find SiftMap search input")
         return False
 
+    # Clean the address before typing: DataSift's autocomplete strips
+    # trailing punctuation in its rendered suggestions. If we type
+    # "7207 Granvia Dr." (with period) and DataSift renders the
+    # suggestion as "7207 Granvia Dr" (no period), the text-based click
+    # fails because the substring match doesn't find our period in their
+    # text. Verified failure mode on 2026-05-17 for Julia Cumming's
+    # contact — "Suggestion click missed; pressed Enter as fallback".
+    typed_address = re.sub(r"[.,;]+\s*$", "", full_address.strip())  # strip trailing punct
+    typed_address = re.sub(r"\s+", " ", typed_address)               # collapse double-spaces
+
     try:
         await search_input.click()
         await page.wait_for_timeout(500)
-        # Clear any prior value, then type slowly so autocomplete kicks in.
         await search_input.fill("")
         await page.wait_for_timeout(300)
-        await search_input.type(full_address, delay=40)
+        await search_input.type(typed_address, delay=40)
     except Exception as e:
         log.warning("Failed to type into search box: %s", e)
         return False
@@ -542,26 +551,34 @@ async def search_via_input(page: Page, full_address: str) -> bool:
     # Wait for the autocomplete dropdown to populate.
     await page.wait_for_timeout(3500)
 
-    # Verified from the captured raw_panel_text on 2026-05-11: DataSift's
-    # autocomplete renders a "SUGGESTIONS" header followed by clickable rows
-    # whose visible text is the full address (e.g.
-    # "10001 Chesterfield Dr, Houston, TX 77051"). The earlier class-based
-    # selectors all missed — the panel showed "Unknown / - Bds / 0 Properties
-    # of Results" because no suggestion was actually selected. Robust fix:
-    # click the element whose text matches the address we just typed.
+    # DataSift's autocomplete renders a "SUGGESTIONS" header followed by
+    # clickable rows whose visible text is the full address. We try
+    # several text variants because DataSift's rendered text may differ
+    # from what we typed (no trailing period, expanded "Dr" -> "Drive",
+    # uppercase, etc.).
+    raw_street = typed_address.split(",")[0].strip()
+    street_no_period = re.sub(r"[.,]", "", raw_street).strip()
+    # Number + first ~2 words of street (e.g. "7207 Granvia Dr"
+    # -> "7207 Granvia"). Most permissive — DataSift will list a
+    # suggestion whose visible text starts with this.
+    street_words = street_no_period.split()
+    street_short = " ".join(street_words[:3]) if len(street_words) >= 2 else street_no_period
+
     clicked = False
-    # Try progressively shorter prefixes since DataSift may format the
-    # suggestion with different spacing / punctuation than what we typed.
     candidates = [
-        full_address,                            # exact full match
-        full_address.split(",")[0],              # street portion only
+        typed_address,        # full punctuation-stripped address
+        raw_street,           # street portion only (with period if present)
+        street_no_period,     # street with all periods removed
+        street_short,         # number + first 2-3 street tokens
     ]
+    # Dedupe while preserving order.
+    seen = set()
+    candidates = [c for c in candidates if c and not (c in seen or seen.add(c))]
+
     for needle in candidates:
         if not needle.strip():
             continue
         try:
-            # Use text-based locator; first() = first occurrence (the
-            # SUGGESTIONS dropdown will show this before any history/recent).
             loc = page.get_by_text(needle, exact=False).first
             if await loc.count() > 0:
                 try:
