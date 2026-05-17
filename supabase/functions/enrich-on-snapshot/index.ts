@@ -1,27 +1,22 @@
-// Supabase Edge Function: enrich-on-snapshot
+// Supabase Edge Function: enrich-on-snapshot (v2)
 //
 // Receives Database Webhook events from ghl_conversation_snapshots INSERTs
-// (fired ~30/hour as the scorer worker pulls conversations). Filters to
-// just contacts whose address isn't yet in property_enrichment, then
-// triggers the SiftMap on-demand workflow on GitHub via repository_dispatch.
+// and dispatches the SiftMap on-demand GitHub workflow for contacts that
+// aren't yet in property_enrichment.
 //
-// Why this filter exists: snapshots fire on every refresh (~6h per active
-// convo), not just new contacts. Without this filter we'd burn ~720
-// GitHub Actions cold-starts per day on contacts we've already enriched.
-// With this filter we only fire the workflow when there's real work.
+// v2 change: addresses are pulled from the ghl_latest_contact_address view
+// (keyed by contact_id), NOT from the snapshot row's contact_address column,
+// because that column is frequently NULL on raw snapshot records — the
+// dashboard's address data lives in the view, not the underlying table.
+// v1 was silently exiting on every invocation because of this.
 //
-// JWT verification: should be OFF for this function (Functions →
-// enrich-on-snapshot → Settings → "Verify JWT" off). The Supabase gateway
-// still requires Authorization: Bearer <anon key> on the call — Database
-// Webhooks add that header automatically when "Use Supabase auth" is on.
-// App-level auth here is WEBHOOK_SECRET (extra defense vs. anon key leaks).
+// JWT verification: should be OFF for this function (Settings → Verify JWT off).
+// Gateway anon-key auth still applies. App-level auth: WEBHOOK_SECRET header.
 //
-// Env vars (Functions → enrich-on-snapshot → secrets):
-//   GITHUB_PAT           Personal access token with Actions: write on
-//                         nmjr75/harris-leads (fine-grained PAT preferred)
-//   GITHUB_REPO          nmjr75/harris-leads (or override for forks)
-//   WEBHOOK_SECRET       shared secret with Database Webhook (optional;
-//                         skip if not set)
+// Env vars (Functions → enrich-on-snapshot → Secrets):
+//   GITHUB_PAT           Fine-grained PAT with Contents+Actions: write on the repo
+//   GITHUB_REPO          nmjr75/harris-leads
+//   WEBHOOK_SECRET       shared secret with Database Webhook (optional)
 //   SUPABASE_URL         auto-injected
 //   SUPABASE_SERVICE_ROLE_KEY  auto-injected
 
@@ -53,23 +48,19 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS });
-  }
-  if (req.method !== "POST") {
-    return jsonResponse(405, { error: "method not allowed" });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== "POST") return jsonResponse(405, { error: "method not allowed" });
 
-  // Optional shared-secret defense beyond the anon key.
   if (WEBHOOK_SECRET) {
     const provided = req.headers.get("x-webhook-secret") ?? "";
     if (provided !== WEBHOOK_SECRET) {
+      console.log("DENY: invalid webhook secret");
       return jsonResponse(401, { error: "invalid webhook secret" });
     }
   }
 
   if (!GITHUB_PAT) {
-    console.error("GITHUB_PAT not set — refusing to dispatch");
+    console.error("GITHUB_PAT not set");
     return jsonResponse(500, { error: "GITHUB_PAT not configured" });
   }
 
@@ -80,27 +71,45 @@ serve(async (req) => {
     return jsonResponse(400, { error: "invalid JSON body" });
   }
 
-  // Supabase webhook shape: { type: 'INSERT', table, record, old_record }
   const record = payload?.record ?? payload?.new ?? payload;
   const contactId: string | undefined = record?.contact_id;
-  const rawAddress: string | undefined = record?.contact_address;
+
+  console.log(`RECEIVED: contact_id=${contactId}`);
 
   if (!contactId) {
-    return jsonResponse(200, { skipped: "no contact_id in payload" });
+    console.log("SKIP: no contact_id in payload");
+    return jsonResponse(200, { skipped: "no contact_id" });
   }
+
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  // Look up the address from the view, NOT from the snapshot row.
+  // ghl_conversation_snapshots.contact_address is often NULL; the view
+  // joins the contact's address from wherever GHL persists it.
+  const { data: addrRows, error: addrErr } = await sb
+    .from("ghl_latest_contact_address")
+    .select("contact_address")
+    .eq("contact_id", contactId)
+    .limit(1);
+
+  if (addrErr) {
+    console.error(`ADDR_LOOKUP_ERR for ${contactId}: ${addrErr.message}`);
+    return jsonResponse(500, { error: "address lookup failed", detail: addrErr.message });
+  }
+
+  const rawAddress = addrRows?.[0]?.contact_address;
   if (!rawAddress) {
-    return jsonResponse(200, { skipped: "no contact_address in payload", contact_id: contactId });
+    console.log(`SKIP: no address in view for ${contactId}`);
+    return jsonResponse(200, { skipped: "no address in view", contact_id: contactId });
   }
 
   const norm = normalizeAddress(rawAddress);
   if (!norm) {
+    console.log(`SKIP: empty normalized for ${contactId}`);
     return jsonResponse(200, { skipped: "empty normalized address", contact_id: contactId });
   }
 
-  // Skip if already enriched. This is the key filter — without it every
-  // snapshot refresh would trigger a workflow run for already-cached
-  // addresses (most of them, since snapshots fire ~30x/hour).
-  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  // Don't re-burn DataSift quota on cached addresses.
   const { data: existing, error: lookupErr } = await sb
     .from("property_enrichment")
     .select("normalized_address, source")
@@ -108,11 +117,12 @@ serve(async (req) => {
     .limit(1);
 
   if (lookupErr) {
-    console.error("property_enrichment lookup failed:", lookupErr);
-    return jsonResponse(500, { error: "lookup failed", detail: lookupErr.message });
+    console.error(`PE_LOOKUP_ERR for ${contactId}: ${lookupErr.message}`);
+    return jsonResponse(500, { error: "enrichment lookup failed", detail: lookupErr.message });
   }
 
   if (existing && existing.length > 0) {
+    console.log(`SKIP_ENRICHED: ${contactId} norm=${norm} source=${existing[0].source}`);
     return jsonResponse(200, {
       skipped: "already enriched",
       contact_id: contactId,
@@ -121,11 +131,8 @@ serve(async (req) => {
     });
   }
 
-  // Fire repository_dispatch on GitHub to trigger the on-demand workflow.
-  const ghBody = {
-    event_type: "new-contact-enrich",
-    client_payload: { contact_id: contactId },
-  };
+  console.log(`DISPATCH: firing GitHub for ${contactId} norm=${norm}`);
+
   const ghResp = await fetch(
     `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
     {
@@ -137,13 +144,16 @@ serve(async (req) => {
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "harris-leads-enrich-trigger",
       },
-      body: JSON.stringify(ghBody),
+      body: JSON.stringify({
+        event_type: "new-contact-enrich",
+        client_payload: { contact_id: contactId },
+      }),
     },
   );
 
   if (!ghResp.ok) {
     const errText = await ghResp.text();
-    console.error(`GitHub dispatch failed: ${ghResp.status} ${errText}`);
+    console.error(`DISPATCH_FAIL: ${contactId} status=${ghResp.status} body=${errText.slice(0, 200)}`);
     return jsonResponse(502, {
       error: "github dispatch failed",
       status: ghResp.status,
@@ -151,6 +161,7 @@ serve(async (req) => {
     });
   }
 
+  console.log(`DISPATCH_OK: ${contactId}`);
   return jsonResponse(200, {
     triggered: true,
     contact_id: contactId,
