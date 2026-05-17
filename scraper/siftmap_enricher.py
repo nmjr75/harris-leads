@@ -536,7 +536,10 @@ async def search_via_input(page: Page, full_address: str) -> bool:
     await page.wait_for_timeout(3000)
     await dismiss_popups(page)
     populated = False
-    for attempt in range(12):  # 12 * 2s = 24s max
+    for attempt in range(6):  # 6 * 2s = 12s max — if the property hasn't
+                              # populated by 12s, it's not in DataSift's DB
+                              # (this is the siftmap_address_mismatch case)
+                              # and waiting longer just burns runner time.
         try:
             body = await page.locator("body").inner_text(timeout=3000)
         except Exception:
