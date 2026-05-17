@@ -289,6 +289,31 @@
     color: #fff;
     font-weight: 600;
   }
+
+  /* Sort picker — inline with score filter pills. Native <select> so
+     keyboard / screen-reader behavior is correct; styled to match the
+     filter-pill aesthetic. */
+  .sort-picker-wrap {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: 4px;
+  }
+  .sort-picker {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 28px 5px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    transition: border-color 0.15s;
+  }
+  .sort-picker:hover, .sort-picker:focus { border-color: var(--accent); outline: none; }
   .search-input {
     background: var(--surface);
     color: var(--text);
@@ -2540,6 +2565,20 @@
       <span class="filter-pill active" data-score="all" onclick="setScoreFilter('all')">All <span class="count" data-count-score="all">0</span></span>
       <span class="filter-pill" data-score="HOT" onclick="setScoreFilter('HOT')">HOT <span class="count" data-count-score="HOT">0</span></span>
       <span class="filter-pill" data-score="WARM" onclick="setScoreFilter('WARM')">WARM <span class="count" data-count-score="WARM">0</span></span>
+      <span class="sort-picker-wrap" title="Reorder the lead list by call/text recency or count">
+        <span class="stage-filter-label">Sort:</span>
+        <select class="sort-picker" id="sortPicker" onchange="setSortFromPicker(this.value)">
+          <option value="last_activity_at|desc">Last activity (newest)</option>
+          <option value="last_outbound_call_at|desc">📞 Last call made — newest</option>
+          <option value="last_outbound_call_at|asc">📞 Last call made — oldest / never called</option>
+          <option value="last_inbound_call_at|desc">📞 Last inbound call — newest</option>
+          <option value="last_text_at|desc">💬 Last text — newest</option>
+          <option value="last_text_at|asc">💬 Last text — oldest / never texted</option>
+          <option value="call_count_outbound|desc">📞 Most outbound calls</option>
+          <option value="call_count_outbound|asc">📞 Fewest outbound calls</option>
+          <option value="text_count_total|desc">💬 Most SMS</option>
+        </select>
+      </span>
       <input type="search" class="search-input" id="leadsSearch" placeholder="Search name or phone..." oninput="renderLeads()">
       <button class="btn-refresh" onclick="loadAll()">↻ Refresh</button>
     </div>
@@ -4501,9 +4540,23 @@ function lastActivityFor(r) {
   return meta?.last_activity_at || r.scored_at || null;
 }
 
+// Fields that live on ghl_contact_activity_summary, not on the lead
+// row itself. The sort comparator looks them up via activityFor().
+const ACTIVITY_SORT_FIELDS = new Set([
+  "last_outbound_call_at",
+  "last_inbound_call_at",
+  "last_call_at",
+  "last_text_at",
+  "call_count_outbound",
+  "call_count_inbound",
+  "call_count_total",
+  "text_count_total",
+]);
+
 function sortLeads(rows) {
   const f = currentSort.field;
-  const dir = currentSort.desc ? -1 : 1;
+  const desc = currentSort.desc;
+  const dir = desc ? -1 : 1;
   return [...rows].sort((a, b) => {
     let av, bv;
     if (f === "score") {
@@ -4512,6 +4565,20 @@ function sortLeads(rows) {
     } else if (f === "last_activity_at") {
       av = lastActivityFor(a) ?? "";
       bv = lastActivityFor(b) ?? "";
+    } else if (ACTIVITY_SORT_FIELDS.has(f)) {
+      // Pull from the activity summary view, not the lead row.
+      const aa = activityFor(a) || {};
+      const bb = activityFor(b) || {};
+      av = aa[f];
+      bv = bb[f];
+      // Null-handling so "longest since called / never called" lands AT
+      // THE TOP when sorting ascending. Descending pushes nulls to the
+      // bottom (rows with no data are noise when ranking by recency).
+      const aNull = (av == null);
+      const bNull = (bv == null);
+      if (aNull && bNull) return 0;
+      if (aNull) return desc ? 1 : -1;
+      if (bNull) return desc ? -1 : 1;
     } else {
       av = a[f] ?? "";
       bv = b[f] ?? "";
@@ -4520,6 +4587,25 @@ function sortLeads(rows) {
     if (av > bv) return 1 * dir;
     return 0;
   });
+}
+
+// Picker callback — encoded as "field|desc" or "field|asc" so the same
+// field can be selected in either direction. Falls through to setSort
+// so the existing arrow rendering + table re-render path runs.
+function setSortFromPicker(encoded) {
+  if (!encoded) return;
+  const [field, dirHint] = encoded.split("|");
+  currentSort.field = field;
+  currentSort.desc = dirHint !== "asc";
+  // Manually fire the same downstream work setSort() does.
+  document.querySelectorAll("th.sortable").forEach(th => {
+    const onclick = th.getAttribute("onclick") || "";
+    const isThis = onclick.includes(`'${field}'`);
+    th.classList.toggle("sorted", isThis);
+    const arrow = th.querySelector(".sort-arrow");
+    if (arrow) arrow.textContent = isThis ? (currentSort.desc ? "↓" : "↑") : "";
+  });
+  renderLeads();
 }
 
 // Resolve a row's pipeline stage from DATA.stages (now keyed by contact_id
