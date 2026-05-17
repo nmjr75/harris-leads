@@ -1562,6 +1562,12 @@
     gap: 10px;
     margin-top: 8px;
   }
+  .crm-comm-grid.crm-comm-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  @media (max-width: 720px) {
+    .crm-comm-grid.crm-comm-grid-3 { grid-template-columns: 1fr; }
+  }
   .crm-comm-card {
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 6px;
@@ -3253,15 +3259,33 @@ function renderActivityChips(row) {
   if (!a) return "";
   const chips = [];
 
-  if ((a.call_count_total || 0) > 0) {
-    const arrow = a.last_call_direction === "inbound" ? "←" : "→";
-    const cls = a.last_call_direction === "inbound" ? "activity-chip activity-chip-inbound" : "activity-chip";
-    const tip = `${a.call_count_total} calls · ${a.call_count_outbound || 0} out / ${a.call_count_inbound || 0} in` +
-                (a.last_call_at ? ` · last ${fmtActivityTime(a.last_call_at)} ${a.last_call_direction || ""}` : "");
-    const tail = a.last_call_at ? ` · ${fmtActivityTime(a.last_call_at)} ${arrow}` : "";
-    chips.push(`<span class="prop-chip ${cls}" title="${escapeHtml(tip)}">📞 ${a.call_count_total}${tail}</span>`);
+  // Outbound-call chip — what WE'VE done to reach them.
+  if ((a.call_count_outbound || 0) > 0) {
+    const tip = `${a.call_count_outbound} outbound call${a.call_count_outbound === 1 ? "" : "s"}` +
+                (a.last_outbound_call_at ? ` · last ${fmtActivityTime(a.last_outbound_call_at)}` : "") +
+                (a.last_outbound_call_agent ? ` by ${a.last_outbound_call_agent}` : "") +
+                (a.last_outbound_call_duration_seconds ? ` · ${a.last_outbound_call_duration_seconds}s` : "") +
+                (a.last_outbound_call_status ? ` · ${a.last_outbound_call_status}` : "");
+    const tail = a.last_outbound_call_at ? ` · ${fmtActivityTime(a.last_outbound_call_at)}` : "";
+    chips.push(`<span class="prop-chip activity-chip" title="${escapeHtml(tip)}">📞 ${a.call_count_outbound} out →${tail}</span>`);
   }
 
+  // Inbound-call chip — what THEY'VE done to reach us (incl. missed rings).
+  if ((a.call_count_inbound || 0) > 0) {
+    const ageMs = a.last_inbound_call_at ? (Date.now() - new Date(a.last_inbound_call_at).getTime()) : Infinity;
+    const isUnreplied = (a.last_inbound_call_status === "no-answer" || a.last_inbound_call_status === "voicemail") && ageMs < 24*3600*1000;
+    const cls = isUnreplied ? "activity-chip activity-chip-needs-reply" : "activity-chip activity-chip-inbound";
+    const statusTail = a.last_inbound_call_status ? ` · ${a.last_inbound_call_status}` : "";
+    const tip = `${a.call_count_inbound} inbound call${a.call_count_inbound === 1 ? "" : "s"}` +
+                (a.last_inbound_call_at ? ` · last ${fmtActivityTime(a.last_inbound_call_at)}` : "") +
+                statusTail;
+    const tail = a.last_inbound_call_at ? ` · ${fmtActivityTime(a.last_inbound_call_at)}${statusTail}` : "";
+    chips.push(`<span class="prop-chip ${cls}" title="${escapeHtml(tip)}">← ${a.call_count_inbound} in${tail}</span>`);
+  }
+
+  // Text chip — SMS only. If snapshot is older than the last_text_at,
+  // tag it as stale so the user knows REI Reply may have a newer text
+  // we haven't ingested yet.
   if ((a.text_count_total || 0) > 0 && a.last_text_at) {
     const arrow = a.last_text_direction === "inbound" ? "←" : "→";
     const ageMs = Date.now() - new Date(a.last_text_at).getTime();
@@ -3272,7 +3296,7 @@ function renderActivityChips(row) {
     const stale = (a.snapshot_age_seconds && a.snapshot_age_seconds > 6*3600)
       ? ` · snapshot ${Math.floor(a.snapshot_age_seconds/3600)}h old`
       : "";
-    const tip = `${a.text_count_total} texts · ${a.text_count_outbound || 0} out / ${a.text_count_inbound || 0} in` +
+    const tip = `${a.text_count_total} SMS · ${a.text_count_outbound || 0} out / ${a.text_count_inbound || 0} in` +
                 ` · last ${fmtActivityTime(a.last_text_at)} ${a.last_text_direction || ""}${stale}`;
     chips.push(`<span class="prop-chip ${cls}" title="${escapeHtml(tip)}">💬 ${a.text_count_total} · ${fmtActivityTime(a.last_text_at)} ${arrow}</span>`);
   }
@@ -6011,36 +6035,46 @@ function renderPropertyTab(contactId) {
   const notesLocked = lockedFields.includes("free_form_notes");
 
   // Communication summary — per-contact call + text rollup from
-  // ghl_contact_activity_summary view (migration 037). Shown at the
-  // top of the Property tab so a VA sees touch history before they
-  // open the conversation transcript.
+  // ghl_contact_activity_summary view. Shown at the top of the
+  // Property tab so a VA sees touch history before opening the
+  // transcript. Calls are split into outbound (our outreach) and
+  // inbound (their rings) so a missed ring doesn't disguise a stale
+  // outreach effort.
   const a = activityFor(row) || {};
-  const callTotal   = a.call_count_total || 0;
-  const callOut     = a.call_count_outbound || 0;
-  const callIn      = a.call_count_inbound || 0;
-  const textTotal   = a.text_count_total || 0;
-  const textOut     = a.text_count_outbound || 0;
-  const textIn      = a.text_count_inbound || 0;
-  const lastCallSub = a.last_call_at
-    ? `<span class="sub ${a.last_call_direction === 'inbound' ? 'inbound' : 'outbound'}">Last: ${escapeHtml(fmtActivityTime(a.last_call_at))} ${a.last_call_direction === 'inbound' ? '← in' : '→ out'}${a.last_call_duration_seconds ? ` · ${a.last_call_duration_seconds}s` : ''}${a.last_call_status ? ` · ${escapeHtml(a.last_call_status)}` : ''}</span>`
-    : `<span class="sub empty">No calls yet</span>`;
+  const callOut = a.call_count_outbound || 0;
+  const callIn  = a.call_count_inbound  || 0;
+  const textOut = a.text_count_outbound || 0;
+  const textIn  = a.text_count_inbound  || 0;
+  const textTotal = a.text_count_total  || 0;
+
+  const outCallSub = a.last_outbound_call_at
+    ? `<span class="sub outbound">Last: ${escapeHtml(fmtActivityTime(a.last_outbound_call_at))}${a.last_outbound_call_agent ? " · " + escapeHtml(a.last_outbound_call_agent) : ""}${a.last_outbound_call_duration_seconds ? " · " + a.last_outbound_call_duration_seconds + "s" : ""}${a.last_outbound_call_status ? " · " + escapeHtml(a.last_outbound_call_status) : ""}</span>`
+    : `<span class="sub empty">No outbound calls yet</span>`;
+  const inCallSub = a.last_inbound_call_at
+    ? `<span class="sub inbound">Last: ${escapeHtml(fmtActivityTime(a.last_inbound_call_at))}${a.last_inbound_call_status ? " · " + escapeHtml(a.last_inbound_call_status) : ""}${a.last_inbound_call_duration_seconds ? " · " + a.last_inbound_call_duration_seconds + "s" : ""}</span>`
+    : `<span class="sub empty">No inbound calls yet</span>`;
   const lastTextSub = a.last_text_at
     ? `<span class="sub ${a.last_text_direction === 'inbound' ? 'inbound' : 'outbound'}">Last: ${escapeHtml(fmtActivityTime(a.last_text_at))} ${a.last_text_direction === 'inbound' ? '← in' : '→ out'}</span>`
     : `<span class="sub empty">No texts yet</span>`;
   const staleNote = (a.snapshot_age_seconds && a.snapshot_age_seconds > 6*3600)
-    ? `<div class="crm-comm-stale">⏱ Text counts based on snapshot from ${escapeHtml(fmtActivityTime(a.last_snapshot_pulled_at))}; live count may be higher.</div>`
+    ? `<div class="crm-comm-stale">⏱ Text counts based on snapshot from ${escapeHtml(fmtActivityTime(a.last_snapshot_pulled_at))}; live count in REI Reply may be higher.</div>`
     : "";
   const commSection = `
     <div class="crm-comm-section">
       <h4 class="crm-section-title">Communication</h4>
-      <div class="crm-comm-grid">
+      <div class="crm-comm-grid crm-comm-grid-3">
         <div class="crm-comm-card">
-          <span class="lbl">📞 Calls</span>
-          <span class="val">${callTotal} · ${callOut} out / ${callIn} in</span>
-          ${lastCallSub}
+          <span class="lbl">📞 Outbound calls</span>
+          <span class="val">${callOut}</span>
+          ${outCallSub}
         </div>
         <div class="crm-comm-card">
-          <span class="lbl">💬 Texts</span>
+          <span class="lbl">← Inbound calls</span>
+          <span class="val">${callIn}</span>
+          ${inCallSub}
+        </div>
+        <div class="crm-comm-card">
+          <span class="lbl">💬 SMS</span>
           <span class="val">${textTotal} · ${textOut} out / ${textIn} in</span>
           ${lastTextSub}
         </div>
