@@ -6,20 +6,25 @@ name: SiftMap Property Enricher
 # Supabase. Each address is looked up exactly once and cached forever. The
 # dashboard joins on normalized_address to render chips inline.
 #
-# Quota math: ~100 addresses per run, daily = ~3K/mo, far under the 100K/mo
-# DataSift account limit. Backfill of all current dashboard contacts happens
-# across the first few daily runs.
+# Quota math: ~20 addresses per run × 12 runs/day = ~240/day = ~7.2K/mo,
+# still far under the 100K/mo DataSift account limit. Smaller batches per
+# run mean a new HOT lead lands in DataSift enrichment within ~2 hours
+# instead of the next-day-at-1am-CT it was before.
+#
+# When the queue is empty (steady state after backfill catches up), the
+# enricher exits in ~30 seconds without burning runner minutes.
 
 on:
   schedule:
-    # Daily 6:00 AM UTC = 1:00 AM CT. Off-peak runner availability.
-    - cron: "0 6 * * *"
+    # Every 2 hours. A new HOT lead created at noon gets enriched within
+    # at most 2 hours instead of waiting until the next 1 AM CT cycle.
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       per_run_limit:
         description: "Max addresses to enrich this run"
         required: false
-        default: "100"
+        default: "25"
 
 permissions:
   contents: read
@@ -44,7 +49,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       DATASIFT_EMAIL:      ${{ secrets.DATASIFT_EMAIL }}
       DATASIFT_PASSWORD:   ${{ secrets.DATASIFT_PASSWORD }}
-      SIFTMAP_PER_RUN_LIMIT: ${{ github.event.inputs.per_run_limit || '100' }}
+      SIFTMAP_PER_RUN_LIMIT: ${{ github.event.inputs.per_run_limit || '25' }}
       TZ: America/Chicago
 
     steps:
