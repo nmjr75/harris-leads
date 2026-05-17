@@ -564,16 +564,52 @@ async def search_via_input(page: Page, full_address: str) -> bool:
     street_words = street_no_period.split()
     street_short = " ".join(street_words[:3]) if len(street_words) >= 2 else street_no_period
 
+    # Street-type abbreviation mapping. DataSift's autocomplete sometimes
+    # renders the expanded form ("7207 Granvia Drive") even when you type
+    # the abbreviation ("7207 Granvia Dr"), or vice-versa. We add both
+    # forms to the candidate list so the text-match catches either.
+    STREET_TYPE_PAIRS = [
+        ("DR", "DRIVE"), ("ST", "STREET"), ("AVE", "AVENUE"),
+        ("RD", "ROAD"), ("LN", "LANE"), ("BLVD", "BOULEVARD"),
+        ("CT", "COURT"), ("CIR", "CIRCLE"), ("PL", "PLACE"),
+        ("PKWY", "PARKWAY"), ("TER", "TERRACE"), ("WAY", "WAY"),
+        ("HWY", "HIGHWAY"), ("TRL", "TRAIL"), ("SQ", "SQUARE"),
+    ]
+
+    def _street_variants(s: str) -> list[str]:
+        """Generate abbreviation/expansion variants of a street string."""
+        out = [s]
+        upper = s.upper()
+        for short, long in STREET_TYPE_PAIRS:
+            # Match the type as a whole word with optional trailing period.
+            for pat in (rf"\b{short}\.?\b", rf"\b{long}\b"):
+                if re.search(pat, upper):
+                    out.append(re.sub(pat, short, s, flags=re.IGNORECASE))
+                    out.append(re.sub(pat, long, s, flags=re.IGNORECASE))
+        return out
+
     clicked = False
-    candidates = [
+    base_candidates = [
         typed_address,        # full punctuation-stripped address
         raw_street,           # street portion only (with period if present)
         street_no_period,     # street with all periods removed
         street_short,         # number + first 2-3 street tokens
     ]
-    # Dedupe while preserving order.
-    seen = set()
-    candidates = [c for c in candidates if c and not (c in seen or seen.add(c))]
+    # Expand each base with street-type variants.
+    expanded: list[str] = []
+    for c in base_candidates:
+        if not c:
+            continue
+        for v in _street_variants(c):
+            expanded.append(v.strip())
+    # Dedupe (case-insensitive) while preserving order.
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for c in expanded:
+        key = c.upper()
+        if c and key not in seen:
+            seen.add(key)
+            candidates.append(c)
 
     for needle in candidates:
         if not needle.strip():
@@ -593,8 +629,63 @@ async def search_via_input(page: Page, full_address: str) -> bool:
             log.debug("get_by_text(%r) click failed: %s", needle[:50], e)
             continue
 
+    # Structural fallback: when none of the text variants matched, look
+    # for the autocomplete dropdown's first suggestion item directly.
+    # The dropdown has a "SUGGESTIONS" header; the next visible clickable
+    # element is the top suggestion. Clicking it accepts whatever DataSift
+    # ranked first — which is exactly what a human would do. If it's the
+    # wrong property, the downstream address-token cross-check will catch
+    # it and cache as siftmap_address_mismatch.
     if not clicked:
-        # Last-resort: press Enter. Sometimes DataSift accepts the typed
+        try:
+            picked = await page.evaluate(
+                """() => {
+                    // Find the SUGGESTIONS header (case-insensitive, exact text).
+                    const all = [...document.querySelectorAll("*")];
+                    const header = all.find(el =>
+                        el.children.length === 0 &&
+                        /^\\s*SUGGESTIONS\\s*$/i.test((el.textContent || ""))
+                    );
+                    if (!header) return { ok: false, reason: "no SUGGESTIONS header" };
+                    // Walk up to a container that has multiple visible children.
+                    let container = header.parentElement;
+                    for (let i = 0; i < 6 && container; i++) {
+                        const items = [...container.querySelectorAll("*")].filter(el => {
+                            if (el === header) return false;
+                            if (!el.textContent || el.textContent.trim().length < 4) return false;
+                            // Skip if element doesn't contain a street number pattern.
+                            return /^\\s*\\d+\\b/.test(el.textContent.trim());
+                        });
+                        if (items.length > 0) {
+                            const target = items[0];
+                            // Walk up to first clickable ancestor.
+                            let n = target;
+                            for (let j = 0; j < 5 && n; j++) {
+                                const cs = window.getComputedStyle(n);
+                                if (n.tagName === "BUTTON" || cs.cursor === "pointer" ||
+                                    n.getAttribute("role") === "option") {
+                                    n.click();
+                                    return { ok: true, text: target.textContent.trim().slice(0, 80) };
+                                }
+                                n = n.parentElement;
+                            }
+                            target.click();
+                            return { ok: true, text: target.textContent.trim().slice(0, 80), fallback: true };
+                        }
+                        container = container.parentElement;
+                    }
+                    return { ok: false, reason: "no item found near SUGGESTIONS" };
+                }"""
+            )
+            if picked and picked.get("ok"):
+                clicked = True
+                log.info("Clicked first suggestion via structural fallback: %r",
+                         (picked.get("text") or "")[:60])
+        except Exception as e:
+            log.debug("structural fallback failed: %s", e)
+
+    if not clicked:
+        # Final fallback: press Enter. Sometimes DataSift accepts the typed
         # value directly.
         try:
             await search_input.press("Enter")
