@@ -109,10 +109,12 @@ serve(async (req) => {
     return jsonResponse(200, { skipped: "empty normalized address", contact_id: contactId });
   }
 
-  // Don't re-burn DataSift quota on cached addresses.
+  // Skip only if the row has REAL data (bedrooms/sqft/estimated_value)
+  // OR is a permanently-cached miss (address-mismatch / no-panel).
+  // Stub rows (source='siftmap' but no fields parsed) should retry.
   const { data: existing, error: lookupErr } = await sb
     .from("property_enrichment")
-    .select("normalized_address, source")
+    .select("normalized_address, source, bedrooms, sqft, estimated_value")
     .eq("normalized_address", norm)
     .limit(1);
 
@@ -122,13 +124,20 @@ serve(async (req) => {
   }
 
   if (existing && existing.length > 0) {
-    console.log(`SKIP_ENRICHED: ${contactId} norm=${norm} source=${existing[0].source}`);
-    return jsonResponse(200, {
-      skipped: "already enriched",
-      contact_id: contactId,
-      normalized_address: norm,
-      source: existing[0].source,
-    });
+    const row = existing[0];
+    const src = row.source ?? "";
+    const hasData = row.bedrooms != null || row.sqft != null || row.estimated_value != null;
+    const missCached = src === "siftmap_address_mismatch" || src === "siftmap_no_panel";
+    if (hasData || missCached) {
+      console.log(`SKIP_ENRICHED: ${contactId} norm=${norm} source=${src} hasData=${hasData}`);
+      return jsonResponse(200, {
+        skipped: "already enriched",
+        contact_id: contactId,
+        normalized_address: norm,
+        source: src,
+      });
+    }
+    console.log(`STUB_RETRY: ${contactId} norm=${norm} source=${src} — dispatching to re-fetch`);
   }
 
   console.log(`DISPATCH: firing GitHub for ${contactId} norm=${norm}`);

@@ -449,14 +449,23 @@ def fetch_one_by_contact_id(sb, contact_id: str) -> list[dict[str, Any]]:
             return []
         norm = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
 
-        # Skip if already enriched — webhooks can refire on conflict
-        # upserts in ghl_latest_contact_address, and we don't want to
-        # re-burn DataSift quota on addresses we already cached.
-        existing = sb.from_("property_enrichment").select("normalized_address") \
-            .eq("normalized_address", norm).limit(1).execute()
+        # Skip if already enriched WITH REAL DATA. A stub row with all
+        # NULL fields (source='siftmap' but the scraper failed mid-parse)
+        # should be retried, not treated as cached. Address-mismatch and
+        # no-panel rows DO count as enriched (those represent genuine
+        # DataSift misses — retrying won't help, so we cache the miss).
+        existing = sb.from_("property_enrichment").select(
+            "normalized_address, source, bedrooms, sqft, estimated_value"
+        ).eq("normalized_address", norm).limit(1).execute()
         if existing.data:
-            log.info("contact_id=%s (norm=%s) already enriched — skipping", contact_id, norm)
-            return []
+            row = existing.data[0]
+            src = row.get("source") or ""
+            has_data = any(row.get(k) is not None for k in ("bedrooms", "sqft", "estimated_value"))
+            miss_cached = src in ("siftmap_address_mismatch", "siftmap_no_panel")
+            if has_data or miss_cached:
+                log.info("contact_id=%s (norm=%s) source=%s already enriched — skipping", contact_id, norm, src)
+                return []
+            log.info("contact_id=%s (norm=%s) source=%s is a stub row (no data) — retrying", contact_id, norm, src)
 
         return [{
             "raw_address": raw,
