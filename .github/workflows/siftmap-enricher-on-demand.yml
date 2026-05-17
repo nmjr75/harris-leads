@@ -1,0 +1,72 @@
+name: SiftMap Enricher (On-Demand)
+
+# Fired by Supabase Database Webhook when a new contact lands in
+# ghl_latest_contact_address. Runs the enricher against just that one
+# contact so a new HOT lead is enriched within ~3-4 minutes (cold-start
+# overhead) instead of waiting for the every-2-hour cron tick.
+#
+# Trigger payload shape (sent from Supabase webhook -> GitHub dispatch):
+#   {
+#     "event_type": "new-contact-enrich",
+#     "client_payload": { "contact_id": "<ghl_contact_id>" }
+#   }
+
+on:
+  repository_dispatch:
+    types: [new-contact-enrich]
+
+permissions:
+  contents: read
+
+# Share the concurrency group with the cron-driven enricher so we don't
+# end up with two browsers logged in at the same time hammering DataSift.
+# cancel-in-progress: false means new webhooks queue behind a running
+# cron, they don't kill it.
+concurrency:
+  group: siftmap-enricher
+  cancel-in-progress: false
+
+jobs:
+  enrich-one:
+    name: Enrich single contact
+    runs-on: ubuntu-22.04
+    # Single-address worst case: 3 min setup + ~60s for one address +
+    # buffer = 5 min. 10 min cap is generous.
+    timeout-minutes: 10
+
+    env:
+      SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      DATASIFT_EMAIL:      ${{ secrets.DATASIFT_EMAIL }}
+      DATASIFT_PASSWORD:   ${{ secrets.DATASIFT_PASSWORD }}
+      SIFTMAP_TARGET_CONTACT_ID: ${{ github.event.client_payload.contact_id }}
+      TZ: America/Chicago
+
+    steps:
+      - name: Validate payload
+        run: |
+          if [ -z "${{ github.event.client_payload.contact_id }}" ]; then
+            echo "::error::No contact_id in client_payload — refusing to run"
+            exit 1
+          fi
+          echo "Triggered for contact_id=${{ github.event.client_payload.contact_id }}"
+
+      - name: Checkout harris-leads
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install playwright>=1.40.0 supabase>=2.10.0 python-dotenv>=1.0.0
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run enricher (single-contact mode)
+        run: python scraper/siftmap_enricher.py

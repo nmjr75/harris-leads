@@ -423,6 +423,53 @@ def fetch_pending_addresses(sb, limit: int) -> list[dict[str, Any]]:
         return []
 
 
+def fetch_one_by_contact_id(sb, contact_id: str) -> list[dict[str, Any]]:
+    """On-demand single-contact lookup. Used by the webhook-triggered
+    workflow when a new lead arrives in REI Reply — we enrich the one
+    address immediately instead of waiting for the next cron tick.
+
+    Returns the address in the same shape fetch_pending_addresses uses
+    so run_one_address() doesn't need a code path branch. Returns [] if
+    the contact has no address, or if its normalized_address already
+    exists in property_enrichment (already enriched -> skip duplicate
+    DataSift call).
+    """
+    try:
+        res = sb.from_("ghl_latest_contact_address").select(
+            "contact_address, contact_city, contact_state, contact_postal_code"
+        ).eq("contact_id", contact_id).limit(1).execute()
+        rows = res.data or []
+        if not rows:
+            log.warning("contact_id=%s has no row in ghl_latest_contact_address", contact_id)
+            return []
+        r = rows[0]
+        raw = (r.get("contact_address") or "").strip()
+        if not raw:
+            log.warning("contact_id=%s has no address text", contact_id)
+            return []
+        norm = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
+
+        # Skip if already enriched — webhooks can refire on conflict
+        # upserts in ghl_latest_contact_address, and we don't want to
+        # re-burn DataSift quota on addresses we already cached.
+        existing = sb.from_("property_enrichment").select("normalized_address") \
+            .eq("normalized_address", norm).limit(1).execute()
+        if existing.data:
+            log.info("contact_id=%s (norm=%s) already enriched — skipping", contact_id, norm)
+            return []
+
+        return [{
+            "raw_address": raw,
+            "city": r.get("contact_city"),
+            "state": r.get("contact_state"),
+            "postal_code": r.get("contact_postal_code"),
+            "normalized_address": norm,
+        }]
+    except Exception as e:
+        log.error("fetch_one_by_contact_id(%s) failed: %s", contact_id, e)
+        return []
+
+
 def upsert_enrichment(sb, row: dict[str, Any]) -> bool:
     try:
         sb.table("property_enrichment").upsert(row, on_conflict="normalized_address").execute()
@@ -860,7 +907,18 @@ async def run_one_address(page: Page, addr: dict[str, Any]) -> dict[str, Any] | 
 # ── Main ─────────────────────────────────────────────────────────────
 async def main() -> int:
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
-    pending = fetch_pending_addresses(sb, PER_RUN_LIMIT)
+
+    # Two modes:
+    #   - Cron mode: process the next batch of unenriched addresses (default)
+    #   - Single-contact mode: enrich just one contact_id, used by the
+    #     webhook-triggered on-demand workflow when a new lead arrives.
+    target_contact = os.environ.get("SIFTMAP_TARGET_CONTACT_ID", "").strip()
+    if target_contact:
+        log.info("Single-contact mode for contact_id=%s", target_contact)
+        pending = fetch_one_by_contact_id(sb, target_contact)
+    else:
+        pending = fetch_pending_addresses(sb, PER_RUN_LIMIT)
+
     if not pending:
         log.info("Nothing to enrich — exiting clean.")
         return 0
