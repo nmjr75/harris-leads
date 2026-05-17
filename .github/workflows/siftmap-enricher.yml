@@ -32,7 +32,12 @@ jobs:
   enrich:
     name: Enrich pending addresses
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    # Per-address cost in practice (post-Owner/History tab clicks +
+    # populate-wait) is ~45-60s. At 100 addresses/run the daily cron
+    # finishes in ~85 min worst-case; a 200-300 address backfill needs
+    # the full 3-hour budget. GH Actions allows up to 360 min/job on
+    # Ubuntu so we have headroom.
+    timeout-minutes: 180
 
     env:
       SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
