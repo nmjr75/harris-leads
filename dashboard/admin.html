@@ -5899,8 +5899,10 @@ async function openActivityLog() {
   const m = document.getElementById("actModal");
   const bd = document.getElementById("actModalBackdrop");
   if (!m || !bd) return;
-  m.style.display = "block";
-  bd.style.display = "block";
+  // Reuses the existing .acl-modal CSS pattern (opacity + .open class,
+  // NOT display:block). Match the openAccessControl() pattern.
+  bd.classList.add("open");
+  m.classList.add("open");
   activityLogOpen = true;
   document.getElementById("actModalBody").innerHTML =
     `<div class="acl-loading">Loading activity…</div>`;
@@ -5910,8 +5912,8 @@ async function openActivityLog() {
 function closeActivityLog() {
   const m = document.getElementById("actModal");
   const bd = document.getElementById("actModalBackdrop");
-  if (m) m.style.display = "none";
-  if (bd) bd.style.display = "none";
+  if (bd) bd.classList.remove("open");
+  if (m) m.classList.remove("open");
   activityLogOpen = false;
 }
 
