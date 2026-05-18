@@ -94,6 +94,64 @@ async function fetchTagsFromGHL(contactId: string): Promise<string[]> {
   return [];
 }
 
+type AppointmentInfo = {
+  at: string;
+  title: string | null;
+  status: string | null;
+  raw: any;
+} | null;
+
+// Fetches the contact's appointments and picks the most actionable one:
+// the soonest upcoming event if any are in the future, otherwise the most
+// recent past event. Returns null if the contact has no appointments OR if
+// the API call fails (we don't want to block tag sync on a calendar issue).
+async function fetchUpcomingAppointment(contactId: string): Promise<AppointmentInfo> {
+  try {
+    const resp = await fetch(
+      `https://services.leadconnectorhq.com/contacts/${contactId}/appointments`,
+      {
+        headers: {
+          "Authorization": `Bearer ${GHL_API_TOKEN}`,
+          "Version": "2021-04-15",
+          "Accept": "application/json",
+        },
+      },
+    );
+    if (!resp.ok) {
+      const body = await resp.text();
+      console.warn(`APPT_FETCH_FAIL contact=${contactId} status=${resp.status} body=${body.slice(0, 150)}`);
+      return null;
+    }
+    const data = await resp.json();
+    // GHL responses vary by API version: events / appointments / array.
+    const events: any[] = Array.isArray(data) ? data : (data?.events ?? data?.appointments ?? []);
+    if (!Array.isArray(events) || events.length === 0) {
+      console.log(`APPT_NONE contact=${contactId}`);
+      return null;
+    }
+    const now = Date.now();
+    const enriched = events
+      .map((e) => ({
+        ...e,
+        _startMs: new Date(e.startTime ?? e.start_time ?? e.startsAt ?? 0).getTime(),
+      }))
+      .filter((e) => !!e._startMs);
+    if (enriched.length === 0) return null;
+    enriched.sort((a, b) => a._startMs - b._startMs);
+    const upcoming = enriched.find((e) => e._startMs >= now);
+    const chosen = upcoming ?? enriched[enriched.length - 1];
+    return {
+      at: new Date(chosen._startMs).toISOString(),
+      title: chosen.title ?? null,
+      status: chosen.appointmentStatus ?? chosen.status ?? null,
+      raw: chosen,
+    };
+  } catch (e) {
+    console.warn(`APPT_FETCH_ERR contact=${contactId} ${(e as Error).message}`);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST") return jsonResponse(405, { error: "method not allowed" });
@@ -175,12 +233,35 @@ serve(async (req) => {
     return jsonResponse(500, { error: "insert failed", detail: insErr.message });
   }
 
-  console.log(`UPSERT_OK: ${contactId} ${tags.length} tags (source=${source})`);
+  // Fetch + persist the upcoming appointment (if any). Don't block the
+  // response on this; if it fails the tag chip still renders, it just won't
+  // show a scheduled time.
+  let appointmentAt: string | null = null;
+  const appt = await fetchUpcomingAppointment(contactId);
+  if (appt && appt.at) {
+    const { error: apptErr } = await sb.from("ghl_contact_appointments").upsert({
+      contact_id: contactId,
+      appointment_at: appt.at,
+      appointment_title: appt.title,
+      appointment_status: appt.status,
+      raw: appt.raw,
+      updated_at: nowIso,
+    }, { onConflict: "contact_id" });
+    if (apptErr) {
+      console.error(`APPT_UPSERT_ERR contact=${contactId} ${apptErr.message}`);
+    } else {
+      appointmentAt = appt.at;
+      console.log(`APPT_UPSERT_OK contact=${contactId} at=${appt.at}`);
+    }
+  }
+
+  console.log(`UPSERT_OK: ${contactId} ${tags.length} tags appt=${appointmentAt ?? "(none)"} (source=${source})`);
   return jsonResponse(200, {
     ok: true,
     contact_id: contactId,
     tag_count: tags.length,
     tags,
+    appointment_at: appointmentAt,
     source,
   });
 });

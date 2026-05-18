@@ -1563,6 +1563,25 @@
     padding: 3px 9px;
     letter-spacing: 0.2px;
   }
+  /* Appointment ≤2 hours away — amber, prominent. The action is happening
+     soon; this chip needs to pop while the VA scans the queue. */
+  .prop-chip.appointment-chip.appointment-imminent {
+    background: linear-gradient(135deg, rgba(251, 146, 60, 0.32), rgba(245, 158, 11, 0.32));
+    border-color: rgba(251, 146, 60, 0.85);
+    color: rgb(254, 215, 170);
+    animation: appt-pulse 1.6s ease-in-out infinite;
+  }
+  /* Appointment time is in the past — overdue. Bright red so it's obvious
+     this contact was missed and needs immediate triage. */
+  .prop-chip.appointment-chip.appointment-overdue {
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.32), rgba(239, 68, 68, 0.32));
+    border-color: rgba(239, 68, 68, 0.85);
+    color: rgb(252, 165, 165);
+  }
+  @keyframes appt-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.45); }
+    50%      { box-shadow: 0 0 0 4px rgba(251, 146, 60, 0); }
+  }
   /* Appointment Set pill — distinct from regular stage pills so it reads as
      a flag/intent indicator, not a stage. */
   .filter-pill.appointment-pill {
@@ -3314,6 +3333,9 @@ async function loadAppointments() {
     DATA.appointments[r.contact_id] = {
       latest_at: r.latest_appointment_at,
       tags: r.appointment_tags || [],
+      scheduled_at: r.appointment_scheduled_at || null,
+      title: r.appointment_title || null,
+      status: r.appointment_status || null,
     };
   }
 }
@@ -3499,10 +3521,50 @@ function fmtActivityTime(iso) {
 function renderAppointmentChip(row) {
   const ap = DATA.appointments?.[row.contact_id];
   if (!ap) return "";
+
+  // Format the scheduled appointment time in Central Time (per memory:
+  // dashboard timestamps must always render in America/Chicago, never the
+  // browser default).
+  let label = "📅 Appointment Set";
+  let urgencyClass = "";
+  let urgencyText = "";
+  if (ap.scheduled_at) {
+    const apptMs = new Date(ap.scheduled_at).getTime();
+    const ageMs = apptMs - Date.now();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Chicago",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const when = formatter.format(new Date(ap.scheduled_at));
+    label = `📅 ${when} CT`;
+    // Visual urgency tiers so a VA scanning the list sees imminent calls
+    // pop without having to read every chip:
+    //   in the past         → 🚨 red — missed / overdue
+    //   ≤2 hours from now   → 🔥 amber — call NOW
+    //   ≤24 hours           → standard purple chip
+    //   future              → standard purple chip
+    if (ageMs < 0) {
+      urgencyClass = " appointment-overdue";
+      urgencyText = " (OVERDUE)";
+    } else if (ageMs <= 2 * 3600 * 1000) {
+      urgencyClass = " appointment-imminent";
+      urgencyText = " (≤2 hours)";
+    }
+  }
+
   const tagList = (ap.tags || []).join(", ") || "appointment booked";
-  const when = ap.latest_at ? ` · tag applied ${fmtActivityTime(ap.latest_at)}` : "";
-  const tip = `Appointment booked via REI Reply · ${tagList}${when} — verify the scheduled time in the REI Reply conversation and call them at that time`;
-  return `<span class="prop-chip appointment-chip" title="${escapeHtml(tip)}">📅 Appointment Set</span>`;
+  const tagApplied = ap.latest_at ? ` · tag applied ${fmtActivityTime(ap.latest_at)}` : "";
+  const apptTitle = ap.title ? ` · "${ap.title}"` : "";
+  const apptStatus = ap.status ? ` · status: ${ap.status}` : "";
+  const tip = ap.scheduled_at
+    ? `Appointment scheduled${apptTitle}${apptStatus} · tags: ${tagList}${tagApplied}`
+    : `Appointment booked via REI Reply · tags: ${tagList}${tagApplied} — no calendar event found, verify the time in the REI Reply conversation`;
+  return `<span class="prop-chip appointment-chip${urgencyClass}" title="${escapeHtml(tip)}">${escapeHtml(label)}${urgencyText}</span>`;
 }
 
 function renderActivityChips(row) {
