@@ -546,38 +546,6 @@
     align-items: center;
     flex-wrap: wrap;
   }
-  /* Smart views row — one-click filter+sort presets. Sits between Stage
-     and Score rows so the workflow goes: "tell me what kind of leads I'm
-     looking at (stage), then jump to a curated subset (smart view), then
-     refine (score / sort / last-touched)." Button styling is intentionally
-     louder than filter-pills so smart views read as primary actions. */
-  .smart-views-row {
-    padding: 6px 24px 4px;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .smart-view-btn {
-    background: linear-gradient(135deg, var(--accent), var(--accent-light));
-    color: #fff;
-    border: 0;
-    border-radius: 6px;
-    padding: 6px 14px;
-    cursor: pointer;
-    font-size: 0.82rem;
-    font-weight: 600;
-    font-family: inherit;
-    transition: filter 0.12s;
-  }
-  .smart-view-btn:hover { filter: brightness(1.12); }
-  .smart-view-clear {
-    background: var(--surface2);
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    font-weight: 500;
-  }
-  .smart-view-clear:hover { color: var(--text); filter: none; border-color: var(--accent); }
   .stage-filter-label {
     color: var(--text-muted);
     font-size: 0.72rem;
@@ -2620,12 +2588,6 @@
       <span class="filter-pill" data-stage="hit_list" onclick="setStageFilter('hit_list')" title="Replied YES to initial blast but went silent on REBA AI follow-ups (REI Reply SELLER DISPOSITION pipeline → HIT LIST stage)">Hit List <span class="count" data-count-stage="hit_list">0</span></span>
       <span class="filter-pill" data-stage="all" onclick="setStageFilter('all')">All stages <span class="count" data-count-stage="all">0</span></span>
     </div>
-    <!-- Smart views: one-click filter + sort presets for common workflows. -->
-    <div class="smart-views-row">
-      <span class="stage-filter-label">Smart views:</span>
-      <button class="smart-view-btn" onclick="applySmartView('call_queue')" title="HOT+WARM leads in callable stages, sorted by oldest-called (never-called first)">🎯 Needs a call now</button>
-      <button class="smart-view-btn smart-view-clear" id="smartViewClearBtn" onclick="clearSmartView()" style="display:none" title="Reset filters and sort to defaults">✕ Clear smart view</button>
-    </div>
     <div class="filter-bar">
       <span class="stage-filter-label">Score:</span>
       <span class="filter-pill active" data-score="all" onclick="setScoreFilter('all')">All <span class="count" data-count-score="all">0</span></span>
@@ -2878,9 +2840,6 @@ let currentStageFilter = "active"; // default: only show unworked pipeline
 // Last-outbound-call recency bucket. "any" = no filter. Other values map to
 // day ranges computed from activityFor(r).last_outbound_call_at.
 let currentTouchedBucket = "any";
-// Stage values that group into the virtual "Callable" stage filter — every
-// stage where the next legitimate action is to make a call.
-const CALLABLE_STAGES = new Set(["active", "working", "ghosting", "run_comps"]);
 let currentAckFilter = "pending";
 let currentSort = { field: "last_activity_at", desc: true };
 let DATA = {
@@ -4049,11 +4008,7 @@ function jumpToContactFromPanel(contactId) {
   if (currentScoreFilters.size > 0 && !currentScoreFilters.has(lead.score)) {
     setScoreFilter("all");
   }
-  const leadStage = getStageKey(lead);
-  const stageHidden = currentStageFilter !== "all"
-    && !(currentStageFilter === "callable" && CALLABLE_STAGES.has(leadStage))
-    && leadStage !== currentStageFilter;
-  if (stageHidden) {
+  if (currentStageFilter !== "all" && getStageKey(lead) !== currentStageFilter) {
     setStageFilter("all");
   }
   if (currentTouchedBucket !== "any") {
@@ -5120,11 +5075,7 @@ function updateFilterCounts() {
     touchUniverse = touchUniverse.filter(r => currentScoreFilters.has(r.score));
   }
   if (!isHitList && currentStageFilter !== "all") {
-    if (currentStageFilter === "callable") {
-      touchUniverse = touchUniverse.filter(r => CALLABLE_STAGES.has(getStageKey(r)));
-    } else {
-      touchUniverse = touchUniverse.filter(r => getStageKey(r) === currentStageFilter);
-    }
+    touchUniverse = touchUniverse.filter(r => getStageKey(r) === currentStageFilter);
   }
   touchUniverse = touchUniverse.filter(matchesAssignmentFilter);
   if (search) {
@@ -5234,11 +5185,7 @@ function renderLeads() {
     rows = rows.filter(r => currentScoreFilters.has(r.score));
   }
   if (!isHitList && currentStageFilter !== "all") {
-    if (currentStageFilter === "callable") {
-      rows = rows.filter(r => CALLABLE_STAGES.has(getStageKey(r)));
-    } else {
-      rows = rows.filter(r => getStageKey(r) === currentStageFilter);
-    }
+    rows = rows.filter(r => getStageKey(r) === currentStageFilter);
   }
   if (!isHitList && currentTouchedBucket !== "any") {
     rows = rows.filter(r => {
@@ -5519,73 +5466,6 @@ function setTouchedBucket(b) {
     el.classList.toggle("active", el.dataset.touch === b);
   });
   renderLeads();
-}
-
-// One-click smart-view presets. Each preset sets score+stage+sort+touched
-// to a curated combination optimized for a recurring workflow ("daily call
-// queue", "inbound waiting", etc). Adding a new preset = add a case here +
-// a button in the smart-views-row.
-function applySmartView(name) {
-  if (name === "call_queue") {
-    // HOT+WARM, every callable stage, oldest-called first (never-called at top).
-    currentScoreFilters = new Set(["HOT", "WARM"]);
-    currentStageFilter = "callable";
-    currentTouchedBucket = "any";
-    currentSort = { field: "last_outbound_call_at", desc: false };
-    // Sync pill / sort-picker / table-header UI to the new state.
-    syncScorePillActive();
-    document.querySelectorAll('.filter-pill[data-stage]').forEach(el => {
-      el.classList.toggle("active", el.dataset.stage === "callable");
-    });
-    document.querySelectorAll('.filter-pill[data-touch]').forEach(el => {
-      el.classList.toggle("active", el.dataset.touch === "any");
-    });
-    const picker = document.getElementById("sortPicker");
-    if (picker) picker.value = "last_outbound_call_at|asc";
-    syncTableHeaderSort("last_outbound_call_at");
-    const search = document.getElementById("leadsSearch");
-    if (search) search.value = "";
-    const clearBtn = document.getElementById("smartViewClearBtn");
-    if (clearBtn) clearBtn.style.display = "";
-    expandedDetail = null;
-    closeStageMenu();
-    renderLeads();
-  }
-}
-
-function clearSmartView() {
-  // Reset to dashboard defaults: All scores, Active stage, Any last-touched,
-  // sort by Last activity descending.
-  currentScoreFilters.clear();
-  currentStageFilter = "active";
-  currentTouchedBucket = "any";
-  currentSort = { field: "last_activity_at", desc: true };
-  syncScorePillActive();
-  document.querySelectorAll('.filter-pill[data-stage]').forEach(el => {
-    el.classList.toggle("active", el.dataset.stage === "active");
-  });
-  document.querySelectorAll('.filter-pill[data-touch]').forEach(el => {
-    el.classList.toggle("active", el.dataset.touch === "any");
-  });
-  const picker = document.getElementById("sortPicker");
-  if (picker) picker.value = "last_activity_at|desc";
-  syncTableHeaderSort("last_activity_at");
-  const clearBtn = document.getElementById("smartViewClearBtn");
-  if (clearBtn) clearBtn.style.display = "none";
-  expandedDetail = null;
-  closeStageMenu();
-  renderLeads();
-}
-
-// Mirror currentSort onto the table-header sort arrows. Extracted so smart
-// views can sync header state without duplicating setSort's bookkeeping.
-function syncTableHeaderSort(field) {
-  document.querySelectorAll("th.sortable").forEach(th => {
-    const isThis = (th.getAttribute("onclick") || "").includes(`'${field}'`);
-    th.classList.toggle("sorted", isThis);
-    const arrow = th.querySelector(".sort-arrow");
-    if (arrow) arrow.textContent = isThis ? (currentSort.desc ? "↓" : "↑") : "";
-  });
 }
 
 function setStageFilter(s) {
