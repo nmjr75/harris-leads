@@ -25,8 +25,10 @@
 // JWT verification: OFF (Settings → Verify JWT off). Gateway anon-key auth
 // still applies. App-level auth comes from X-Webhook-Secret.
 //
-// Env vars (Functions → sync-ghl-contact-tags → Secrets):
-//   WEBHOOK_SECRET             shared secret with the GHL workflow
+// Env vars (project-level secrets):
+//   TAGS_WEBHOOK_SECRET        shared secret with the GHL workflow.
+//     Named distinctly from WEBHOOK_SECRET (used by enrich-on-snapshot) so
+//     rotating one doesn't invalidate the other.
 //   SUPABASE_URL               auto-injected
 //   SUPABASE_SERVICE_ROLE_KEY  auto-injected
 
@@ -35,7 +37,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET") ?? "";
+const WEBHOOK_SECRET = Deno.env.get("TAGS_WEBHOOK_SECRET") ?? "";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
