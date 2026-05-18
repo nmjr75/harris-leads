@@ -2719,8 +2719,23 @@
 <div id="userBar">
   <span>Signed in as: <strong id="currentUserLabel" style="color:var(--accent-light)"></strong></span>
   <span style="margin-left:auto" id="syncStatus"></span>
+  <button id="activityLogBtn" onclick="openActivityLog()" style="display:none;margin-right:6px" title="Review when each VA was active on the dashboard">📊 Activity Log</button>
   <button id="accessControlBtn" onclick="openAccessControl()" style="display:none;margin-right:6px" title="Manage VA dashboard access">🔐 Access Control</button>
   <button onclick="handleSignOut()">Sign Out</button>
+</div>
+
+<!-- Activity log modal (admin-only). Shows recent dashboard sessions
+     per VA: login times, heartbeats (active time), focus / blur,
+     tab close. Off-hours sessions flagged. -->
+<div class="acl-backdrop" id="actModalBackdrop" onclick="closeActivityLog()"></div>
+<div class="acl-modal" id="actModal" role="dialog" aria-label="Activity Log" style="max-width:920px">
+  <div class="acl-header">
+    <h2 class="acl-title">📊 User Activity Log</h2>
+    <button class="acl-close" onclick="closeActivityLog()" aria-label="Close">✕</button>
+  </div>
+  <div class="acl-body" id="actModalBody">
+    <div class="acl-loading">Loading activity…</div>
+  </div>
 </div>
 
 <!-- Access Control modal (owner-only). Lists every profile with an
@@ -2995,6 +3010,7 @@ async function checkAuth() {
       console.warn("is_active check failed (allowing through):", e);
     }
   }
+  startActivityTracking();
   return true;
 }
 
@@ -3067,9 +3083,94 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
 });
 
 async function handleSignOut() {
+  // Log the explicit sign-out BEFORE we kill the session, otherwise
+  // the RLS insert (user_id = auth.uid()) won't have a valid auth context.
+  try { await logActivity("signout"); } catch {}
+  stopActivityTracking();
   await sb.auth.signOut();
   currentSession = null;
   showLogin();
+}
+
+// ── User activity tracking (Layer 2: in-session monitoring) ─────────
+// Writes events to public.user_activity_log so Nelson can audit when
+// his team is actually working vs just logged in. RLS-locked: VAs can
+// insert their own rows but cannot read the table; only admin role can
+// SELECT. See migration 040_user_activity_log.sql.
+const ACTIVITY_HEARTBEAT_MS = 5 * 60 * 1000;  // 5 minutes
+let _activityHeartbeatTimer = null;
+let _activityVisible = (typeof document !== "undefined") ? !document.hidden : true;
+let _activityListenersAttached = false;
+
+async function logActivity(eventType, extra) {
+  if (!currentSession?.user) return;
+  try {
+    await sb.from("user_activity_log").insert({
+      user_id: currentSession.user.id,
+      user_email: currentSession.user.email,
+      event_type: eventType,
+      page: (location.pathname.split("/").pop() || "index.html").toLowerCase(),
+      user_agent: (navigator.userAgent || "").slice(0, 200),
+      ...(extra || {}),
+    });
+  } catch (e) {
+    // Silent fail — activity logging must never break the dashboard.
+    console.debug("logActivity failed:", e?.message || e);
+  }
+}
+
+function _onVisibilityChange() {
+  const nowVisible = !document.hidden;
+  if (nowVisible !== _activityVisible) {
+    _activityVisible = nowVisible;
+    logActivity(nowVisible ? "focus" : "blur");
+  }
+}
+
+function _onBeforeUnload() {
+  if (!currentSession?.user) return;
+  // fetch() with keepalive survives the page unload (unlike a normal
+  // fetch which would be cancelled). sendBeacon can't set the auth
+  // headers we need so fetch+keepalive is the right tool.
+  try {
+    fetch(`${SUPABASE_URL}/rest/v1/user_activity_log`, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Authorization": `Bearer ${currentSession.access_token}`,
+        "apikey": SUPABASE_PUBLISHABLE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify({
+        user_id: currentSession.user.id,
+        user_email: currentSession.user.email,
+        event_type: "tab_close",
+        page: (location.pathname.split("/").pop() || "index.html").toLowerCase(),
+        user_agent: (navigator.userAgent || "").slice(0, 200),
+      }),
+    });
+  } catch {}
+}
+
+function startActivityTracking() {
+  if (_activityHeartbeatTimer) return;  // idempotent
+  logActivity("login");
+  _activityHeartbeatTimer = setInterval(() => {
+    if (_activityVisible) logActivity("heartbeat");
+  }, ACTIVITY_HEARTBEAT_MS);
+  if (!_activityListenersAttached) {
+    document.addEventListener("visibilitychange", _onVisibilityChange);
+    window.addEventListener("beforeunload", _onBeforeUnload);
+    _activityListenersAttached = true;
+  }
+}
+
+function stopActivityTracking() {
+  if (_activityHeartbeatTimer) {
+    clearInterval(_activityHeartbeatTimer);
+    _activityHeartbeatTimer = null;
+  }
 }
 
 // ── Data loaders ──────────────────────────────────────────────────
@@ -5786,8 +5887,109 @@ let aclProfiles = [];
 
 function showAccessControlButtonIfOwner() {
   const btn = document.getElementById("accessControlBtn");
-  if (!btn) return;
-  btn.style.display = (currentRole === "nelson") ? "" : "none";
+  if (btn) btn.style.display = (currentRole === "nelson") ? "" : "none";
+  const actBtn = document.getElementById("activityLogBtn");
+  if (actBtn) actBtn.style.display = (currentRole === "nelson") ? "" : "none";
+}
+
+// ── Activity Log (Nelson-only) ─────────────────────────────────────
+let activityLogOpen = false;
+
+async function openActivityLog() {
+  const m = document.getElementById("actModal");
+  const bd = document.getElementById("actModalBackdrop");
+  if (!m || !bd) return;
+  m.style.display = "block";
+  bd.style.display = "block";
+  activityLogOpen = true;
+  document.getElementById("actModalBody").innerHTML =
+    `<div class="acl-loading">Loading activity…</div>`;
+  await renderActivityLog();
+}
+
+function closeActivityLog() {
+  const m = document.getElementById("actModal");
+  const bd = document.getElementById("actModalBackdrop");
+  if (m) m.style.display = "none";
+  if (bd) bd.style.display = "none";
+  activityLogOpen = false;
+}
+
+async function renderActivityLog() {
+  // Pull the daily summary first (one row per user per day) so we
+  // get an at-a-glance view, then offer drill-down into raw events.
+  const body = document.getElementById("actModalBody");
+  if (!body) return;
+
+  // Last 30 days of daily summaries.
+  const { data: daily, error: dErr } = await sb
+    .from("user_activity_daily")
+    .select("*")
+    .gte("activity_date", new Date(Date.now() - 30*86400000).toISOString().slice(0,10))
+    .order("activity_date", { ascending: false })
+    .order("user_email", { ascending: true });
+
+  if (dErr) {
+    body.innerHTML = `<div class="acl-loading" style="color:#f87171">
+      Failed to load activity (${escapeHtml(dErr.message)}). Make sure migration 040 has been applied.
+    </div>`;
+    return;
+  }
+
+  if (!daily || daily.length === 0) {
+    body.innerHTML = `<div class="acl-loading">
+      No activity recorded yet. Sessions will start logging as your team signs in.
+    </div>`;
+    return;
+  }
+
+  const fmtTime = (iso) => iso
+    ? new Date(iso).toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
+      })
+    : "—";
+
+  const rows = daily.map(d => {
+    const offHoursMark = d.off_hours
+      ? `<span style="color:#fbbf24;font-weight:600" title="First seen before 8am OR last seen after 8pm CT">⚠ off-hours</span>`
+      : `<span style="color:#86efac">on-hours</span>`;
+    const userLabel = d.user_email || "<unknown>";
+    return `
+      <tr>
+        <td>${escapeHtml(d.activity_date)}</td>
+        <td>${escapeHtml(userLabel)}</td>
+        <td>${escapeHtml(fmtTime(d.first_seen_at))}</td>
+        <td>${escapeHtml(fmtTime(d.last_seen_at))}</td>
+        <td style="text-align:right">${d.approx_active_minutes || 0}m</td>
+        <td style="text-align:right">${d.logins || 0}</td>
+        <td>${offHoursMark}</td>
+      </tr>`;
+  }).join("");
+
+  body.innerHTML = `
+    <p style="color:var(--text-muted);font-size:0.82rem;margin:0 0 12px">
+      Last 30 days. Times are Central. 'Active' = approx. minutes the tab
+      was visible (heartbeats × 5 min, capped at session span).
+      Off-hours flags first-seen before 8am or last-seen after 8pm CT.
+    </p>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">
+      <table class="data-table" style="margin:0;width:100%">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>User</th>
+            <th>First seen (CT)</th>
+            <th>Last seen (CT)</th>
+            <th style="text-align:right">Active</th>
+            <th style="text-align:right">Logins</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function loadAccessProfiles() {
