@@ -276,9 +276,16 @@ def parse_panel(text: str) -> dict[str, Any]:
         or re.search(r"EQUITY\s*\n?\s*(\d+(?:\.\d+)?)\s*%", upper)
     if m: out["equity_pct"] = to_float(m.group(1))
 
-    m = re.search(r"(\d+)\s*BDS?", upper)
+    # Word boundary after BDS / BA is critical: without it the regex
+    # greedily matches the street number against street names that begin
+    # with the same letters. Verified failure on Leonard Rigsby's
+    # "20678 BAPTIST ENCAMPMENT" where "20678 BA" matched bathrooms=20678
+    # and crashed the upsert (numeric(4,1) overflow). Adding \b means
+    # the regex only fires on standalone "BD"/"BDS"/"BA"/"BATH"/"BATHS"
+    # tokens — actual property metadata — not street-name fragments.
+    m = re.search(r"(\d+)\s*BDS?\b", upper)
     if m: out["bedrooms"] = to_int(m.group(1))
-    m = re.search(r"(\d+(?:\.\d+)?)\s*BA(?:THS?)?", upper)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*BA(?:THS?)?\b", upper)
     if m: out["bathrooms"] = to_float(m.group(1))
     m = re.search(r"([\d,]+)\s*SQFT", upper)
     if m: out["sqft"] = to_int(m.group(1))
