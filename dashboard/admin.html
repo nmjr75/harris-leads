@@ -6128,7 +6128,7 @@ function renderPropertyTab(contactId) {
       <div class="crm-property-banner">
         <span class="icon">⏳</span>
         <div>
-          <strong>Not enriched yet.</strong> This address will be looked up on the next nightly SiftMap cron (~6 AM UTC). Use the override column in the meantime.
+          <strong>Not enriched yet.</strong> SiftMap enrichment runs automatically every 2 hours, or click <strong>🔄 Re-enrich from REI Reply</strong> below to run now (~90 seconds end-to-end).
         </div>
       </div>`;
   } else if (zipFlag) {
@@ -6433,25 +6433,95 @@ async function forceEnrichContact(contactId, btnEl) {
       return;
     }
 
-    const ghlNote = data.ghl_fetch_ok
-      ? "✓ Pulled latest contact data from REI Reply.\n"
-      : "⚠ Could not reach REI Reply API (used existing Supabase data).\n";
-    alert(
-      ghlNote +
-      `✓ Address: ${data.address}\n` +
-      "✓ Cached property data wiped.\n" +
-      "✓ SiftMap enrichment workflow triggered.\n\n" +
-      "Refresh this dashboard in about 3-5 minutes to see the new data."
-    );
+    // Kick off background polling — every 20 seconds, re-fetch the
+    // property_enrichment row for this address. When real data lands
+    // (bedrooms/sqft/estimated_value populated), refresh the panel
+    // automatically so the user never has to manually reload.
+    pollForEnrichment(contactId, data.normalized_address, btnEl);
+
+    if (btnEl) {
+      btnEl.innerHTML = "⏳ Enriching… (~90s)";
+      // Keep disabled while polling runs.
+    }
   } catch (e) {
     console.error("forceEnrichContact exception:", e);
     alert("Network error — try again in a moment.");
-  } finally {
     if (btnEl) {
       btnEl.disabled = false;
       btnEl.innerHTML = originalLabel || "🔄 Re-enrich from REI Reply";
     }
   }
+  // Note: button stays disabled in the success path; pollForEnrichment
+  // re-enables it once data arrives or times out.
+}
+
+// Poll property_enrichment for the post-trigger data. Re-render the
+// Property tab the moment real data lands. Max 6 minutes total.
+async function pollForEnrichment(contactId, expectedNorm, btnEl) {
+  const POLL_INTERVAL_MS = 20000;       // 20s between checks
+  const MAX_ATTEMPTS = 18;               // 18 * 20s = 6 min
+  const startedAt = Date.now();
+
+  const restoreBtn = () => {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = "🔄 Re-enrich from REI Reply";
+    }
+  };
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+    // Update countdown text on the button so the user sees we're working.
+    if (btnEl) {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      btnEl.innerHTML = `⏳ Enriching… ${elapsed}s elapsed`;
+    }
+
+    try {
+      const { data, error } = await sb
+        .from("property_enrichment")
+        .select("normalized_address, source, bedrooms, sqft, estimated_value")
+        .eq("normalized_address", expectedNorm)
+        .limit(1);
+      if (error) { console.error("poll error:", error); continue; }
+      if (!data || data.length === 0) continue;
+
+      const row = data[0];
+      const hasData = row.bedrooms != null || row.sqft != null || row.estimated_value != null;
+      const cachedMiss = row.source === "siftmap_address_mismatch" || row.source === "siftmap_no_panel";
+
+      if (hasData) {
+        // Real data landed — reload property_enrichment cache and
+        // re-render the panel so the grid populates.
+        await loadPropertyEnrichment();
+        if (crmContactId === contactId) renderPropertyTab(contactId);
+        if (typeof renderLeads === "function") renderLeads();
+        restoreBtn();
+        return;
+      }
+      if (cachedMiss) {
+        // Enricher ran but DataSift had no record. Stop polling and
+        // surface the result to the user.
+        await loadPropertyEnrichment();
+        if (crmContactId === contactId) renderPropertyTab(contactId);
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.innerHTML = "🔄 Re-enrich from REI Reply";
+        }
+        alert("DataSift has no record for this address. The address may be malformed or out-of-state — check the corrected address in REI Reply.");
+        return;
+      }
+      // Otherwise it's a stub row (source='siftmap' but null fields).
+      // Keep polling — the scraper may still be writing.
+    } catch (e) {
+      console.error("poll exception:", e);
+    }
+  }
+
+  // Timeout. Tell the user to refresh manually.
+  restoreBtn();
+  alert("Still waiting after 6 minutes. The enrichment may have failed silently — check the GitHub Actions logs or try again.");
 }
 
 // Esc closes the CRM panel.

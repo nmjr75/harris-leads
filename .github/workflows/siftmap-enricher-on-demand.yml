@@ -65,8 +65,24 @@ jobs:
           pip install --upgrade pip
           pip install playwright>=1.40.0 supabase>=2.10.0 python-dotenv>=1.0.0
 
-      - name: Install Playwright Chromium
-        run: python -m playwright install --with-deps chromium
+      # Cache the Playwright browser binary across runs. First run after
+      # this lands does the full ~70s install; every subsequent run
+      # restores from cache in ~3s. The system deps (apt packages) still
+      # need re-install via --with-deps because GH Actions images don't
+      # persist apt state — but the browser binary alone is ~95% of the time.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Install Playwright Chromium (browser binary)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install chromium
+
+      - name: Install Playwright system deps
+        run: python -m playwright install-deps chromium
 
       - name: Run enricher (single-contact mode)
         run: python scraper/siftmap_enricher.py
