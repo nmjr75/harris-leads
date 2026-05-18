@@ -6046,10 +6046,21 @@ function renderPropertyTab(contactId) {
   const row = findLeadByContactId(contactId);
   const addr = row ? fullAddressFor(row) : null;
   if (!addr) {
+    // Dashboard's local cache doesn't have an address for this contact.
+    // It might genuinely be missing in REI Reply OR the VA just added
+    // one and the scorer hasn't propagated it yet. Show the Re-enrich
+    // button so the VA can force a pull from GHL API — that path
+    // bypasses the local cache entirely and grabs the address straight
+    // from REI Reply.
     target.innerHTML = `
       <div class="crm-coming-soon">
-        <h3>No address on this contact</h3>
-        <p>This lead has no address attached, so there's nothing to enrich. Add an address in REI Reply and refresh.</p>
+        <h3>No address on this contact yet</h3>
+        <p>The dashboard doesn't have an address for this lead. If you just added one in REI Reply, click below to force a pull — it fetches the latest contact data straight from REI Reply (bypassing the dashboard's cached view).</p>
+        <button class="btn-force-enrich" style="margin-top:14px"
+                onclick="forceEnrichContact('${escapeHtml(contactId)}', this)"
+                title="Pull the latest contact data + address from REI Reply and trigger SiftMap enrichment.">
+          🔄 Pull from REI Reply &amp; enrich
+        </button>
       </div>`;
     return;
   }
