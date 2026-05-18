@@ -2654,12 +2654,12 @@
          output. Buckets compute from activityFor(r).last_outbound_call_at. -->
     <div class="filter-bar" id="touchedFilterRow" style="padding-top:0">
       <span class="stage-filter-label">Last call:</span>
-      <span class="filter-pill active" data-touch="any"   onclick="setTouchedBucket('any')">Any</span>
-      <span class="filter-pill"        data-touch="never" onclick="setTouchedBucket('never')" title="No outbound call recorded for this contact">Never called</span>
-      <span class="filter-pill"        data-touch="0-3"   onclick="setTouchedBucket('0-3')">≤3 days</span>
-      <span class="filter-pill"        data-touch="4-7"   onclick="setTouchedBucket('4-7')">4-7 days</span>
-      <span class="filter-pill"        data-touch="8-14"  onclick="setTouchedBucket('8-14')">8-14 days</span>
-      <span class="filter-pill"        data-touch="15+"   onclick="setTouchedBucket('15+')">15+ days</span>
+      <span class="filter-pill active" data-touch="any"   onclick="setTouchedBucket('any')">Any <span class="count" data-count-touch="any">0</span></span>
+      <span class="filter-pill"        data-touch="never" onclick="setTouchedBucket('never')" title="No outbound call recorded for this contact">Never called <span class="count" data-count-touch="never">0</span></span>
+      <span class="filter-pill"        data-touch="0-3"   onclick="setTouchedBucket('0-3')">≤3 days <span class="count" data-count-touch="0-3">0</span></span>
+      <span class="filter-pill"        data-touch="4-7"   onclick="setTouchedBucket('4-7')">4-7 days <span class="count" data-count-touch="4-7">0</span></span>
+      <span class="filter-pill"        data-touch="8-14"  onclick="setTouchedBucket('8-14')">8-14 days <span class="count" data-count-touch="8-14">0</span></span>
+      <span class="filter-pill"        data-touch="15+"   onclick="setTouchedBucket('15+')">15+ days <span class="count" data-count-touch="15+">0</span></span>
     </div>
     <table class="data-table" id="leadsTable">
       <thead>
@@ -5111,6 +5111,47 @@ function updateFilterCounts() {
   for (const k in stageCounts) {
     const el = document.querySelector(`[data-count-stage="${k}"]`);
     if (el) el.textContent = stageCounts[k];
+  }
+
+  // Last-touched bucket counts — FACET-AWARE. Each bucket's count answers
+  // "if I click this pill while keeping my other active filters, how many
+  // rows would I see?" So the universe respects Score + Stage + Assignment
+  // + Search, but NOT the touched filter itself.
+  const search = (document.getElementById("leadsSearch")?.value || "").toLowerCase();
+  const isHitList = currentStageFilter === "hit_list";
+  let touchUniverse = isHitList ? getHitListRows() : (DATA.leads || []);
+  if (!isHitList && currentScoreFilters.size > 0) {
+    touchUniverse = touchUniverse.filter(r => currentScoreFilters.has(r.score));
+  }
+  if (!isHitList && currentStageFilter !== "all") {
+    if (currentStageFilter === "callable") {
+      touchUniverse = touchUniverse.filter(r => CALLABLE_STAGES.has(getStageKey(r)));
+    } else {
+      touchUniverse = touchUniverse.filter(r => getStageKey(r) === currentStageFilter);
+    }
+  }
+  touchUniverse = touchUniverse.filter(matchesAssignmentFilter);
+  if (search) {
+    touchUniverse = touchUniverse.filter(r =>
+      (r.contact_name || "").toLowerCase().includes(search) ||
+      (r.phone || "").toLowerCase().includes(search)
+    );
+  }
+  const touchCounts = { any: touchUniverse.length, never: 0, "0-3": 0, "4-7": 0, "8-14": 0, "15+": 0 };
+  const now = Date.now();
+  for (const r of touchUniverse) {
+    const a = activityFor(r) || {};
+    const last = a.last_outbound_call_at;
+    if (!last) { touchCounts.never++; continue; }
+    const days = Math.floor((now - new Date(last).getTime()) / 86400000);
+    if (days <= 3) touchCounts["0-3"]++;
+    else if (days <= 7) touchCounts["4-7"]++;
+    else if (days <= 14) touchCounts["8-14"]++;
+    else touchCounts["15+"]++;
+  }
+  for (const k in touchCounts) {
+    const el = document.querySelector(`[data-count-touch="${k}"]`);
+    if (el) el.textContent = touchCounts[k];
   }
 
   // Assignment counts (admin/owner-only filter bar). Universe = HOT/WARM
