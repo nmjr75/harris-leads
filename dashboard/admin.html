@@ -1818,6 +1818,34 @@
   }
   .crm-section-title:not(:first-child) { margin-top: 22px; }
 
+  /* Inline row that pairs a section title with an action button
+     (used by Property Data → Re-enrich from REI Reply). */
+  .crm-section-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-top: 22px; margin-bottom: 12px;
+  }
+  .crm-section-title-row .crm-section-title {
+    margin: 0;  /* row handles spacing */
+  }
+  .btn-force-enrich {
+    background: rgba(96, 165, 250, 0.12);
+    color: rgb(147, 197, 253);
+    border: 1px solid rgba(96, 165, 250, 0.45);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.78rem; font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-force-enrich:hover:not(:disabled) {
+    background: rgba(96, 165, 250, 0.22);
+    border-color: rgba(96, 165, 250, 0.7);
+  }
+  .btn-force-enrich:disabled {
+    opacity: 0.55; cursor: wait;
+  }
+
   /* Property tab — two-column form: cached value | override input */
   .crm-prop-grid {
     display: grid;
@@ -6171,7 +6199,14 @@ function renderPropertyTab(contactId) {
   target.innerHTML = `
     ${banner}
     ${commSection}
-    <h4 class="crm-section-title">Property Data — DataSift cached vs your overrides</h4>
+    <div class="crm-section-title-row">
+      <h4 class="crm-section-title">Property Data — DataSift cached vs your overrides</h4>
+      <button class="btn-force-enrich"
+              onclick="forceEnrichContact('${escapeHtml(row.contact_id || '')}', this)"
+              title="Pull the latest contact data from REI Reply, wipe the cached property data, and re-run the SiftMap enricher. Use this after you correct an address in REI Reply.">
+        🔄 Re-enrich from REI Reply
+      </button>
+    </div>
     <div class="crm-prop-grid">
       <div class="col-label-head">Field</div>
       <div class="col-cached-head">DataSift Value</div>
@@ -6346,6 +6381,77 @@ async function toggleCrmLock(norm, field) {
   }, 2000);
   // Re-render this tab so the lock icon flips.
   if (crmContactId) renderPropertyTab(crmContactId);
+}
+
+// One-click re-enrichment. Calls the force-enrich-contact Edge
+// Function which pulls fresh contact data from REI Reply, wipes the
+// cached property_enrichment row, and fires the SiftMap on-demand
+// workflow. End-to-end the dashboard catches up in ~3-5 minutes.
+//
+// Used when a VA corrects an address in REI Reply and wants the
+// dashboard to refresh without waiting for the scorer cadence.
+async function forceEnrichContact(contactId, btnEl) {
+  if (!contactId) {
+    alert("This contact has no contact_id — cannot re-enrich.");
+    return;
+  }
+  if (!confirm(
+    "Re-pull this contact's data from REI Reply and re-run SiftMap enrichment?\n\n" +
+    "This wipes the cached property data and replaces it with fresh data. " +
+    "Takes about 3-5 minutes to complete in the background."
+  )) return;
+
+  const originalLabel = btnEl?.innerHTML;
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = "⏳ Triggering…";
+  }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) {
+      alert("Session expired — please refresh and sign in again.");
+      return;
+    }
+
+    // Resolve the function URL from the same Supabase URL the page uses.
+    const fnBase = SUPABASE_URL.replace(/\/+$/, "") + "/functions/v1/force-enrich-contact";
+    const resp = await fetch(fnBase, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+        // apikey header is required by the Supabase gateway.
+        "apikey": SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({ contact_id: contactId }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.error("force-enrich-contact failed:", resp.status, data);
+      alert(`Failed: ${data.error || data.detail || resp.status}\n\nThe scraper workflow was not triggered. Try again or contact Nelson.`);
+      return;
+    }
+
+    const ghlNote = data.ghl_fetch_ok
+      ? "✓ Pulled latest contact data from REI Reply.\n"
+      : "⚠ Could not reach REI Reply API (used existing Supabase data).\n";
+    alert(
+      ghlNote +
+      `✓ Address: ${data.address}\n` +
+      "✓ Cached property data wiped.\n" +
+      "✓ SiftMap enrichment workflow triggered.\n\n" +
+      "Refresh this dashboard in about 3-5 minutes to see the new data."
+    );
+  } catch (e) {
+    console.error("forceEnrichContact exception:", e);
+    alert("Network error — try again in a moment.");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = originalLabel || "🔄 Re-enrich from REI Reply";
+    }
+  }
 }
 
 // Esc closes the CRM panel.
