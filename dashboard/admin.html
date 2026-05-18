@@ -2607,7 +2607,7 @@
           <option value="text_count_total|desc">💬 Most SMS</option>
         </select>
       </span>
-      <input type="search" class="search-input" id="leadsSearch" placeholder="Search name or phone..." oninput="renderLeads()">
+      <input type="search" class="search-input" id="leadsSearch" placeholder="Search name, phone, or address (across every stage)..." oninput="renderLeads()">
       <button class="btn-refresh" onclick="loadAll()">↻ Refresh</button>
     </div>
     <!-- Last-outbound-call recency buckets — quick filter for "who haven't
@@ -5175,37 +5175,61 @@ function getHitListRows() {
 
 function renderLeads() {
   updateFilterCounts();
-  const search = (document.getElementById("leadsSearch")?.value || "").toLowerCase();
+  const search = (document.getElementById("leadsSearch")?.value || "").toLowerCase().trim();
   const isHitList = currentStageFilter === "hit_list";
-  // Hit List filter pulls from a different source (REI Reply opportunity stage,
-  // not internal lifecycle stage) and ignores the score filter — Hit List
-  // contacts may not be scored at all.
-  let rows = isHitList ? getHitListRows() : DATA.leads;
-  if (!isHitList && currentScoreFilters.size > 0) {
-    rows = rows.filter(r => currentScoreFilters.has(r.score));
-  }
-  if (!isHitList && currentStageFilter !== "all") {
-    rows = rows.filter(r => getStageKey(r) === currentStageFilter);
-  }
-  if (!isHitList && currentTouchedBucket !== "any") {
-    rows = rows.filter(r => {
-      const a = activityFor(r) || {};
-      const last = a.last_outbound_call_at;
-      if (currentTouchedBucket === "never") return !last;
-      if (!last) return false;
-      const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
-      if (currentTouchedBucket === "0-3") return days <= 3;
-      if (currentTouchedBucket === "4-7") return days >= 4 && days <= 7;
-      if (currentTouchedBucket === "8-14") return days >= 8 && days <= 14;
-      if (currentTouchedBucket === "15+") return days >= 15;
-      return true;
-    });
-  }
+  let rows;
   if (search) {
-    rows = rows.filter(r =>
-      (r.contact_name || "").toLowerCase().includes(search) ||
-      (r.phone || "").toLowerCase().includes(search)
-    );
+    // GLOBAL SEARCH mode: bypass Stage / Score / Last-touched filters so the
+    // contact ALWAYS surfaces regardless of which view the user happened to
+    // have selected when they started typing. Searches across scored leads
+    // AND Hit List slim rows so aged-out conversations are findable too.
+    // Assignment filter still applies (RLS / role-based view scoping).
+    const seen = new Set();
+    rows = [];
+    for (const r of (DATA.leads || [])) {
+      if (r.contact_id && !seen.has(r.contact_id)) {
+        seen.add(r.contact_id);
+        rows.push(r);
+      }
+    }
+    for (const r of getHitListRows()) {
+      if (r.contact_id && !seen.has(r.contact_id)) {
+        seen.add(r.contact_id);
+        rows.push(r);
+      }
+    }
+    rows = rows.filter(r => {
+      const name = (r.contact_name || "").toLowerCase();
+      const phone = (r.phone || "").toLowerCase();
+      const addr = (fullAddressFor(r) || "").toLowerCase();
+      return name.includes(search) || phone.includes(search) || addr.includes(search);
+    });
+  } else {
+    // Normal filter pipeline — Stage / Score / Last-touched compose.
+    // Hit List filter pulls from a different source (REI Reply opportunity stage,
+    // not internal lifecycle stage) and ignores the score filter — Hit List
+    // contacts may not be scored at all.
+    rows = isHitList ? getHitListRows() : DATA.leads;
+    if (!isHitList && currentScoreFilters.size > 0) {
+      rows = rows.filter(r => currentScoreFilters.has(r.score));
+    }
+    if (!isHitList && currentStageFilter !== "all") {
+      rows = rows.filter(r => getStageKey(r) === currentStageFilter);
+    }
+    if (!isHitList && currentTouchedBucket !== "any") {
+      rows = rows.filter(r => {
+        const a = activityFor(r) || {};
+        const last = a.last_outbound_call_at;
+        if (currentTouchedBucket === "never") return !last;
+        if (!last) return false;
+        const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+        if (currentTouchedBucket === "0-3") return days <= 3;
+        if (currentTouchedBucket === "4-7") return days >= 4 && days <= 7;
+        if (currentTouchedBucket === "8-14") return days >= 8 && days <= 14;
+        if (currentTouchedBucket === "15+") return days >= 15;
+        return true;
+      });
+    }
   }
   // Apply assignment filter (admin/owner only — no-op for assignees).
   rows = rows.filter(matchesAssignmentFilter);
@@ -5213,9 +5237,14 @@ function renderLeads() {
 
   const body = document.getElementById("leadsBody");
   if (!rows.length) {
-    const empty = isHitList
-      ? `<tr><td colspan="6" class="empty-state"><h3>No contacts on the Hit List right now</h3><p>When a VA moves a contact to "HIT LIST" in REI Reply's SELLER DISPOSITION pipeline, they'll appear here within 10 minutes.</p></td></tr>`
-      : `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try clearing the search, switching to "All stages", or change the score filter.</p></td></tr>`;
+    let empty;
+    if (search) {
+      empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts match "${escapeHtml(search)}"</h3><p>Searched name, phone, and property address across every stage and the Hit List. If this is an assignee view, only contacts assigned to you are searchable.</p></td></tr>`;
+    } else if (isHitList) {
+      empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts on the Hit List right now</h3><p>When a VA moves a contact to "HIT LIST" in REI Reply's SELLER DISPOSITION pipeline, they'll appear here within 10 minutes.</p></td></tr>`;
+    } else {
+      empty = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try switching to "All stages", clearing the score filter, or typing a name into the search box (search scans every stage).</p></td></tr>`;
+    }
     body.innerHTML = empty;
     return;
   }
