@@ -1547,6 +1547,34 @@
     color: rgb(252, 211, 77);
     font-weight: 600;
   }
+  /* Appointment-set chip — visually dominant. Surfaces "REBA AI booked a
+     callback for this contact" so a VA reading the row knows it's time-
+     sensitive without having to dig into REI Reply. Sits in its own row
+     above the address. */
+  .appointment-row {
+    margin: 0 0 6px 0;
+  }
+  .prop-chip.appointment-chip {
+    background: linear-gradient(135deg, rgba(124, 92, 252, 0.25), rgba(168, 85, 247, 0.25));
+    border: 1px solid rgba(168, 85, 247, 0.60);
+    color: rgb(216, 180, 254);
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 3px 9px;
+    letter-spacing: 0.2px;
+  }
+  /* Appointment Set pill — distinct from regular stage pills so it reads as
+     a flag/intent indicator, not a stage. */
+  .filter-pill.appointment-pill {
+    border-color: rgba(168, 85, 247, 0.55);
+    color: rgb(216, 180, 254);
+  }
+  .filter-pill.appointment-pill:hover { border-color: rgb(168, 85, 247); }
+  .filter-pill.appointment-pill.active {
+    background: rgb(168, 85, 247);
+    border-color: rgb(168, 85, 247);
+    color: #fff;
+  }
   .prop-chip-oo {
     background: rgba(124, 92, 252, 0.10);
     border-color: rgba(124, 92, 252, 0.40);
@@ -2577,6 +2605,7 @@
     </div>
     <div class="stage-filter-row">
       <span class="stage-filter-label">Stage:</span>
+      <span class="filter-pill appointment-pill" data-stage="appointment_set" onclick="setStageFilter('appointment_set')" title="Contacts whose REI Reply tags indicate REBA AI has booked a callback appointment — these are time-sensitive, someone is expecting a call back at a specific time">📅 Appointment Set <span class="count" data-count-stage="appointment_set">0</span></span>
       <span class="filter-pill active" data-stage="active" onclick="setStageFilter('active')">Active <span class="count" data-count-stage="active">0</span></span>
       <span class="filter-pill" data-stage="working" onclick="setStageFilter('working')">Working <span class="count" data-count-stage="working">0</span></span>
       <span class="filter-pill" data-stage="run_comps" onclick="setStageFilter('run_comps')">Run Comps <span class="count" data-count-stage="run_comps">0</span></span>
@@ -3266,6 +3295,29 @@ async function loadStages() {
   }
 }
 
+// Loads contacts whose tag set in REI Reply includes any "appointment booked"
+// or "appointment set" variant — keyed by contact_id, value is { latest_at,
+// tags[] }. Source: ghl_contact_has_appointment view (migration 041).
+// Powers the 📅 Appointment Set stage pill and the per-row chip.
+async function loadAppointments() {
+  const { data, error } = await sb.from("ghl_contact_has_appointment").select("*");
+  if (error) {
+    // Migration 041 may not be applied yet on this environment — log and
+    // leave DATA.appointments empty so the pill just shows 0.
+    console.warn("loadAppointments:", error.message);
+    DATA.appointments = {};
+    return;
+  }
+  DATA.appointments = {};
+  for (const r of (data || [])) {
+    if (!r.contact_id) continue;
+    DATA.appointments[r.contact_id] = {
+      latest_at: r.latest_appointment_at,
+      tags: r.appointment_tags || [],
+    };
+  }
+}
+
 async function loadOutboundNumbers() {
   const { data, error } = await sb.from("ghl_latest_outbound_from").select("*");
   if (error) { console.error("loadOutboundNumbers:", error); return; }
@@ -3438,6 +3490,19 @@ function fmtActivityTime(iso) {
   const fmtTime = (x) => x.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Chicago" });
   if (d.toDateString() === yest.toDateString()) return "Yesterday " + fmtTime(d);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Chicago" });
+}
+
+// Appointment-set chip. Surfaces the workflow-driven "callback booked" signal
+// from REI Reply. Distinct styling so it visually outranks call/text chips —
+// these contacts are time-sensitive (someone is expecting a call back at a
+// specific scheduled time).
+function renderAppointmentChip(row) {
+  const ap = DATA.appointments?.[row.contact_id];
+  if (!ap) return "";
+  const tagList = (ap.tags || []).join(", ") || "appointment booked";
+  const when = ap.latest_at ? ` · tag applied ${fmtActivityTime(ap.latest_at)}` : "";
+  const tip = `Appointment booked via REI Reply · ${tagList}${when} — verify the scheduled time in the REI Reply conversation and call them at that time`;
+  return `<span class="prop-chip appointment-chip" title="${escapeHtml(tip)}">📅 Appointment Set</span>`;
 }
 
 function renderActivityChips(row) {
@@ -4082,6 +4147,7 @@ async function loadAll() {
     loadMetadata(),
     loadHitList(),
     loadAssignments(),
+    loadAppointments(),
     loadTasksSummary(),
     loadMyTasks(),
     loadCallsTodayByUser(),
@@ -5059,6 +5125,19 @@ function updateFilterCounts() {
   // Hit List count comes from DATA.hitList (contact_ids at SELLER DISPOSITION
   // → HIT LIST stage), independent of internal lifecycle stage.
   stageCounts.hit_list = Object.keys(DATA.hitList || {}).length;
+  // Appointment Set count = unique contact_ids in DATA.appointments that
+  // also exist somewhere in our visible universe (scored leads ∪ Hit List)
+  // — keeps the count honest about what the user can actually click into.
+  {
+    const visibleContacts = new Set();
+    for (const r of (DATA.leads || [])) if (r.contact_id) visibleContacts.add(r.contact_id);
+    for (const cid of Object.keys(DATA.hitList || {})) visibleContacts.add(cid);
+    let apptCount = 0;
+    for (const cid of Object.keys(DATA.appointments || {})) {
+      if (visibleContacts.has(cid)) apptCount++;
+    }
+    stageCounts.appointment_set = apptCount;
+  }
   for (const k in stageCounts) {
     const el = document.querySelector(`[data-count-stage="${k}"]`);
     if (el) el.textContent = stageCounts[k];
@@ -5074,7 +5153,12 @@ function updateFilterCounts() {
   if (!isHitList && currentScoreFilters.size > 0) {
     touchUniverse = touchUniverse.filter(r => currentScoreFilters.has(r.score));
   }
-  if (!isHitList && currentStageFilter !== "all") {
+  if (!isHitList && currentStageFilter === "appointment_set") {
+    // Mirror the renderLeads behavior — when Appointment Set is selected,
+    // universe is contacts with the appointment tag set, drawn from leads
+    // ∪ hit list. Don't apply a regular stage equality filter here.
+    touchUniverse = touchUniverse.filter(r => DATA.appointments?.[r.contact_id]);
+  } else if (!isHitList && currentStageFilter !== "all") {
     touchUniverse = touchUniverse.filter(r => getStageKey(r) === currentStageFilter);
   }
   touchUniverse = touchUniverse.filter(matchesAssignmentFilter);
@@ -5209,11 +5293,32 @@ function renderLeads() {
     // Hit List filter pulls from a different source (REI Reply opportunity stage,
     // not internal lifecycle stage) and ignores the score filter — Hit List
     // contacts may not be scored at all.
-    rows = isHitList ? getHitListRows() : DATA.leads;
-    if (!isHitList && currentScoreFilters.size > 0) {
+    // Appointment Set is also a special source — it's a tag-driven flag that
+    // can apply to contacts in ANY internal stage, so it pulls from
+    // DATA.leads ∪ getHitListRows() filtered by tag presence.
+    const isAppointment = currentStageFilter === "appointment_set";
+    if (isAppointment) {
+      const seen = new Set();
+      rows = [];
+      for (const r of (DATA.leads || [])) {
+        if (r.contact_id && DATA.appointments?.[r.contact_id] && !seen.has(r.contact_id)) {
+          seen.add(r.contact_id);
+          rows.push(r);
+        }
+      }
+      for (const r of getHitListRows()) {
+        if (r.contact_id && DATA.appointments?.[r.contact_id] && !seen.has(r.contact_id)) {
+          seen.add(r.contact_id);
+          rows.push(r);
+        }
+      }
+    } else {
+      rows = isHitList ? getHitListRows() : DATA.leads;
+    }
+    if (!isHitList && !isAppointment && currentScoreFilters.size > 0) {
       rows = rows.filter(r => currentScoreFilters.has(r.score));
     }
-    if (!isHitList && currentStageFilter !== "all") {
+    if (!isHitList && !isAppointment && currentStageFilter !== "all") {
       rows = rows.filter(r => getStageKey(r) === currentStageFilter);
     }
     if (!isHitList && currentTouchedBucket !== "any") {
@@ -5242,6 +5347,8 @@ function renderLeads() {
       empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts match "${escapeHtml(search)}"</h3><p>Searched name, phone, and property address across every stage and the Hit List. If this is an assignee view, only contacts assigned to you are searchable.</p></td></tr>`;
     } else if (isHitList) {
       empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts on the Hit List right now</h3><p>When a VA moves a contact to "HIT LIST" in REI Reply's SELLER DISPOSITION pipeline, they'll appear here within 10 minutes.</p></td></tr>`;
+    } else if (currentStageFilter === "appointment_set") {
+      empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts with a booked appointment</h3><p>This pill surfaces contacts whose REI Reply tags include "appointment booked", "appointment set", "AI voice appointment booked", or "AI chat appointment booked". They'll appear here within seconds of REBA AI applying the tag — assuming the sync-ghl-contact-tags webhook is wired up in REI Reply Workflows.</p></td></tr>`;
     } else {
       empty = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try switching to "All stages", clearing the score filter, or typing a name into the search box (search scans every stage).</p></td></tr>`;
     }
@@ -5360,14 +5467,17 @@ function renderLeads() {
         <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
           ${(() => {
+            const appointmentChip = renderAppointmentChip(r);
             const fullAddr = fullAddressFor(r);
+            const head = appointmentChip ? `<div class="appointment-row">${appointmentChip}</div>` : "";
             return fullAddr ? `
+              ${head}
               <div>
                 <a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(fullAddr).replace(/'/g, "\\'")}')" title="Open in REI AI Leads (address copied to clipboard — paste into search box)">🏠 ${escapeHtml(fullAddr)}</a>
               </div>
               ${renderPropertyChips(r)}
               ${renderActivityChips(r)}
-            ` : `${renderActivityChips(r)}`;
+            ` : `${head}${renderActivityChips(r)}`;
           })()}
           <div class="signal-chips">${renderSignals(r)}</div>
           <div class="reasoning-text">${escapeHtml(r.reasoning || "")}</div>
