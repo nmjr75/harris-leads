@@ -2618,7 +2618,6 @@
       <span class="filter-pill" data-stage="lost" onclick="setStageFilter('lost')">Lost <span class="count" data-count-stage="lost">0</span></span>
       <span class="filter-pill" data-stage="dnc" onclick="setStageFilter('dnc')">DNC <span class="count" data-count-stage="dnc">0</span></span>
       <span class="filter-pill" data-stage="hit_list" onclick="setStageFilter('hit_list')" title="Replied YES to initial blast but went silent on REBA AI follow-ups (REI Reply SELLER DISPOSITION pipeline → HIT LIST stage)">Hit List <span class="count" data-count-stage="hit_list">0</span></span>
-      <span class="filter-pill" data-stage="callable" onclick="setStageFilter('callable')" title="Active + Working + Ghosting + Run Comps — every stage where the next action is to call">📞 Callable <span class="count" data-count-stage="callable">0</span></span>
       <span class="filter-pill" data-stage="all" onclick="setStageFilter('all')">All stages <span class="count" data-count-stage="all">0</span></span>
     </div>
     <!-- Smart views: one-click filter + sort presets for common workflows. -->
@@ -5102,9 +5101,6 @@ function updateFilterCounts() {
     const k = getStageKey(r);
     if (stageCounts[k] !== undefined) stageCounts[k]++;
   }
-  // Virtual "Callable" count = sum of every stage where the next legitimate
-  // action is a call (active + working + ghosting + run_comps).
-  stageCounts.callable = stageCounts.active + stageCounts.working + stageCounts.ghosting + stageCounts.run_comps;
   // Hit List count comes from DATA.hitList (contact_ids at SELLER DISPOSITION
   // → HIT LIST stage), independent of internal lifecycle stage.
   stageCounts.hit_list = Object.keys(DATA.hitList || {}).length;
