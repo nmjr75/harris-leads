@@ -1,13 +1,16 @@
 // Supabase Edge Function: sync-ghl-contact-tags
 //
-// Mirrors a contact's GHL tag set into public.ghl_contact_tags whenever REI
-// Reply fires a tag-update workflow webhook. Replaces the contact's tag rows
-// atomically so REMOVALS propagate naturally — REI Reply sends the FULL
-// current tag list, we delete-then-insert.
+// Mirrors a contact's GHL/REI Reply tag set into public.ghl_contact_tags.
+// REI Reply's {{contact.tags}} merge field is unreliable — it intermittently
+// resolves to the string "null" instead of the comma-separated tag list. So
+// this function takes the contact_id from the webhook and goes BACK to the
+// GHL API to fetch the authoritative tag list, then replaces the rows
+// atomically (delete + insert) so tag removals propagate without a separate
+// event type.
 //
-// Wiring in REI Reply (Settings → Workflows → new workflow):
+// Wiring in REI Reply (Automation → new workflow):
 //   1. Trigger: "Contact Tag" → fires on Added / Removed
-//   2. Action: "Custom Webhook" or "Webhook"
+//   2. Action: "Custom Webhook"
 //        URL: https://<project>.supabase.co/functions/v1/sync-ghl-contact-tags
 //        Method: POST
 //        Headers:
@@ -15,20 +18,16 @@
 //          Authorization:       Bearer <SUPABASE_ANON_KEY>   (gateway auth)
 //          X-Webhook-Secret:    <shared secret>              (app-level auth)
 //        Body (JSON):
-//          {
-//            "contact_id": "{{contact.id}}",
-//            "tags":       "{{contact.tags}}"
-//          }
-//   GHL's {{contact.tags}} resolves to a comma-separated string of every
-//   tag the contact currently has, which is exactly the snapshot we need.
+//          { "contact_id": "{{contact.id}}" }
+//   Only contact_id is needed — we fetch tags from the GHL API ourselves.
 //
-// JWT verification: OFF (Settings → Verify JWT off). Gateway anon-key auth
-// still applies. App-level auth comes from X-Webhook-Secret.
+// JWT verification: OFF. Gateway anon-key auth still applies. App-level auth
+// comes from X-Webhook-Secret.
 //
 // Env vars (project-level secrets):
-//   TAGS_WEBHOOK_SECRET        shared secret with the GHL workflow.
-//     Named distinctly from WEBHOOK_SECRET (used by enrich-on-snapshot) so
-//     rotating one doesn't invalidate the other.
+//   TAGS_WEBHOOK_SECRET        shared secret with the GHL workflow
+//   GHL_API_TOKEN              REI Reply Private Integration Token — same
+//                              secret used by force-enrich-contact
 //   SUPABASE_URL               auto-injected
 //   SUPABASE_SERVICE_ROLE_KEY  auto-injected
 
@@ -38,6 +37,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("TAGS_WEBHOOK_SECRET") ?? "";
+const GHL_API_TOKEN = Deno.env.get("GHL_API_TOKEN") ?? "";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -53,15 +53,43 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
   });
 }
 
-// GHL ships {{contact.tags}} as a comma-separated string. Accept either that
-// or an explicit JSON array — both are valid webhook body shapes if someone
-// rewires the workflow later.
-function parseTags(raw: unknown): string[] {
+// Accept either a JSON array of tags or a comma-separated string. Used as a
+// fallback when the webhook body happens to carry the tag list directly; the
+// primary source is now the GHL API fetch below.
+function parseTagsFromPayload(raw: unknown): string[] {
   if (Array.isArray(raw)) {
-    return raw.map((t) => String(t).trim()).filter((t) => t.length > 0);
+    return raw.map((t) => String(t).trim()).filter((t) => t.length > 0 && t.toLowerCase() !== "null");
   }
   if (typeof raw === "string") {
-    return raw.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.toLowerCase() === "null") return [];
+    return trimmed.split(",").map((t) => t.trim()).filter((t) => t.length > 0 && t.toLowerCase() !== "null");
+  }
+  return [];
+}
+
+async function fetchTagsFromGHL(contactId: string): Promise<string[]> {
+  const resp = await fetch(
+    `https://services.leadconnectorhq.com/contacts/${contactId}`,
+    {
+      headers: {
+        "Authorization": `Bearer ${GHL_API_TOKEN}`,
+        "Version": "2021-07-28",
+        "Accept": "application/json",
+      },
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`GHL API status=${resp.status} body=${body.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  const c = data?.contact ?? data;
+  const rawTags = c?.tags;
+  if (Array.isArray(rawTags)) {
+    return rawTags
+      .map((t) => String(t).trim())
+      .filter((t) => t.length > 0 && t.toLowerCase() !== "null");
   }
   return [];
 }
@@ -86,14 +114,32 @@ serve(async (req) => {
   }
 
   const contactId: string | undefined = payload?.contact_id ?? payload?.contactId;
-  const tags = parseTags(payload?.tags);
-
-  console.log(`RECEIVED: contact_id=${contactId} tag_count=${tags.length}`);
-
   if (!contactId) {
     console.log("REJECT: no contact_id in payload");
     return jsonResponse(400, { error: "no contact_id in payload" });
   }
+
+  // Try the payload first (cheap), fall back to GHL API. If the payload tags
+  // looked like the broken "null" merge field, treat the payload as empty and
+  // go to the API.
+  let tags = parseTagsFromPayload(payload?.tags);
+  let source: "payload" | "ghl_api" = "payload";
+
+  if (tags.length === 0) {
+    if (!GHL_API_TOKEN) {
+      console.error("GHL_API_TOKEN not set — cannot fetch authoritative tags");
+      return jsonResponse(500, { error: "GHL_API_TOKEN not configured" });
+    }
+    try {
+      tags = await fetchTagsFromGHL(contactId);
+      source = "ghl_api";
+    } catch (e) {
+      console.error(`GHL_FETCH_ERR for ${contactId}: ${(e as Error).message}`);
+      return jsonResponse(502, { error: "GHL API fetch failed", detail: (e as Error).message });
+    }
+  }
+
+  console.log(`RECEIVED: contact_id=${contactId} tag_count=${tags.length} source=${source}`);
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -111,8 +157,8 @@ serve(async (req) => {
   }
 
   if (tags.length === 0) {
-    console.log(`CLEARED: ${contactId} (no tags in payload)`);
-    return jsonResponse(200, { cleared: true, contact_id: contactId, tag_count: 0 });
+    console.log(`CLEARED: ${contactId} (no tags from any source)`);
+    return jsonResponse(200, { cleared: true, contact_id: contactId, tag_count: 0, source });
   }
 
   const nowIso = new Date().toISOString();
@@ -129,11 +175,12 @@ serve(async (req) => {
     return jsonResponse(500, { error: "insert failed", detail: insErr.message });
   }
 
-  console.log(`UPSERT_OK: ${contactId} ${tags.length} tags`);
+  console.log(`UPSERT_OK: ${contactId} ${tags.length} tags (source=${source})`);
   return jsonResponse(200, {
     ok: true,
     contact_id: contactId,
     tag_count: tags.length,
     tags,
+    source,
   });
 });
