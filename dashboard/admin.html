@@ -391,6 +391,31 @@
   .data-table tr.row-selected:hover td {
     background: rgba(16, 185, 129, 0.16);
   }
+  /* Stale-WARM rows — left amber border + subtle tint so the row visually
+     pops. The STALE badge in the score cell does the heavy lifting; this
+     is the supporting peripheral cue. */
+  .data-table tr.row-stale-warm td:first-child {
+    box-shadow: inset 3px 0 0 0 rgba(251, 146, 60, 0.85);
+  }
+  .data-table tr.row-stale-warm td {
+    background: rgba(251, 146, 60, 0.04);
+  }
+  .data-table tr.row-stale-warm:hover td {
+    background: rgba(251, 146, 60, 0.08);
+  }
+  .stale-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 7px;
+    background: rgba(251, 146, 60, 0.18);
+    border: 1px solid rgba(251, 146, 60, 0.55);
+    border-radius: 5px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: rgb(254, 215, 170);
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+  }
   /* Sticky bulk-actions bar — appears at the bottom of the leads table
      whenever one or more rows are selected. Manager-only. */
   .bulk-bar {
@@ -662,14 +687,22 @@
     letter-spacing: 0.4px;
     text-transform: uppercase;
   }
-  .stage-active     { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
-  .stage-working    { background: var(--blue);     color: #fff; }
-  .stage-run_comps  { background: var(--cyan);     color: #1a1a1a; }
-  .stage-offer_made { background: var(--accent);   color: #fff; }
-  .stage-ghosting   { background: var(--orange);   color: #1a1a1a; }
-  .stage-won        { background: var(--green);    color: #fff; }
-  .stage-lost       { background: var(--red);      color: #fff; }
-  .stage-dnc        { background: #6b1620;         color: #fff; }
+  /* Stage taxonomy colors — see migration 042b. Color ramp roughly mirrors
+     the funnel: gray for fresh, cool tones for engaged, warm tones for
+     active deals, green for win, red for terminal losses. */
+  .stage-untouched        { background: var(--surface2);     color: var(--text-muted); border: 1px solid var(--border); }
+  .stage-discovery        { background: #1e3a8a;             color: #bfdbfe; }
+  .stage-interested       { background: var(--blue);         color: #fff; }
+  .stage-run_comps        { background: var(--cyan);         color: #1a1a1a; }
+  .stage-offer_needed     { background: #b45309;             color: #fff; }
+  .stage-offer_made       { background: var(--accent);       color: #fff; }
+  .stage-offer_rejected   { background: #c2410c;             color: #fff; }
+  .stage-ghosting         { background: var(--orange);       color: #1a1a1a; }
+  .stage-contracts_signed { background: var(--green);        color: #fff; }
+  .stage-not_interested   { background: #4b5563;             color: #fff; }
+  .stage-wrong_number     { background: #6b7280;             color: #fff; }
+  .stage-signed_elsewhere { background: var(--red);          color: #fff; }
+  .stage-dnc              { background: #6b1620;             color: #fff; }
 
   /* Per-pill count badge (next to label inside filter pills) */
   .filter-pill .count, .assignment-pill .count {
@@ -2727,13 +2760,18 @@
     <div class="stage-filter-row">
       <span class="stage-filter-label">Stage:</span>
       <span class="filter-pill appointment-pill" data-stage="appointment_set" onclick="setStageFilter('appointment_set')" title="Contacts whose REI Reply tags indicate REBA AI has booked a callback appointment — these are time-sensitive, someone is expecting a call back at a specific time">📅 Appointment Set <span class="count" data-count-stage="appointment_set">0</span></span>
-      <span class="filter-pill active" data-stage="active" onclick="setStageFilter('active')">Active <span class="count" data-count-stage="active">0</span></span>
-      <span class="filter-pill" data-stage="working" onclick="setStageFilter('working')">Working <span class="count" data-count-stage="working">0</span></span>
+      <span class="filter-pill active" data-stage="untouched" onclick="setStageFilter('untouched')" title="Fresh inbox — no outbound call has been made yet. Once a VA makes a call (even a no-answer), they should manually move the lead to Discovery.">Untouched <span class="count" data-count-stage="untouched">0</span></span>
+      <span class="filter-pill" data-stage="discovery" onclick="setStageFilter('discovery')" title="VA has dialed but hasn't reached the homeowner yet OR is still in initial outreach.">Discovery <span class="count" data-count-stage="discovery">0</span></span>
+      <span class="filter-pill" data-stage="interested" onclick="setStageFilter('interested')" title="Homeowner engaged, talking, willing to entertain an offer.">Interested <span class="count" data-count-stage="interested">0</span></span>
       <span class="filter-pill" data-stage="run_comps" onclick="setStageFilter('run_comps')">Run Comps <span class="count" data-count-stage="run_comps">0</span></span>
+      <span class="filter-pill" data-stage="offer_needed" onclick="setStageFilter('offer_needed')" title="Comps done, ready to make an offer.">Offer Needed <span class="count" data-count-stage="offer_needed">0</span></span>
       <span class="filter-pill" data-stage="offer_made" onclick="setStageFilter('offer_made')">Offer Made <span class="count" data-count-stage="offer_made">0</span></span>
+      <span class="filter-pill" data-stage="offer_rejected" onclick="setStageFilter('offer_rejected')" title="Homeowner declined the offer — may revisit later.">Offer Rejected <span class="count" data-count-stage="offer_rejected">0</span></span>
       <span class="filter-pill" data-stage="ghosting" onclick="setStageFilter('ghosting')">Ghosting <span class="count" data-count-stage="ghosting">0</span></span>
-      <span class="filter-pill" data-stage="won" onclick="setStageFilter('won')">Won <span class="count" data-count-stage="won">0</span></span>
-      <span class="filter-pill" data-stage="lost" onclick="setStageFilter('lost')">Lost <span class="count" data-count-stage="lost">0</span></span>
+      <span class="filter-pill" data-stage="contracts_signed" onclick="setStageFilter('contracts_signed')" title="Deal closed — contracts signed.">Contracts Signed <span class="count" data-count-stage="contracts_signed">0</span></span>
+      <span class="filter-pill" data-stage="not_interested" onclick="setStageFilter('not_interested')" title="Homeowner explicitly said no. A reason note is required when moving leads here.">Not Interested <span class="count" data-count-stage="not_interested">0</span></span>
+      <span class="filter-pill" data-stage="wrong_number" onclick="setStageFilter('wrong_number')" title="Phone number doesn't reach the right person. A reason note is required when moving leads here.">Wrong # <span class="count" data-count-stage="wrong_number">0</span></span>
+      <span class="filter-pill" data-stage="signed_elsewhere" onclick="setStageFilter('signed_elsewhere')" title="Homeowner signed with another buyer. A reason note is required when moving leads here.">Signed Elsewhere <span class="count" data-count-stage="signed_elsewhere">0</span></span>
       <span class="filter-pill" data-stage="dnc" onclick="setStageFilter('dnc')">DNC <span class="count" data-count-stage="dnc">0</span></span>
       <span class="filter-pill" data-stage="hit_list" onclick="setStageFilter('hit_list')" title="Replied YES to initial blast but went silent on REBA AI follow-ups (REI Reply SELLER DISPOSITION pipeline → HIT LIST stage)">Hit List <span class="count" data-count-stage="hit_list">0</span></span>
       <span class="filter-pill" data-stage="all" onclick="setStageFilter('all')">All stages <span class="count" data-count-stage="all">0</span></span>
@@ -2995,16 +3033,34 @@ const selectedContactIds = new Set();
 // Pipeline stage definitions. The DB CHECK constraint is the source of
 // truth for valid stage keys (see migrations/002_contact_actions.sql);
 // changing a key here without updating the migration will produce 23514s.
+// Pipeline stage taxonomy — must match the CHECK constraint on
+// ghl_contact_lifecycle.stage (migration 042b). Order here is the order
+// shown in the stage dropdown when a VA changes a lead's stage.
 const STAGES = {
-  active:     { label: "Active",     className: "stage-active"     },
-  working:    { label: "Working",    className: "stage-working"    },
-  run_comps:  { label: "Run Comps",  className: "stage-run_comps"  },
-  offer_made: { label: "Offer Made", className: "stage-offer_made" },
-  ghosting:   { label: "Ghosting",   className: "stage-ghosting"   },
-  won:        { label: "Won",        className: "stage-won"        },
-  lost:       { label: "Lost",       className: "stage-lost"       },
-  dnc:        { label: "DNC",        className: "stage-dnc"        },
+  untouched:        { label: "Untouched",         className: "stage-untouched"        },
+  discovery:        { label: "Discovery",         className: "stage-discovery"        },
+  interested:       { label: "Interested",        className: "stage-interested"       },
+  run_comps:        { label: "Run Comps",         className: "stage-run_comps"        },
+  offer_needed:     { label: "Offer Needed",      className: "stage-offer_needed"     },
+  offer_made:       { label: "Offer Made",        className: "stage-offer_made"       },
+  offer_rejected:   { label: "Offer Rejected",    className: "stage-offer_rejected"   },
+  ghosting:         { label: "Ghosting",          className: "stage-ghosting"         },
+  contracts_signed: { label: "Contracts Signed",  className: "stage-contracts_signed" },
+  not_interested:   { label: "Not Interested",    className: "stage-not_interested"   },
+  wrong_number:     { label: "Wrong #",           className: "stage-wrong_number"     },
+  signed_elsewhere: { label: "Signed Elsewhere",  className: "stage-signed_elsewhere" },
+  dnc:              { label: "DNC",               className: "stage-dnc"              },
 };
+
+// Stages that require a one-line "why" reason when a VA moves a lead here.
+// Captured into ghl_contact_lifecycle.disposition_note. Surfaces objection
+// intel + slows down accidental misclicks on terminal-state buckets.
+const STAGES_REQUIRING_NOTE = new Set([
+  "not_interested",
+  "wrong_number",
+  "signed_elsewhere",
+  "dnc",
+]);
 
 // ── State ─────────────────────────────────────────────────────────
 let currentSession = null;
@@ -3013,7 +3069,7 @@ let currentTab = "leads";
 // rows must have a score that's in the Set. HOT and WARM pills each toggle
 // their value in the Set; the "All" pill clears it.
 let currentScoreFilters = new Set();
-let currentStageFilter = "active"; // default: only show unworked pipeline
+let currentStageFilter = "untouched"; // default: only show the fresh inbox
 // Last-outbound-call recency bucket. "any" = no filter. Other values map to
 // day ranges computed from activityFor(r).last_outbound_call_at.
 let currentTouchedBucket = "any";
@@ -5218,15 +5274,17 @@ function setSortFromPicker(encoded) {
 
 // Resolve a row's pipeline stage from DATA.stages (now keyed by contact_id
 // per migration 024). Accepts either the full row object or just a
-// contact_id string. Falls back to "active" when there's no stage history.
+// contact_id string. Falls back to "untouched" when there's no stage history
+// (rename: pre-042b this was "active" — see migration 042b for the data
+// backfill that brought existing rows in line).
 function getStageKey(rowOrContactId) {
-  if (!rowOrContactId) return "active";
+  if (!rowOrContactId) return "untouched";
   const cid = typeof rowOrContactId === "string"
     ? rowOrContactId
     : rowOrContactId.contact_id;
-  if (!cid) return "active";
+  if (!cid) return "untouched";
   const row = DATA.stages[cid];
-  return row ? row.stage : "active";
+  return row ? row.stage : "untouched";
 }
 
 function renderStageBadge(stageKey) {
@@ -5508,8 +5566,24 @@ function updateFilterCounts() {
     const el = document.querySelector(`[data-count-score="${k}"]`);
     if (el) el.textContent = scoreCounts[k];
   }
-  // Stage counts: bucket every lead by its current stage (default 'active')
-  const stageCounts = { all: all.length, active: 0, working: 0, run_comps: 0, offer_made: 0, ghosting: 0, won: 0, lost: 0, dnc: 0 };
+  // Stage counts: bucket every lead by its current stage (default 'untouched'
+  // — see migration 042b for the stage taxonomy restructure).
+  const stageCounts = {
+    all: all.length,
+    untouched: 0,
+    discovery: 0,
+    interested: 0,
+    run_comps: 0,
+    offer_needed: 0,
+    offer_made: 0,
+    offer_rejected: 0,
+    ghosting: 0,
+    contracts_signed: 0,
+    not_interested: 0,
+    wrong_number: 0,
+    signed_elsewhere: 0,
+    dnc: 0,
+  };
   for (const r of all) {
     const k = getStageKey(r);
     if (stageCounts[k] !== undefined) stageCounts[k]++;
@@ -5820,8 +5894,24 @@ function renderLeads() {
     const stageKey = getStageKey(r);
     const noteCount = r.contact_id ? (DATA.notesCount[r.contact_id] || 0) : 0;
     const isSelected = r.contact_id ? selectedContactIds.has(r.contact_id) : false;
+    // Stale-WARM flag — a WARM lead that hasn't been called in 3+ days (or
+    // has never been called) gets a visible amber treatment. Designed to
+    // counter the "Joseph only calls HOT" pattern: a row with a STALE badge
+    // is harder to scroll past than one that just looks like every other
+    // WARM. Excludes terminal stages (Won/Lost equivalents) — only flags
+    // leads that are still actionable.
+    const TERMINAL_STAGES = new Set(["contracts_signed","not_interested","wrong_number","signed_elsewhere","dnc"]);
+    const isStaleWarm = (() => {
+      if (r.score !== "WARM") return false;
+      if (TERMINAL_STAGES.has(stageKey)) return false;
+      const a = activityFor(r) || {};
+      const last = a.last_outbound_call_at;
+      if (!last) return true; // never called counts as stale
+      const days = (Date.now() - new Date(last).getTime()) / 86400000;
+      return days >= 3;
+    })();
     return `
-      <tr data-cid="${cidEsc}" data-contact-id="${escapeHtml(r.contact_id || '')}" class="${isExpanded ? 'expanded' : ''} ${isSelected ? 'row-selected' : ''}">
+      <tr data-cid="${cidEsc}" data-contact-id="${escapeHtml(r.contact_id || '')}" class="${isExpanded ? 'expanded' : ''} ${isSelected ? 'row-selected' : ''} ${isStaleWarm ? 'row-stale-warm' : ''}">
         <td class="col-select">${r.contact_id ? `<input type="checkbox" class="row-check" onclick="event.stopPropagation(); toggleContactSelected('${escapeHtml(r.contact_id)}', this.checked)" ${isSelected ? 'checked' : ''}>` : ''}</td>
         <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">
           ${escapeHtml(r.contact_name || "(no name)")}
@@ -5861,7 +5951,7 @@ function renderLeads() {
             </td>
           `;
         })()}
-        <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span></td>
+        <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span>${isStaleWarm ? `<div class="stale-badge" title="WARM lead that hasn't been called in 3+ days (or never). Don't let this one age out — pick it up.">⚠ STALE</div>` : ""}</td>
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
           ${(() => {
             const appointmentChip = renderAppointmentChip(r);
@@ -6288,6 +6378,25 @@ async function setStage(conversationId, stage) {
   const opp = contactId ? DATA.hitList?.[contactId] : null;
   const contactName = lead?.contact_name || opp?.contact_name || null;
   const phone = lead?.phone || opp?.phone || null;
+
+  // Terminal stages require a one-line reason — captures objection intel
+  // AND slows down accidental misclicks on stages that effectively kill the
+  // lead. Cancel returns out without writing the stage change.
+  let dispositionNote = null;
+  if (STAGES_REQUIRING_NOTE.has(stage)) {
+    const label = STAGES[stage].label;
+    const promptText = `Move ${contactName || "this lead"} to "${label}".\n\n` +
+      `Reason (one line — required):\n` +
+      `e.g. "selling to neighbor", "phone disconnected", "moved to apt"`;
+    dispositionNote = window.prompt(promptText, "");
+    if (dispositionNote === null) return; // user clicked Cancel
+    dispositionNote = dispositionNote.trim();
+    if (!dispositionNote) {
+      alert(`A reason is required when moving a lead to "${label}". Stage not changed.`);
+      return;
+    }
+  }
+
   const { error } = await sb.from("ghl_contact_lifecycle").insert({
     conversation_id: conversationId,
     contact_id: contactId,
@@ -6295,6 +6404,7 @@ async function setStage(conversationId, stage) {
     phone: phone,
     stage: stage,
     set_by_email: currentSession?.user?.email || null,
+    disposition_note: dispositionNote,
   });
   if (error) { alert("Stage update failed: " + error.message); return; }
   await loadStages();
