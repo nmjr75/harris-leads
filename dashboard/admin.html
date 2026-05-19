@@ -516,6 +516,24 @@
   .score-COOL { background: var(--cool); color: #fff; }
   .score-COLD { background: var(--cold); color: #fff; }
   .score-DEAD { background: var(--dead); color: #fff; }
+  /* Owner-only editable affordance on the score badge (mig 045). The
+     caret is faint until hover; the whole badge gets a subtle hover ring
+     so it reads as clickable without competing with the badge's color. */
+  .score-badge.editable {
+    cursor: pointer;
+    position: relative;
+    transition: box-shadow .12s, transform .08s;
+  }
+  .score-badge.editable:hover {
+    box-shadow: 0 0 0 2px rgba(255,255,255,.16);
+    transform: translateY(-1px);
+  }
+  .score-edit-caret {
+    margin-left: 4px;
+    opacity: 0.55;
+    font-size: 0.78em;
+  }
+  .score-badge.editable:hover .score-edit-caret { opacity: 1; }
 
   /* Signal chips */
   .signal-chips {
@@ -3478,6 +3496,11 @@ let DATA = {
   // they're the assignee thanks to RLS, so this view is naturally pre-filtered
   // for them.
   assignments: {},
+  // contact_id -> { score, reason, set_by_email, set_at } from
+  // ghl_score_overrides (migration 045). Owner-only manual override of the
+  // AI scorer's value; renders in place of r.score everywhere the dashboard
+  // displays/filters by score. Cleared = row deleted = AI score returns.
+  scoreOverrides: {},
   // contact_id -> { open_count, nearest_due_at, has_overdue } from
   // ghl_open_tasks_summary view (migration 023). Drives the 📅 Tasks button
   // badge + severity coloring on every row. Loaded eagerly on every refresh.
@@ -3881,6 +3904,41 @@ async function loadLeads() {
   if (error) { console.error("loadLeads:", error); return; }
   DATA.leads = data || [];
   renderLeads();
+}
+
+// Manual score overrides (migration 045). Owner-only writes; everyone reads
+// so the displayed/filtered score is consistent across roles. Falls back to
+// the AI scorer's value (r.score) when no override exists for a contact_id.
+async function loadScoreOverrides() {
+  const { data, error } = await sb
+    .from("ghl_score_overrides")
+    .select("contact_id, score, reason, set_by_email, set_at");
+  if (error) {
+    if (error.code === "42P01") {  // table doesn't exist yet (migration not applied)
+      DATA.scoreOverrides = {};
+      return;
+    }
+    console.error("loadScoreOverrides:", error);
+    return;
+  }
+  DATA.scoreOverrides = {};
+  for (const r of (data || [])) {
+    if (r.contact_id) DATA.scoreOverrides[r.contact_id] = r;
+  }
+}
+
+// Resolve the displayed/filtered score for a lead row. Override wins over
+// the AI scorer's r.score. Centralize through here so the override is
+// respected everywhere — counts, filters, sort, render.
+function effectiveScoreFor(row) {
+  if (!row) return null;
+  const ov = row.contact_id ? DATA.scoreOverrides?.[row.contact_id] : null;
+  return ov ? ov.score : row.score;
+}
+
+// True iff a row's score has been manually overridden (for the ✋ indicator).
+function isScoreOverridden(row) {
+  return !!(row && row.contact_id && DATA.scoreOverrides?.[row.contact_id]);
 }
 
 async function loadDeletions() {
@@ -5015,6 +5073,7 @@ async function loadAll() {
     loadMetadata(),
     loadHitList(),
     loadAssignments(),
+    loadScoreOverrides(),
     loadAppointments(),
     loadTasksSummary(),
     loadMyTasks(),
@@ -5976,11 +6035,15 @@ function renderTasksPanel(row) {
 // numbers don't shift when you switch between Score/Stage views.
 function updateFilterCounts() {
   const all = DATA.leads || [];
-  // Score counts (HOT / WARM / all)
+  // Score counts (HOT / WARM / all). Uses effectiveScoreFor() so an
+  // override (mig 045) flips a HOT row to whatever Nelson set it to in
+  // these counts, matching what the user actually sees when they click
+  // a score pill.
   const scoreCounts = { all: all.length, HOT: 0, WARM: 0 };
   for (const r of all) {
-    if (r.score === "HOT") scoreCounts.HOT++;
-    else if (r.score === "WARM") scoreCounts.WARM++;
+    const s = effectiveScoreFor(r);
+    if (s === "HOT") scoreCounts.HOT++;
+    else if (s === "WARM") scoreCounts.WARM++;
   }
   for (const k in scoreCounts) {
     const el = document.querySelector(`[data-count-score="${k}"]`);
@@ -6037,7 +6100,7 @@ function updateFilterCounts() {
   const isHitList = currentStageFilter === "hit_list";
   let touchUniverse = isHitList ? getHitListRows() : (DATA.leads || []);
   if (!isHitList && currentScoreFilters.size > 0) {
-    touchUniverse = touchUniverse.filter(r => currentScoreFilters.has(r.score));
+    touchUniverse = touchUniverse.filter(r => currentScoreFilters.has(effectiveScoreFor(r)));
   }
   if (!isHitList && currentStageFilter === "appointment_set") {
     // Mirror the renderLeads behavior — when Appointment Set is selected,
@@ -6203,7 +6266,7 @@ function renderLeads() {
       rows = isHitList ? getHitListRows() : DATA.leads;
     }
     if (!isHitList && !isAppointment && currentScoreFilters.size > 0) {
-      rows = rows.filter(r => currentScoreFilters.has(r.score));
+      rows = rows.filter(r => currentScoreFilters.has(effectiveScoreFor(r)));
     }
     if (!isHitList && !isAppointment && currentStageFilter !== "all") {
       rows = rows.filter(r => getStageKey(r) === currentStageFilter);
@@ -6420,7 +6483,23 @@ function renderLeads() {
             </td>
           `;
         })()}
-        <td title="Scored at ${escapeHtml(absTime(r.scored_at))}"><span class="score-badge score-${r.score}">${r.score}</span>${isStaleWarm ? `<div class="stale-badge" title="WARM lead that hasn't been called in 3+ days (or never). Don't let this one age out — pick it up.">⚠ STALE</div>` : ""}</td>
+        ${(() => {
+          // Score cell. Renders the effective score (override wins over AI),
+          // shows ✋ when overridden, and is click-to-edit for Nelson only.
+          const effScore = effectiveScoreFor(r) || "—";
+          const overridden = isScoreOverridden(r);
+          const ov = overridden ? DATA.scoreOverrides[r.contact_id] : null;
+          const cellTitle = overridden
+            ? `Manually set to ${effScore} by ${ov.set_by_email || "—"} on ${absTime(ov.set_at)} CT. AI scored: ${r.score || "—"}.`
+            : `AI scored at ${absTime(r.scored_at)} CT`;
+          const editable = (currentRole === "nelson" && r.contact_id);
+          const clickAttr = editable
+            ? ` onclick="event.stopPropagation(); openScoreMenu(event, '${escapeHtml(r.contact_id)}')" style="cursor:pointer"`
+            : "";
+          const badge = `<span class="score-badge score-${effScore}${editable ? ' editable' : ''}"${clickAttr} title="${escapeHtml(cellTitle)}">${escapeHtml(effScore)}${overridden ? ' ✋' : ''}${editable ? ' <span class="score-edit-caret">▾</span>' : ''}</span>`;
+          const stale = isStaleWarm ? `<div class="stale-badge" title="WARM lead that hasn't been called in 3+ days (or never). Don't let this one age out — pick it up.">⚠ STALE</div>` : "";
+          return `<td title="${escapeHtml(cellTitle)}">${badge}${stale}</td>`;
+        })()}
         <td class="signals-cell clickable" onclick="toggleTranscriptPanel('${cidEsc}')" title="Click to view the SMS conversation">
           ${(() => {
             const appointmentChip = renderAppointmentChip(r);
@@ -6837,6 +6916,90 @@ function closeAssignMenu() {
   if (m) m.remove();
 }
 
+// ── Score override menu (Nelson only) ──────────────────────────────
+// Click handler wired on the score badge in renderLeads. Owner-only;
+// other roles never get the click handler attached. Server-side RLS
+// in migration 045 is the real protection.
+const SCORE_CHOICES = ["HOT", "WARM", "COOL", "COLD", "DEAD"];
+
+function openScoreMenu(event, contactId) {
+  if (currentRole !== "nelson") return;
+  if (!contactId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeScoreMenu();
+  closeStageMenu();
+  closeAssignMenu();
+  const menu = document.createElement("div");
+  menu.className = "stage-menu";
+  menu.id = "scoreMenu";
+  const ov = DATA.scoreOverrides?.[contactId];
+  const buttons = SCORE_CHOICES.map(s => `
+    <button onclick="setScoreOverride('${escapeHtml(contactId)}', '${s}'); closeScoreMenu();">
+      <span class="score-badge score-${s}">${s}</span>
+    </button>
+  `).join("");
+  const clearBtn = ov
+    ? `<button onclick="clearScoreOverride('${escapeHtml(contactId)}'); closeScoreMenu();"
+                style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text-muted)">
+         ↺ Clear override (revert to AI score)
+       </button>`
+    : "";
+  menu.innerHTML = buttons + clearBtn;
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+  menu.style.left = `${rect.left + window.scrollX}px`;
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener("click", closeScoreMenu, { once: true });
+  }, 0);
+}
+
+function closeScoreMenu() {
+  const m = document.getElementById("scoreMenu");
+  if (m) m.remove();
+}
+
+async function setScoreOverride(contactId, score) {
+  if (currentRole !== "nelson") return;
+  if (!contactId || !SCORE_CHOICES.includes(score)) return;
+  const email = currentSession?.user?.email || "nmjr75@gmail.com";
+  // Upsert on contact_id PK so a second edit replaces the first.
+  const { error } = await sb.from("ghl_score_overrides").upsert({
+    contact_id: contactId,
+    score,
+    set_by_email: email,
+    set_at: new Date().toISOString(),
+  }, { onConflict: "contact_id" });
+  if (error) {
+    alert(`Override failed: ${error.message}`);
+    return;
+  }
+  // Optimistic local update so the row re-renders immediately. Realtime
+  // will reconcile any drift across browser tabs.
+  DATA.scoreOverrides[contactId] = {
+    contact_id: contactId,
+    score,
+    set_by_email: email,
+    set_at: new Date().toISOString(),
+  };
+  updateFilterCounts();
+  renderLeads();
+}
+
+async function clearScoreOverride(contactId) {
+  if (currentRole !== "nelson") return;
+  if (!contactId) return;
+  const { error } = await sb.from("ghl_score_overrides").delete().eq("contact_id", contactId);
+  if (error) {
+    alert(`Clear override failed: ${error.message}`);
+    return;
+  }
+  delete DATA.scoreOverrides[contactId];
+  updateFilterCounts();
+  renderLeads();
+}
+
 async function setStage(conversationId, stage) {
   if (!STAGES[stage]) return;
   closeStageMenu();
@@ -6986,6 +7149,16 @@ function subscribeToNewScores() {
       table: "ghl_lead_assignments",
     }, () => {
       loadAssignments().then(renderLeads);
+    })
+    // Score override added/updated/cleared (migration 045). Owner-only writes;
+    // reload the override map across every browser tab the moment Nelson
+    // (or another tab of Nelson's) edits a score.
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: "ghl_score_overrides",
+    }, () => {
+      loadScoreOverrides().then(() => { updateFilterCounts(); renderLeads(); });
     })
     // Task synced from REI Reply (Created or Updated webhook). Refresh the
     // summary so the badge + severity color update on the affected row.
