@@ -6132,7 +6132,15 @@ function renderTasksPanel(row) {
 // each filter is counted independently of the other active filter — so the
 // numbers don't shift when you switch between Score/Stage views.
 function updateFilterCounts() {
-  const all = DATA.leads || [];
+  // Score / stage / Hit List / Appointment counts scope by the current
+  // assignment filter so the pill number an agent sees matches the rows
+  // that load when they click it. For assignees (Joseph / Walter / Paul)
+  // this means counts always reflect THEIR queue — matchesAssignmentFilter
+  // hard-filters their rows regardless of the dropdown. For owner/admin
+  // it respects whatever assignee they've selected (Joseph, Walter, etc.)
+  // or "All". The ASSIGNED TO row counts (below) use the unfiltered
+  // universe because those ARE the team breakdown.
+  const all = (DATA.leads || []).filter(matchesAssignmentFilter);
   // Score counts (HOT / WARM / all). Uses effectiveScoreFor() so an
   // override (mig 045) flips a HOT row to whatever Nelson set it to in
   // these counts, matching what the user actually sees when they click
@@ -6169,19 +6177,27 @@ function updateFilterCounts() {
     const k = getStageKey(r);
     if (stageCounts[k] !== undefined) stageCounts[k]++;
   }
-  // Hit List count comes from DATA.hitList (contact_ids at SELLER DISPOSITION
-  // → HIT LIST stage), independent of internal lifecycle stage.
-  stageCounts.hit_list = Object.keys(DATA.hitList || {}).length;
-  // Appointment Set count = unique contact_ids in DATA.appointments that
-  // also exist somewhere in our visible universe (scored leads ∪ Hit List)
-  // — keeps the count honest about what the user can actually click into.
+  // Hit List count: filter DATA.hitList by the same assignment scope so an
+  // assignee sees only their assigned Hit List contacts. The matchesAssignmentFilter
+  // function reads row.contact_id, so a stub row carrying just contact_id is enough.
+  {
+    let hitCount = 0;
+    for (const cid of Object.keys(DATA.hitList || {})) {
+      if (matchesAssignmentFilter({ contact_id: cid })) hitCount++;
+    }
+    stageCounts.hit_list = hitCount;
+  }
+  // Appointment Set count = contacts in DATA.appointments that exist in our
+  // visible universe (scored leads ∪ Hit List) AND pass the current
+  // assignment filter — keeps the count honest about what the user can
+  // actually click into.
   {
     const visibleContacts = new Set();
     for (const r of (DATA.leads || [])) if (r.contact_id) visibleContacts.add(r.contact_id);
     for (const cid of Object.keys(DATA.hitList || {})) visibleContacts.add(cid);
     let apptCount = 0;
     for (const cid of Object.keys(DATA.appointments || {})) {
-      if (visibleContacts.has(cid)) apptCount++;
+      if (visibleContacts.has(cid) && matchesAssignmentFilter({ contact_id: cid })) apptCount++;
     }
     stageCounts.appointment_set = apptCount;
   }
