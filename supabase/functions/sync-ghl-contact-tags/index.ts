@@ -170,7 +170,11 @@ async function fetchUpcomingAppointment(contactId: string): Promise<AppointmentI
     // GHL responses vary by API version: events / appointments / array.
     const events: any[] = Array.isArray(data) ? data : (data?.events ?? data?.appointments ?? []);
     if (!Array.isArray(events) || events.length === 0) {
-      console.log(`APPT_NONE contact=${contactId}`);
+      // Log the raw payload so we can see what GHL actually returned. Maybe
+      // the events live under a different key on this account / API version.
+      console.log(
+        `APPT_NONE contact=${contactId} raw=${JSON.stringify(data).slice(0, 400)}`,
+      );
       return null;
     }
     const now = Date.now();
@@ -207,6 +211,72 @@ async function fetchUpcomingAppointment(contactId: string): Promise<AppointmentI
   }
 }
 
+// One-shot backfill — iterates every contact in ghl_contact_has_appointment
+// (i.e. anyone with an appointment-set tag in our DB) and re-runs the
+// appointment fetch + upsert against GHL's API. Used to retroactively
+// populate appointment_at on contacts whose tags landed before this
+// function knew how to fetch the calendar event.
+async function runAppointmentBackfill(): Promise<Response> {
+  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data, error } = await sb
+    .from("ghl_contact_has_appointment")
+    .select("contact_id");
+  if (error) {
+    console.error(`BACKFILL_VIEW_ERR ${error.message}`);
+    return jsonResponse(500, { error: "view query failed", detail: error.message });
+  }
+  const contactIds = (data || [])
+    .map((r: any) => r.contact_id)
+    .filter((c: string | null): c is string => !!c);
+
+  console.log(`BACKFILL_START total=${contactIds.length}`);
+
+  const results: any[] = [];
+  let okCount = 0;
+  let noneCount = 0;
+  let failCount = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const cid of contactIds) {
+    try {
+      const appt = await fetchUpcomingAppointment(cid);
+      if (appt && appt.at) {
+        const { error: upErr } = await sb.from("ghl_contact_appointments").upsert({
+          contact_id: cid,
+          appointment_at: appt.at,
+          appointment_title: appt.title,
+          appointment_status: appt.status,
+          raw: appt.raw,
+          updated_at: nowIso,
+        }, { onConflict: "contact_id" });
+        if (upErr) {
+          failCount++;
+          results.push({ contact_id: cid, ok: false, reason: `upsert: ${upErr.message}` });
+        } else {
+          okCount++;
+          results.push({ contact_id: cid, ok: true, at: appt.at, title: appt.title });
+        }
+      } else {
+        noneCount++;
+        results.push({ contact_id: cid, ok: false, reason: "no appointment returned by GHL API" });
+      }
+    } catch (e) {
+      failCount++;
+      results.push({ contact_id: cid, ok: false, reason: (e as Error).message });
+    }
+  }
+
+  console.log(`BACKFILL_DONE total=${contactIds.length} ok=${okCount} none=${noneCount} fail=${failCount}`);
+  return jsonResponse(200, {
+    backfill: true,
+    total: contactIds.length,
+    appointment_synced: okCount,
+    no_appointment_in_ghl: noneCount,
+    failed: failCount,
+    results,
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST") return jsonResponse(405, { error: "method not allowed" });
@@ -224,6 +294,15 @@ serve(async (req) => {
     payload = await req.json();
   } catch {
     return jsonResponse(400, { error: "invalid JSON body" });
+  }
+
+  // Backfill mode — re-syncs every contact currently in our appointment
+  // view. Used to retroactively populate appointment_at on contacts whose
+  // tags landed via an earlier function version that didn't fetch the
+  // calendar. Invoke once via:
+  //   POST { "backfill": true }
+  if (payload?.backfill === true) {
+    return await runAppointmentBackfill();
   }
 
   const contactId: string | undefined = payload?.contact_id ?? payload?.contactId;
