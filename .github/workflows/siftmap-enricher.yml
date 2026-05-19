@@ -72,7 +72,11 @@ jobs:
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-v1
+          # Bump the version suffix any time Playwright is upgraded — the
+          # cached browser binary path changes between Playwright versions,
+          # and a stale cache will short-circuit the install step while the
+          # new runtime fails with "Executable doesn't exist at …".
+          key: playwright-chromium-${{ runner.os }}-v2
 
       - name: Install Playwright Chromium (browser binary)
         if: steps.playwright-cache.outputs.cache-hit != 'true'
