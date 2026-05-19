@@ -442,17 +442,45 @@ def fetch_one_by_contact_id(sb, contact_id: str) -> list[dict[str, Any]]:
     DataSift call).
     """
     try:
+        # Source 1: the snapshot-derived view (scored leads come from here).
         res = sb.from_("ghl_latest_contact_address").select(
             "contact_address, contact_city, contact_state, contact_postal_code"
         ).eq("contact_id", contact_id).limit(1).execute()
         rows = res.data or []
-        if not rows:
-            log.warning("contact_id=%s has no row in ghl_latest_contact_address", contact_id)
-            return []
-        r = rows[0]
-        raw = (r.get("contact_address") or "").strip()
+        r = rows[0] if rows else None
+        raw = ((r or {}).get("contact_address") or "").strip()
+
+        # Source 2: ghl_contact_address_overrides (migration 043). Covers Hit
+        # List slim contacts whose conversation aged out of the snapshot
+        # window — their address comes from the GHL Contacts API via the
+        # enrich-hitlist-contacts Edge Function, not from a conversation.
+        # Fall through to this lookup whenever Source 1 didn't give us an
+        # address.
         if not raw:
-            log.warning("contact_id=%s has no address text", contact_id)
+            try:
+                ov = sb.from_("ghl_contact_address_overrides").select(
+                    "address, city, state, postal_code"
+                ).eq("contact_id", contact_id).limit(1).execute()
+                ovrows = ov.data or []
+                if ovrows:
+                    ov_row = ovrows[0]
+                    raw = (ov_row.get("address") or "").strip()
+                    if raw:
+                        r = {
+                            "contact_address": raw,
+                            "contact_city": ov_row.get("city"),
+                            "contact_state": ov_row.get("state"),
+                            "contact_postal_code": ov_row.get("postal_code"),
+                        }
+                        log.info("contact_id=%s resolved via address_overrides fallback", contact_id)
+            except Exception as e:
+                log.warning("contact_id=%s overrides lookup failed: %s", contact_id, e)
+
+        if not r:
+            log.warning("contact_id=%s has no row in ghl_latest_contact_address nor address_overrides", contact_id)
+            return []
+        if not raw:
+            log.warning("contact_id=%s has no address text in either source", contact_id)
             return []
         norm = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
 
