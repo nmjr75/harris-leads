@@ -101,6 +101,50 @@ type AppointmentInfo = {
   raw: any;
 } | null;
 
+// GHL's Calendars/Appointments API returns appointment times with a `Z` (or
+// +0000) suffix that *claims* UTC, but the actual hour/minute represent the
+// calendar's local timezone — Central for Houston ops. JavaScript's Date
+// constructor honors the Z and parses as UTC, producing the 5-hour shift bug
+// (10 AM CT becomes 5 AM CT on the dashboard).
+//
+// Fix mirrors the pattern from sync-ghl-call (SiftStack commit 17debe9): pull
+// out the wall-clock parts via regex regardless of any Z/offset suffix, treat
+// them as America/Chicago, then compute the equivalent UTC instant using the
+// Intl API (handles DST automatically).
+function ghlAppointmentTimeToUtcIso(rawStr: unknown): string | null {
+  if (!rawStr) return null;
+  const s = String(rawStr).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const [, year, month, day, hour, minute, second = "0"] = m;
+  // Step 1: treat the wall-clock parts AS IF they were UTC (first guess).
+  const guessUtcMs = Date.UTC(+year, +month - 1, +day, +hour, +minute, +second);
+  // Step 2: render that UTC instant in Central; the components we get back
+  // tell us what time it "would be" if our guess were correct. The delta
+  // between the original wall-clock and that rendering is the CT offset
+  // (handles CDT vs CST automatically via the Intl API).
+  const ctParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(guessUtcMs));
+  const get = (t: string): number => {
+    const raw = ctParts.find((p) => p.type === t)?.value || "0";
+    return parseInt(raw === "24" ? "0" : raw, 10);
+  };
+  const ctEpochMs = Date.UTC(
+    get("year"), get("month") - 1, get("day"),
+    get("hour"), get("minute"), get("second"),
+  );
+  const offsetMs = guessUtcMs - ctEpochMs;
+  return new Date(guessUtcMs + offsetMs).toISOString();
+}
+
 // Fetches the contact's appointments and picks the most actionable one:
 // the soonest upcoming event if any are in the future, otherwise the most
 // recent past event. Returns null if the contact has no appointments OR if
@@ -131,17 +175,28 @@ async function fetchUpcomingAppointment(contactId: string): Promise<AppointmentI
     }
     const now = Date.now();
     const enriched = events
-      .map((e) => ({
-        ...e,
-        _startMs: new Date(e.startTime ?? e.start_time ?? e.startsAt ?? 0).getTime(),
-      }))
+      .map((e) => {
+        const rawStart = e.startTime ?? e.start_time ?? e.startsAt;
+        const utcIso = ghlAppointmentTimeToUtcIso(rawStart);
+        // Capture both the raw GHL field and our normalized value so future
+        // debugging can verify whether GHL ever changes its return format.
+        return {
+          ...e,
+          _rawStart: rawStart,
+          _utcIso: utcIso,
+          _startMs: utcIso ? new Date(utcIso).getTime() : 0,
+        };
+      })
       .filter((e) => !!e._startMs);
     if (enriched.length === 0) return null;
     enriched.sort((a, b) => a._startMs - b._startMs);
     const upcoming = enriched.find((e) => e._startMs >= now);
     const chosen = upcoming ?? enriched[enriched.length - 1];
+    console.log(
+      `APPT_PARSE contact=${contactId} raw="${chosen._rawStart}" → utc=${chosen._utcIso}`,
+    );
     return {
-      at: new Date(chosen._startMs).toISOString(),
+      at: chosen._utcIso!,
       title: chosen.title ?? null,
       status: chosen.appointmentStatus ?? chosen.status ?? null,
       raw: chosen,
