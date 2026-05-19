@@ -600,6 +600,21 @@ def upsert_parcels(parcels: dict[str, dict]) -> None:
         "has_disabled_vet": sum(1 for p in parcels.values() if p.get("has_disabled_vet")),
     }
     log.info("  pre-upsert flag tally: %s", flag_sums)
+
+    # Drop the GIN trigram index before the bulk upsert. This index is the
+    # single most expensive piece of per-row maintenance on property_data
+    # (posting-list updates are far heavier than btree). Building it once
+    # from scratch on the final dataset after the upsert is ~3x faster
+    # than maintaining it incrementally across 1.6M rows. See migration
+    # 050_hcad_bulk_index_helpers.sql for the SECURITY DEFINER RPC.
+    index_dropped = False
+    try:
+        result = client.rpc("hcad_drop_heavy_indexes").execute()
+        log.info("  pre-load: %s", result.data)
+        index_dropped = True
+    except Exception as e:
+        log.warning("  pre-load index drop failed (continuing anyway): %s", e)
+
     rows = list(parcels.values())
     done = 0
     failed = 0
@@ -617,6 +632,23 @@ def upsert_parcels(parcels: dict[str, dict]) -> None:
             log.warning("  upsert chunk %d failed (%d rows): %s",
                         i // UPSERT_CHUNK, len(batch), e)
     log.info("Upsert complete: %d succeeded, %d failed", done, failed)
+
+    # Rebuild the GIN trigram index. Takes 5-15 min on 1.6M rows but is
+    # ~3x faster than incremental maintenance during the upsert. CRITICAL
+    # to recover from rebuild failure — without the index, every
+    # resolve_parcel_by_legal() call falls back to a 2s seq scan. If the
+    # rebuild call fails, log a loud error with the manual recovery SQL.
+    if index_dropped:
+        try:
+            result = client.rpc("hcad_rebuild_heavy_indexes").execute()
+            log.info("  post-load: %s", result.data)
+        except Exception as e:
+            log.error("  ***** INDEX REBUILD FAILED *****: %s", e)
+            log.error("  *** MANUAL ACTION REQUIRED ***")
+            log.error("  Paste in Supabase SQL editor immediately:")
+            log.error("    CREATE INDEX IF NOT EXISTS property_data_legal_trgm_idx")
+            log.error("      ON public.property_data USING gin (legal_description gin_trgm_ops);")
+            log.error("  Until rebuilt, every legal-fallback query seq-scans 1.6M rows.")
 
 
 # ═══════════════════════════════════════════════════════════════════════
