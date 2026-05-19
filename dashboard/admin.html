@@ -3205,7 +3205,7 @@
       <span class="label">Assigned to:</span>
       <span class="assignment-pill active" data-assign="all" onclick="setAssignmentFilter('all')">All <span class="count" data-assign-count="all">0</span></span>
       <span class="assignment-pill" data-assign="mine" onclick="setAssignmentFilter('mine')">Mine <span class="count" data-assign-count="mine">0</span></span>
-      <span class="assignment-pill" data-assign="joseph.hhremodeling@gmail.com" onclick="setAssignmentFilter('joseph.hhremodeling@gmail.com')">Joseph <span class="count" data-assign-count="joseph.hhremodeling@gmail.com">0</span></span>
+      <span class="assignment-pill" data-assign="joseph@continentalhouserenovations.com" onclick="setAssignmentFilter('joseph@continentalhouserenovations.com')">Joseph <span class="count" data-assign-count="joseph@continentalhouserenovations.com">0</span></span>
       <span class="assignment-pill" data-assign="mark.realdealsource@gmail.com" onclick="setAssignmentFilter('mark.realdealsource@gmail.com')">Walter <span class="count" data-assign-count="mark.realdealsource@gmail.com">0</span></span>
       <span class="assignment-pill" data-assign="paul.hhremodeling@outlook.com" onclick="setAssignmentFilter('paul.hhremodeling@outlook.com')">Paul <span class="count" data-assign-count="paul.hhremodeling@outlook.com">0</span></span>
       <span class="assignment-pill" data-assign="nmjr75@gmail.com" onclick="setAssignmentFilter('nmjr75@gmail.com')">Nelson <span class="count" data-assign-count="nmjr75@gmail.com">0</span></span>
@@ -3336,7 +3336,7 @@
     <div class="filter-bar" id="callAgentFilterBar" style="display:none">
       <span class="stage-filter-label">Agent:</span>
       <span class="filter-pill active" data-call-agent="all" onclick="setCallAgentFilter('all')">All <span class="count" data-call-agent-count="all">0</span></span>
-      <span class="filter-pill" data-call-agent="joseph.hhremodeling@gmail.com" onclick="setCallAgentFilter('joseph.hhremodeling@gmail.com')">Joseph <span class="count" data-call-agent-count="joseph.hhremodeling@gmail.com">0</span></span>
+      <span class="filter-pill" data-call-agent="joseph@continentalhouserenovations.com" onclick="setCallAgentFilter('joseph@continentalhouserenovations.com')">Joseph <span class="count" data-call-agent-count="joseph@continentalhouserenovations.com">0</span></span>
       <span class="filter-pill" data-call-agent="mark.realdealsource@gmail.com" onclick="setCallAgentFilter('mark.realdealsource@gmail.com')">Walter <span class="count" data-call-agent-count="mark.realdealsource@gmail.com">0</span></span>
       <span class="filter-pill" data-call-agent="paul.hhremodeling@outlook.com" onclick="setCallAgentFilter('paul.hhremodeling@outlook.com')">Paul <span class="count" data-call-agent-count="paul.hhremodeling@outlook.com">0</span></span>
       <span class="filter-pill" data-call-agent="nmjr75@gmail.com" onclick="setCallAgentFilter('nmjr75@gmail.com')">Nelson <span class="count" data-call-agent-count="nmjr75@gmail.com">0</span></span>
@@ -3461,7 +3461,7 @@ const ADMIN_EMAILS = [
   "brian@htxpropertybuyers.com",     // Bernabé Sanchez (admin viewer + writer)
 ];
 const ASSIGNEE_EMAILS = [
-  "joseph.hhremodeling@gmail.com",   // Joseph Castelan (closer — HOT/WARM)
+  "joseph@continentalhouserenovations.com",   // Joseph Castelan (closer — HOT/WARM)
   "mark.realdealsource@gmail.com",   // Walter (follow-up specialist — Hit List)
   "paul.hhremodeling@outlook.com",   // Paul Barbosa (acquisitions agent)
 ];
@@ -3471,7 +3471,7 @@ const ASSIGNEE_EMAILS = [
 // Walter second, Paul third (new acquisitions hire), Nelson last (he assigns
 // to himself rarely).
 const ASSIGNEES = [
-  { email: "joseph.hhremodeling@gmail.com", label: "Joseph",  color: "#3b82f6" },
+  { email: "joseph@continentalhouserenovations.com", label: "Joseph",  color: "#3b82f6" },
   { email: "mark.realdealsource@gmail.com", label: "Walter",  color: "#06b6d4" },
   { email: "paul.hhremodeling@outlook.com", label: "Paul",    color: "#10b981" },
   { email: "nmjr75@gmail.com",              label: "Nelson",  color: "#7c5cfc" },
@@ -6258,7 +6258,7 @@ function updateFilterCounts() {
   const assignCounts = {
     all: universe.size,
     mine: 0,
-    "joseph.hhremodeling@gmail.com": 0,
+    "joseph@continentalhouserenovations.com": 0,
     "mark.realdealsource@gmail.com": 0,
     "paul.hhremodeling@outlook.com": 0,
     "nmjr75@gmail.com": 0,
