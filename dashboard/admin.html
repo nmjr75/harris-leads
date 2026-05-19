@@ -369,6 +369,104 @@
   .data-table tr:hover td { background: rgba(124, 92, 252, 0.04); }
   .data-table tr.expanded td { background: rgba(124, 92, 252, 0.08); }
   .data-table .col-actions { white-space: nowrap; text-align: right; }
+  /* Bulk-select checkbox column — narrow, centered, blocks click bubbling
+     to the row's expand handler (input handles its own click). */
+  .data-table .col-select {
+    width: 36px;
+    padding-left: 18px;
+    padding-right: 4px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  body.hide-bulk-select .data-table .col-select { display: none; }
+  .data-table .col-select input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent);
+  }
+  .data-table tr.row-selected td {
+    background: rgba(16, 185, 129, 0.10);
+  }
+  .data-table tr.row-selected:hover td {
+    background: rgba(16, 185, 129, 0.16);
+  }
+  /* Sticky bulk-actions bar — appears at the bottom of the leads table
+     whenever one or more rows are selected. Manager-only. */
+  .bulk-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 24px;
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.10), rgba(16, 185, 129, 0.20));
+    border-top: 1px solid rgba(16, 185, 129, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    flex-wrap: wrap;
+  }
+  .bulk-count {
+    font-weight: 700;
+    color: rgb(110, 231, 183);
+    font-size: 0.86rem;
+  }
+  .bulk-divider {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+  .bulk-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .bulk-select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 28px 5px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .bulk-select:focus { outline: none; border-color: rgb(16, 185, 129); }
+  .btn-bulk-apply {
+    background: rgb(16, 185, 129);
+    color: #053122;
+    border: 0;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+  }
+  .btn-bulk-apply:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-bulk-apply:not(:disabled):hover { filter: brightness(1.10); }
+  .btn-bulk-clear {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.82rem;
+  }
+  .btn-bulk-clear:hover { color: var(--text); border-color: var(--accent); }
+  .bulk-status {
+    margin-left: auto;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
 
   /* Score badges */
   .score-badge {
@@ -2677,6 +2775,7 @@
     <table class="data-table" id="leadsTable">
       <thead>
         <tr>
+          <th class="col-select" id="bulkSelectHeaderCell"><input type="checkbox" id="bulkSelectAll" onchange="toggleBulkSelectAll(this.checked)" title="Select / deselect every visible lead"></th>
           <th class="sortable" onclick="setSort('contact_name')">Contact <span class="sort-arrow"></span></th>
           <th class="sortable" onclick="setSort('phone')">Phone</th>
           <th class="sortable sorted" onclick="setSort('last_activity_at')" title="Most recent message activity in REI Reply (inbound or outbound). Click to flip newest/oldest first.">Last activity <span class="sort-arrow">↓</span></th>
@@ -2686,9 +2785,24 @@
         </tr>
       </thead>
       <tbody id="leadsBody">
-        <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+        <tr><td colspan="7" class="empty-state">Loading...</td></tr>
       </tbody>
     </table>
+    <!-- Bulk-actions bar — slides up from the bottom when one or more
+         leads are selected via the row checkboxes. Manager-only (Nelson +
+         admins). Lets the user reassign every selected lead to one agent
+         in a single action. -->
+    <div class="bulk-bar" id="bulkBar" style="display:none">
+      <span class="bulk-count" id="bulkCount">0 selected</span>
+      <span class="bulk-divider">·</span>
+      <span class="bulk-label">Assign to:</span>
+      <select class="bulk-select" id="bulkAssigneeSelect">
+        <option value="">— pick an agent —</option>
+      </select>
+      <button class="btn-bulk-apply" id="bulkApplyBtn" onclick="applyBulkAssign()" disabled>Apply</button>
+      <button class="btn-bulk-clear" onclick="clearBulkSelection()">Clear selection</button>
+      <span class="bulk-status" id="bulkStatus"></span>
+    </div>
   </div>
 
   <!-- Call Activity tab — per-call drill-down with deep links to recordings -->
@@ -2870,6 +2984,13 @@ const ASSIGNEES = [
   { email: "paul.hhremodeling@outlook.com", label: "Paul",    color: "#10b981" },
   { email: "nmjr75@gmail.com",              label: "Nelson",  color: "#7c5cfc" },
 ];
+
+// Bulk-selection state — set of contact_ids the user has checked via the
+// per-row checkbox. Used by the bulk-actions bar to assign multiple leads
+// to one agent in a single action. Survives filter changes and re-renders
+// (a contact stays "selected" even if a filter hides them, so the user can
+// switch views mid-selection without losing their pick).
+const selectedContactIds = new Set();
 
 // Pipeline stage definitions. The DB CHECK constraint is the source of
 // truth for valid stage keys (see migrations/002_contact_actions.sql);
@@ -3053,6 +3174,16 @@ function applyRoleVisibility() {
   hide("callActivityRow", isAssigneeRole);
   // Call Activity agent filter bar: managers only.
   hide("callAgentFilterBar", isAssigneeRole);
+  // Bulk-actions bar + master-checkbox column: managers only. Assignees
+  // can't reassign leads, so the row checkboxes + bottom bar are noise.
+  // The bar is hidden for assignees regardless of selection state.
+  hide("bulkBar", isAssigneeRole);
+  hide("bulkSelectHeaderCell", isAssigneeRole);
+  if (isAssigneeRole) {
+    document.body.classList.add("hide-bulk-select");
+  } else {
+    document.body.classList.remove("hide-bulk-select");
+  }
   if (isAdminOrAssignee && currentTab === "deletions") setTab("leads");
   // If an assignee is somehow on the calls tab (refresh while on it),
   // bounce them back to the leads tab.
@@ -3735,6 +3866,143 @@ async function assignContact(contactId, contactName, email) {
     assigned_by_email: currentSession?.user?.email || null,
     reason: "manual",
   };
+  renderLeads();
+}
+
+// ── Bulk selection + bulk assignment ─────────────────────────────────────
+// Per-row checkboxes feed into selectedContactIds. The bulk-actions bar at
+// the bottom of the leads table shows when one or more are selected and
+// lets a manager reassign all of them to one agent in a single action.
+
+function toggleContactSelected(contactId, checked) {
+  if (!contactId) return;
+  if (checked) selectedContactIds.add(contactId);
+  else selectedContactIds.delete(contactId);
+  updateBulkBar();
+  // Toggle the row's visual "selected" class without re-rendering the
+  // whole table (avoids losing focus / scroll).
+  const row = document.querySelector(`tr[data-contact-id="${CSS.escape(contactId)}"]`);
+  if (row) row.classList.toggle("row-selected", checked);
+}
+
+// Master-checkbox handler: select or clear every contact currently rendered
+// in the table (respecting the active filter set). NOT "all leads in the
+// DB" — only what's visible. That matches the user's mental model when
+// they say "select all in this list I've created."
+function toggleBulkSelectAll(checked) {
+  const rows = document.querySelectorAll('#leadsBody tr[data-contact-id]');
+  rows.forEach((row) => {
+    const cid = row.getAttribute("data-contact-id");
+    if (!cid) return;
+    if (checked) selectedContactIds.add(cid);
+    else selectedContactIds.delete(cid);
+    row.classList.toggle("row-selected", checked);
+    const cb = row.querySelector("input.row-check");
+    if (cb) cb.checked = checked;
+  });
+  updateBulkBar();
+}
+
+function clearBulkSelection() {
+  selectedContactIds.clear();
+  document.querySelectorAll('#leadsBody tr.row-selected').forEach((row) => row.classList.remove("row-selected"));
+  document.querySelectorAll('#leadsBody input.row-check:checked').forEach((cb) => { cb.checked = false; });
+  const master = document.getElementById("bulkSelectAll");
+  if (master) master.checked = false;
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById("bulkBar");
+  const count = selectedContactIds.size;
+  if (!bar) return;
+  bar.style.display = count > 0 ? "" : "none";
+  const counter = document.getElementById("bulkCount");
+  if (counter) counter.textContent = count === 1 ? "1 selected" : `${count} selected`;
+  // The Apply button is gated on both having a selection AND a chosen agent.
+  const sel = document.getElementById("bulkAssigneeSelect");
+  const apply = document.getElementById("bulkApplyBtn");
+  if (apply && sel) apply.disabled = !(count > 0 && sel.value);
+  // Sync master checkbox state — checked iff every visible row is selected.
+  const master = document.getElementById("bulkSelectAll");
+  if (master) {
+    const visibleRows = document.querySelectorAll('#leadsBody tr[data-contact-id]');
+    const allSelected = visibleRows.length > 0 && [...visibleRows].every((r) => selectedContactIds.has(r.getAttribute("data-contact-id")));
+    master.checked = allSelected;
+    master.indeterminate = !allSelected && count > 0;
+  }
+}
+
+// Populate the assignee <select> in the bulk bar from the ASSIGNEES list.
+// Runs once after the DOM is ready. Re-running is safe (idempotent).
+function ensureBulkAssigneeOptions() {
+  const sel = document.getElementById("bulkAssigneeSelect");
+  if (!sel || sel.dataset.populated === "1") return;
+  for (const a of ASSIGNEES) {
+    const opt = document.createElement("option");
+    opt.value = a.email;
+    opt.textContent = a.label;
+    sel.appendChild(opt);
+  }
+  sel.dataset.populated = "1";
+  sel.addEventListener("change", updateBulkBar);
+}
+
+async function applyBulkAssign() {
+  if (!isManager()) {
+    alert("Only managers can assign leads.");
+    return;
+  }
+  const sel = document.getElementById("bulkAssigneeSelect");
+  const email = sel?.value;
+  if (!email) return;
+  const ids = [...selectedContactIds];
+  if (ids.length === 0) return;
+  const agentLabel = assigneeLabel(email);
+  if (!confirm(`Assign ${ids.length} lead${ids.length === 1 ? "" : "s"} to ${agentLabel}?`)) return;
+
+  const status = document.getElementById("bulkStatus");
+  const apply = document.getElementById("bulkApplyBtn");
+  if (apply) apply.disabled = true;
+  let okCount = 0, failCount = 0;
+
+  for (const cid of ids) {
+    if (status) status.textContent = `Assigning ${okCount + failCount + 1}/${ids.length}…`;
+    const lead = (DATA.leads || []).find((r) => r.contact_id === cid)
+              || Object.values(DATA.hitList || {}).find((o) => o.contact_id === cid);
+    const conversationId = (DATA.leads || []).find((r) => r.contact_id === cid)?.conversation_id || null;
+    const contactName = lead?.contact_name || null;
+    const { error } = await sb.from("ghl_lead_assignments").insert({
+      contact_id: cid,
+      conversation_id: conversationId,
+      contact_name: contactName,
+      assigned_to_email: email,
+      assigned_by_email: currentSession?.user?.email || null,
+      reason: "bulk",
+    });
+    if (error) {
+      failCount++;
+      console.error(`bulk assign failed for ${cid}: ${error.message}`);
+    } else {
+      okCount++;
+      DATA.assignments[cid] = {
+        contact_id: cid,
+        assigned_to_email: email,
+        assigned_at: new Date().toISOString(),
+        assigned_by_email: currentSession?.user?.email || null,
+        reason: "bulk",
+      };
+    }
+  }
+
+  if (status) {
+    status.textContent = failCount === 0
+      ? `✓ Assigned ${okCount} to ${agentLabel}`
+      : `Assigned ${okCount}, failed ${failCount} — check console`;
+    setTimeout(() => { if (status) status.textContent = ""; }, 6000);
+  }
+  clearBulkSelection();
+  if (sel) sel.value = "";
   renderLeads();
 }
 
@@ -5449,13 +5717,13 @@ function renderLeads() {
   if (!rows.length) {
     let empty;
     if (search) {
-      empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts match "${escapeHtml(search)}"</h3><p>Searched name, phone, and property address across every stage and the Hit List. If this is an assignee view, only contacts assigned to you are searchable.</p></td></tr>`;
+      empty = `<tr><td colspan="7" class="empty-state"><h3>No contacts match "${escapeHtml(search)}"</h3><p>Searched name, phone, and property address across every stage and the Hit List. If this is an assignee view, only contacts assigned to you are searchable.</p></td></tr>`;
     } else if (isHitList) {
-      empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts on the Hit List right now</h3><p>When a VA moves a contact to "HIT LIST" in REI Reply's SELLER DISPOSITION pipeline, they'll appear here within 10 minutes.</p></td></tr>`;
+      empty = `<tr><td colspan="7" class="empty-state"><h3>No contacts on the Hit List right now</h3><p>When a VA moves a contact to "HIT LIST" in REI Reply's SELLER DISPOSITION pipeline, they'll appear here within 10 minutes.</p></td></tr>`;
     } else if (currentStageFilter === "appointment_set") {
-      empty = `<tr><td colspan="6" class="empty-state"><h3>No contacts with a booked appointment</h3><p>This pill surfaces contacts whose REI Reply tags include "appointment booked", "appointment set", "AI voice appointment booked", or "AI chat appointment booked". They'll appear here within seconds of REBA AI applying the tag — assuming the sync-ghl-contact-tags webhook is wired up in REI Reply Workflows.</p></td></tr>`;
+      empty = `<tr><td colspan="7" class="empty-state"><h3>No contacts with a booked appointment</h3><p>This pill surfaces contacts whose REI Reply tags include "appointment booked", "appointment set", "AI voice appointment booked", or "AI chat appointment booked". They'll appear here within seconds of REBA AI applying the tag — assuming the sync-ghl-contact-tags webhook is wired up in REI Reply Workflows.</p></td></tr>`;
     } else {
-      empty = `<tr><td colspan="6" class="empty-state"><h3>No leads match these filters</h3><p>Try switching to "All stages", clearing the score filter, or typing a name into the search box (search scans every stage).</p></td></tr>`;
+      empty = `<tr><td colspan="7" class="empty-state"><h3>No leads match these filters</h3><p>Try switching to "All stages", clearing the score filter, or typing a name into the search box (search scans every stage).</p></td></tr>`;
     }
     body.innerHTML = empty;
     return;
@@ -5481,8 +5749,10 @@ function renderLeads() {
       const slimStageKey = getStageKey(r);
       const slimIsExpanded = slimCid && expandedDetail && expandedDetail.convId === slimCid;
       const slimExpandedType = slimIsExpanded ? expandedDetail.type : null;
+      const slimIsSelected = r.contact_id ? selectedContactIds.has(r.contact_id) : false;
       return `
-        <tr data-cid="${slimCidEsc}" class="hit-list-slim ${slimIsExpanded ? 'expanded' : ''}">
+        <tr data-cid="${slimCidEsc}" data-contact-id="${escapeHtml(r.contact_id || '')}" class="hit-list-slim ${slimIsExpanded ? 'expanded' : ''} ${slimIsSelected ? 'row-selected' : ''}">
+          <td class="col-select">${r.contact_id ? `<input type="checkbox" class="row-check" onclick="event.stopPropagation(); toggleContactSelected('${escapeHtml(r.contact_id)}', this.checked)" ${slimIsSelected ? 'checked' : ''}>` : ''}</td>
           <td class="col-name">
             ${escapeHtml(r.contact_name || "(no name)")}
             <div class="name-stack">
@@ -5514,7 +5784,7 @@ function renderLeads() {
             </div>
           </td>
         </tr>
-        ${slimIsExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${slimCidEsc}">${
+        ${slimIsExpanded ? `<tr class="detail-row"><td colspan="7" id="detail-${slimCidEsc}">${
           slimExpandedType === 'notes' ? renderNotesPanel(r) :
           slimExpandedType === 'tasks' ? renderTasksPanel(r) :
           slimExpandedType === 'transcript' ? renderTranscriptPanel(r) :
@@ -5529,8 +5799,10 @@ function renderLeads() {
     const expandedType = isExpanded ? expandedDetail.type : null;
     const stageKey = getStageKey(r);
     const noteCount = r.contact_id ? (DATA.notesCount[r.contact_id] || 0) : 0;
+    const isSelected = r.contact_id ? selectedContactIds.has(r.contact_id) : false;
     return `
-      <tr data-cid="${cidEsc}" class="${isExpanded ? 'expanded' : ''}">
+      <tr data-cid="${cidEsc}" data-contact-id="${escapeHtml(r.contact_id || '')}" class="${isExpanded ? 'expanded' : ''} ${isSelected ? 'row-selected' : ''}">
+        <td class="col-select">${r.contact_id ? `<input type="checkbox" class="row-check" onclick="event.stopPropagation(); toggleContactSelected('${escapeHtml(r.contact_id)}', this.checked)" ${isSelected ? 'checked' : ''}>` : ''}</td>
         <td class="col-name clickable" onclick="toggleExpand('${cidEsc}')">
           ${escapeHtml(r.contact_name || "(no name)")}
           ${(() => {
@@ -5598,7 +5870,7 @@ function renderLeads() {
           </div>
         </td>
       </tr>
-      ${isExpanded ? `<tr class="detail-row"><td colspan="6" id="detail-${cidEsc}">${
+      ${isExpanded ? `<tr class="detail-row"><td colspan="7" id="detail-${cidEsc}">${
         expandedType === 'notes' ? renderNotesPanel(r) :
         expandedType === 'tasks' ? renderTasksPanel(r) :
         expandedType === 'transcript' ? renderTranscriptPanel(r) :
@@ -5610,6 +5882,10 @@ function renderLeads() {
   if (expandedDetail && expandedDetail.type === "history") {
     renderScoreHistory(expandedDetail.convId);
   }
+  // Resync bulk-action bar (count + master checkbox) every render. Cheap
+  // and keeps state honest after filter/search changes hide/show rows.
+  ensureBulkAssigneeOptions();
+  updateBulkBar();
 }
 
 async function renderScoreHistory(conversationId) {
