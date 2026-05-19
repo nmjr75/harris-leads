@@ -24,18 +24,23 @@
 -- dashboard can capture a one-line "why" when a VA moves a lead to one of
 -- the terminal-reason stages (Not Interested / Wrong # / Signed Elsewhere).
 
--- ─── Step 1: data backfill BEFORE swapping the check constraint ────────
--- (must happen first so the new constraint doesn't reject existing rows)
+-- ─── Step 1: DROP the old check constraint first ──────────────────────
+-- The new stage values aren't in the existing CHECK; if we tried to UPDATE
+-- rows to 'untouched' / 'interested' / etc. before dropping the old
+-- constraint, each UPDATE would fail with code 23514. Drop → rename → add
+-- is the correct order.
+
+alter table public.ghl_contact_lifecycle
+  drop constraint if exists ghl_contact_lifecycle_stage_check;
+
+-- ─── Step 2: rename existing values to the new taxonomy ────────────────
 
 update public.ghl_contact_lifecycle set stage = 'untouched'        where stage = 'active';
 update public.ghl_contact_lifecycle set stage = 'interested'       where stage = 'working';
 update public.ghl_contact_lifecycle set stage = 'contracts_signed' where stage = 'won';
 update public.ghl_contact_lifecycle set stage = 'not_interested'   where stage = 'lost';
 
--- ─── Step 2: swap the check constraint to the new value list ───────────
-
-alter table public.ghl_contact_lifecycle
-  drop constraint if exists ghl_contact_lifecycle_stage_check;
+-- ─── Step 3: add the new check constraint covering the new taxonomy ────
 
 alter table public.ghl_contact_lifecycle
   add constraint ghl_contact_lifecycle_stage_check
