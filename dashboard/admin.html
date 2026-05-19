@@ -2982,6 +2982,173 @@
     color: var(--text-muted); font-size: 0.7rem; font-style: italic;
     padding: 7px 12px; text-align: center;
   }
+  /* Offer logger modal (reuses acl-modal chrome but with a tighter form
+     body). Opened from the per-row 💰 button or CRM Details Deal tab. */
+  .offer-modal { width: min(520px, 94vw); }
+  .offer-form { display: flex; flex-direction: column; gap: 10px; padding: 6px 4px; }
+  .offer-label {
+    font-size: 0.74rem; color: var(--text);
+    font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .offer-label .req { color: var(--red); }
+  .offer-label .muted { color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .offer-amount-row {
+    display: flex; align-items: stretch; gap: 0;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); overflow: hidden;
+  }
+  .offer-amount-prefix {
+    padding: 9px 12px; background: var(--surface);
+    color: var(--text-muted); border-right: 1px solid var(--border);
+    font-family: ui-monospace, monospace; font-weight: 600;
+  }
+  .offer-amount-row input { border: 0; background: transparent; }
+  .offer-input {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; font-family: inherit; font-size: 0.92rem;
+    width: 100%; box-sizing: border-box;
+  }
+  .offer-input:focus { outline: none; border-color: var(--accent); }
+  textarea.offer-input { resize: vertical; min-height: 70px; }
+  .offer-actions {
+    display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;
+  }
+  .offer-cancel-btn, .offer-save-btn {
+    padding: 9px 16px; border-radius: 8px; cursor: pointer;
+    font-size: 0.86rem; font-weight: 600; font-family: inherit;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text);
+  }
+  .offer-cancel-btn:hover { border-color: var(--text-muted); }
+  .offer-save-btn {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .offer-save-btn:hover { filter: brightness(1.12); }
+  .offer-form-note {
+    font-size: 0.74rem; color: var(--text-muted);
+    background: rgba(124,92,252,0.06); padding: 8px 12px;
+    border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+    margin-top: 6px; line-height: 1.4;
+  }
+
+  /* Per-row 💰 Log Offer button — same visual family as btn-tasks. */
+  .btn-log-offer {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 11px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); font-size: 0.78rem; cursor: pointer;
+    transition: border-color .12s, background .12s;
+    font-family: inherit;
+  }
+  .btn-log-offer:hover {
+    border-color: rgba(34,197,94,.55); background: rgba(34,197,94,.08);
+    color: rgb(74,222,128);
+  }
+  .btn-log-offer .count {
+    display: inline-block; padding: 0 6px; margin-left: 3px;
+    background: rgba(34,197,94,.18); color: rgb(74,222,128);
+    border-radius: 8px; font-size: 0.7rem; font-weight: 600;
+  }
+
+  /* Offers tab — per-agent summary cards + drill-down table. */
+  .offers-summary-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px; margin-bottom: 14px;
+  }
+  .offer-summary-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .offer-summary-card .agent {
+    font-weight: 700; font-size: 0.95rem; color: var(--text);
+    margin-bottom: 8px;
+  }
+  .offer-summary-card .stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px;
+    font-size: 0.78rem;
+  }
+  .offer-summary-card .stat-num {
+    font-size: 1.1rem; font-weight: 700; color: var(--text);
+    font-family: ui-monospace, monospace;
+  }
+  .offer-summary-card .stat-label { color: var(--text-muted); font-size: 0.7rem; }
+  .offer-summary-card.empty { opacity: 0.55; }
+  .offer-outcome-chip {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-muted); cursor: pointer;
+  }
+  .offer-outcome-chip.pending     { background: rgba(124,92,252,.14); color: var(--accent-light); border-color: rgba(124,92,252,.45); }
+  .offer-outcome-chip.accepted    { background: rgba(34,197,94,.16); color: rgb(74,222,128); border-color: rgba(34,197,94,.45); }
+  .offer-outcome-chip.rejected    { background: rgba(239,68,68,.16); color: var(--red); border-color: rgba(239,68,68,.45); }
+  .offer-outcome-chip.counter     { background: rgba(251,191,36,.16); color: #fbbf24; border-color: rgba(251,191,36,.45); }
+  .offer-outcome-chip.no_response { background: rgba(148,163,184,.16); color: #94a3b8; border-color: rgba(148,163,184,.45); }
+  .offer-outcome-chip:hover { filter: brightness(1.15); }
+
+  /* KPI strip on the per-VA today cards: target vs actual with a small bar. */
+  .kpi-strip { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+  .kpi-row {
+    display: grid; grid-template-columns: 56px 1fr 64px;
+    gap: 8px; align-items: center; font-size: 0.74rem;
+  }
+  .kpi-row .label { color: var(--text-muted); }
+  .kpi-row .value {
+    font-family: ui-monospace, monospace; text-align: right;
+    color: var(--text); font-weight: 600;
+  }
+  .kpi-row .bar {
+    height: 6px; background: var(--surface2);
+    border-radius: 3px; overflow: hidden;
+  }
+  .kpi-row .bar .fill {
+    height: 100%; transition: width .2s ease;
+    background: var(--accent);
+  }
+  .kpi-row .bar .fill.green  { background: rgb(74,222,128); }
+  .kpi-row .bar .fill.amber  { background: #fbbf24; }
+  .kpi-row .bar .fill.red    { background: var(--red); }
+
+  /* Deal-tab offer history (shows past offers for the open contact). */
+  .deal-offers-block {
+    margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .deal-offers-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .deal-offers-head h4 {
+    margin: 0; font-size: 0.85rem; font-weight: 600;
+    color: var(--text); text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .deal-offers-log-btn {
+    background: rgb(34,197,94); color: #1a1a1a;
+    border: 0; border-radius: 7px;
+    padding: 8px 14px; cursor: pointer;
+    font-weight: 700; font-size: 0.82rem;
+  }
+  .deal-offers-log-btn:hover { filter: brightness(1.1); }
+  .deal-offers-list { display: flex; flex-direction: column; gap: 6px; }
+  .deal-offer-item {
+    display: grid; grid-template-columns: auto 1fr auto auto;
+    gap: 10px; align-items: center;
+    padding: 9px 11px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 7px;
+    font-size: 0.82rem;
+  }
+  .deal-offer-item .ts {
+    font-family: ui-monospace, monospace; color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+  .deal-offer-item .amt {
+    font-family: ui-monospace, monospace; font-weight: 700; color: var(--text);
+  }
+  .deal-offer-item .agent { color: var(--text-muted); font-size: 0.74rem; }
+
   .acl-header-row {
     display: grid;
     grid-template-columns: minmax(180px, 2fr) auto minmax(140px, auto) auto auto auto;
@@ -3194,6 +3361,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="leads" onclick="setTab('leads')">Hot/Warm Leads</button>
     <button class="tab" data-tab="calls" onclick="setTab('calls')" id="tabBtnCalls">📞 Call Activity</button>
+    <button class="tab" data-tab="offers" onclick="setTab('offers')" id="tabBtnOffers">📨 Offers</button>
     <button class="tab" data-tab="deletions" onclick="setTab('deletions')" id="tabBtnDeletions">Deletion Audits</button>
   </div>
 
@@ -3360,6 +3528,47 @@
     </table>
   </div>
 
+  <!-- Offers tab — date-range drill-down + per-agent summary cards. -->
+  <div id="tabOffers" class="tab-content">
+    <div class="offers-summary-row" id="offersSummaryRow"></div>
+    <div class="filter-bar">
+      <span style="color:var(--text-muted);font-size:0.78rem;margin-right:8px">Date range:</span>
+      <span class="filter-pill active" data-offer-range="today" onclick="setOfferRange('today')">Today</span>
+      <span class="filter-pill" data-offer-range="yesterday" onclick="setOfferRange('yesterday')">Yesterday</span>
+      <span class="filter-pill" data-offer-range="7d" onclick="setOfferRange('7d')">7 days</span>
+      <span class="filter-pill" data-offer-range="30d" onclick="setOfferRange('30d')">30 days</span>
+      <span class="filter-pill" data-offer-range="custom" onclick="setOfferRange('custom')">📅 Custom…</span>
+      <span style="margin-left:18px;color:var(--text-muted);font-size:0.78rem">Agent:</span>
+      <select id="offerAgentSelect" onchange="setOfferAgentFilter(this.value)" class="select-input">
+        <option value="all">All agents</option>
+      </select>
+      <button class="btn-refresh" style="margin-left:auto" onclick="loadOffers().then(renderOffersTab)">↻ Refresh</button>
+      <button class="btn-refresh" onclick="exportOffersCsv()" title="Download the filtered list as CSV">⤓ CSV</button>
+    </div>
+    <div id="offersCustomRange" style="display:none;padding:6px 0 10px;gap:8px;align-items:center;font-size:0.84rem">
+      <span style="color:var(--text-muted)">From</span>
+      <input type="date" id="offerCustomStart" onchange="onOfferCustomRangeChange()" class="select-input">
+      <span style="color:var(--text-muted)">to</span>
+      <input type="date" id="offerCustomEnd" onchange="onOfferCustomRangeChange()" class="select-input">
+    </div>
+    <table class="data-table" id="offersTable">
+      <thead>
+        <tr>
+          <th>Logged at (CT)</th>
+          <th>Agent</th>
+          <th>Contact</th>
+          <th style="text-align:right">Amount</th>
+          <th>Outcome</th>
+          <th>Notes</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="offersBody">
+        <tr><td colspan="7" class="empty-state">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- Deletions tab -->
   <div id="tabDeletions" class="tab-content">
     <div class="filter-bar">
@@ -3406,6 +3615,52 @@
   </div>
   <div class="acl-body" id="actModalBody">
     <div class="acl-loading">Loading activity…</div>
+  </div>
+</div>
+
+<!-- Offer logger modal. Opened from the per-row 💰 button OR from the
+     CRM Details → Deal tab "Log this Offer" button. Reuses the acl-modal
+     visual chrome (backdrop + centered card + Esc to close). -->
+<div class="acl-backdrop" id="offerBackdrop" onclick="closeOfferLogger()"></div>
+<div class="acl-modal offer-modal" id="offerModal" role="dialog" aria-label="Log an Offer">
+  <div class="acl-header">
+    <h2 class="acl-title">📨 Log an Offer</h2>
+    <button class="acl-close" onclick="closeOfferLogger()" title="Close (Esc)">×</button>
+  </div>
+  <div class="acl-subtitle" id="offerSubtitle">—</div>
+  <div class="acl-body" id="offerModalBody">
+    <div class="offer-form">
+      <label class="offer-label">Offer amount <span class="req">*</span></label>
+      <div class="offer-amount-row">
+        <span class="offer-amount-prefix">$</span>
+        <input type="number" id="offerAmountInput" class="offer-input" min="0" step="500" placeholder="e.g. 125000" inputmode="decimal">
+      </div>
+      <label class="offer-label">Outcome</label>
+      <select id="offerOutcomeInput" class="offer-input" onchange="onOfferOutcomeChange()">
+        <option value="pending">Pending (waiting on homeowner)</option>
+        <option value="accepted">✅ Accepted</option>
+        <option value="rejected">❌ Rejected</option>
+        <option value="counter">🔁 Counter-offered</option>
+        <option value="no_response">🌫 No response</option>
+      </select>
+      <div id="offerCounterRow" style="display:none">
+        <label class="offer-label">Counter amount</label>
+        <div class="offer-amount-row">
+          <span class="offer-amount-prefix">$</span>
+          <input type="number" id="offerCounterInput" class="offer-input" min="0" step="500" placeholder="What did they counter?" inputmode="decimal">
+        </div>
+      </div>
+      <label class="offer-label">Notes <span class="muted">(optional)</span></label>
+      <textarea id="offerNotesInput" class="offer-input" rows="3"
+                placeholder="Anything Nelson should know — homeowner's tone, urgency, conditions tied to the offer…"></textarea>
+      <div class="offer-actions">
+        <button type="button" class="offer-cancel-btn" onclick="closeOfferLogger()">Cancel</button>
+        <button type="button" class="offer-save-btn" onclick="commitOfferLog()">📨 Log Offer</button>
+      </div>
+      <div class="offer-form-note">
+        Pipeline stages in REI Reply stay <strong>manual</strong> — log the offer here, then move the stage to Offer Made / Accepted / Rejected based on the outcome.
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3571,6 +3826,16 @@ let DATA = {
   // AI scorer's value; renders in place of r.score everywhere the dashboard
   // displays/filters by score. Cleared = row deleted = AI score returns.
   scoreOverrides: {},
+  // Offers log (migration 048) — array of rows for the current selected
+  // date range. Lazy-loaded on Offers tab open + on offer logger save.
+  offers: [],
+  // contact_id -> { offer_count, last_offer_at } aggregated from offers
+  // currently in DATA.offers; refreshed whenever DATA.offers changes so
+  // the per-row 💰 badge updates without an extra query.
+  offersByContact: {},
+  // Today's per-agent rollup from offers_made_today_by_user view. Drives
+  // the Offers row on the KPI scorecard.
+  offersTodayByUser: {},
   // contact_id -> { open_count, nearest_due_at, has_overdue } from
   // ghl_open_tasks_summary view (migration 023). Drives the 📅 Tasks button
   // badge + severity coloring on every row. Loaded eagerly on every refresh.
@@ -5176,6 +5441,7 @@ async function loadAll() {
     loadTasksSummary(),
     loadMyTasks(),
     loadCallsTodayByUser(),
+    loadOffersTodayByUser(),
     loadPropertyEnrichment(),
     loadPropertyOverrides(),
     loadLeadDealData(),
@@ -5356,6 +5622,20 @@ function renderCallActivityRow() {
     const lastCall = stats.last_call_at;
     const isActive = (outboundCount + inboundCount) > 0;
     const empty = !isActive ? "empty" : "";
+    // Offers KPI integration — Nelson's daily target: 3 offers per agent.
+    // Pull from offers_made_today_by_user view; bar color depends on % of
+    // target hit. Same color logic for Dials (100/day) and Talk (2.5hr).
+    const offerStats = (DATA.offersTodayByUser || {})[a.email] || {};
+    const offersCount = offerStats.offers_count || 0;
+    const offersAccepted = offerStats.accepted_count || 0;
+    const KPI_DIALS  = 100;
+    const KPI_TALK_S = 2.5 * 3600;   // 2.5 hours in seconds
+    const KPI_OFFERS = 3;
+    const kpiBar = (actual, target) => {
+      const pct = target > 0 ? Math.min(100, Math.round((actual / target) * 100)) : 0;
+      const color = pct >= 100 ? "green" : pct >= 50 ? "amber" : "red";
+      return `<div class="bar"><div class="fill ${color}" style="width:${pct}%"></div></div>`;
+    };
     return `
       <div class="call-card ${empty}">
         <div class="agent-name">
@@ -5376,8 +5656,25 @@ function renderCallActivityRow() {
             <div class="stat-name">Connected</div>
           </div>
           <div class="stat-block">
-            <div class="stat-num">${inboundCount}</div>
-            <div class="stat-name">Inbound</div>
+            <div class="stat-num">${offersCount}${offersAccepted ? `<span style="color:rgb(74,222,128);font-size:0.7rem;margin-left:6px">✓${offersAccepted}</span>` : ""}</div>
+            <div class="stat-name">Offers</div>
+          </div>
+        </div>
+        <div class="kpi-strip" title="Daily targets: 100 dials · 2.5 hrs talk · 3 offers">
+          <div class="kpi-row">
+            <span class="label">Dials</span>
+            ${kpiBar(outboundCount, KPI_DIALS)}
+            <span class="value">${outboundCount}/${KPI_DIALS}</span>
+          </div>
+          <div class="kpi-row">
+            <span class="label">Talk</span>
+            ${kpiBar(totalSeconds, KPI_TALK_S)}
+            <span class="value">${formatDuration(totalSeconds)} / 2h 30m</span>
+          </div>
+          <div class="kpi-row">
+            <span class="label">Offers</span>
+            ${kpiBar(offersCount, KPI_OFFERS)}
+            <span class="value">${offersCount}/${KPI_OFFERS}</span>
           </div>
         </div>
         ${lastCall ? `<div class="last-call">Last call: ${escapeHtml(relTime(lastCall))}</div>` : `<div class="last-call">No calls today yet</div>`}
@@ -6647,6 +6944,14 @@ function renderLeads() {
             ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
             ${renderTasksButton(r)}
             <button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${cidEsc}')" title="View / add notes">📝 Notes${noteCount ? ` <span class="badge">${noteCount}</span>` : ""}</button>
+            ${(() => {
+              const ob = (DATA.offersByContact || {})[r.contact_id];
+              const badge = ob ? `<span class="count">${ob.offer_count}</span>` : "";
+              const tip = ob
+                ? `${ob.offer_count} offer${ob.offer_count === 1 ? '' : 's'} logged · last $${Math.round(ob.last_amount || 0).toLocaleString()} (${ob.last_outcome}) ${relTime(ob.last_offer_at)}`
+                : "Log an offer on this lead";
+              return `<button class="btn-log-offer" onclick="event.stopPropagation(); openOfferLogger('${escapeHtml(r.contact_id || '')}')" title="${escapeHtml(tip)}">💰 Offer${badge}</button>`;
+            })()}
             <button class="btn-crm-details" onclick="event.stopPropagation(); openCrmPanel('${escapeHtml(r.contact_id || '')}')" title="Open lead details (property data, qualification, deal math, comps)">📋 Details</button>
             <button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${cidEsc}')" title="Change pipeline stage">${renderStageBadge(stageKey)} ▾</button>
             ${renderAssignmentControl(r)}
@@ -6735,6 +7040,9 @@ function setTab(tab) {
   document.querySelectorAll(".tab-content").forEach(el => el.classList.toggle("active", el.id === `tab${tab[0].toUpperCase() + tab.slice(1)}`));
   // Lazy-load Call Activity tab content the first time it's opened.
   if (tab === "calls") loadCalls();
+  // Lazy-load Offers tab — also re-runs every time the user clicks back
+  // so the agent dropdown reflects any new offers logged in the meantime.
+  if (tab === "offers") loadOffers().then(renderOffersTab);
 }
 
 function setScoreFilter(s) {
@@ -7217,6 +7525,397 @@ function showScoreOverrideReason(contactId) {
   alert(parts.join("\n"));
 }
 
+// ── Offers (migration 048) ─────────────────────────────────────────
+// Offer logging + per-event log feeding the Offers reporting tab + the
+// KPI scorecard. Stage moves in REI Reply remain MANUAL — logging an
+// offer here writes one row and (optionally) updates outcome later.
+
+let currentOfferRange = "today";
+let currentOfferAgentFilter = "all";
+let offerCustomStart = "";
+let offerCustomEnd = "";
+let _activeOfferContactId = null;  // contact_id currently being logged
+
+function offerRangeWindow(range) {
+  const now = new Date();
+  const tz = "America/Chicago";
+  const todayCT = new Date(now.toLocaleString("en-US", { timeZone: tz }));
+  todayCT.setHours(0, 0, 0, 0);
+  if (range === "today") return { since: todayCT.toISOString(), until: null };
+  if (range === "yesterday") {
+    const y = new Date(todayCT); y.setDate(y.getDate() - 1);
+    return { since: y.toISOString(), until: todayCT.toISOString() };
+  }
+  if (range === "7d") {
+    const d = new Date(todayCT); d.setDate(d.getDate() - 7);
+    return { since: d.toISOString(), until: null };
+  }
+  if (range === "30d") {
+    const d = new Date(todayCT); d.setDate(d.getDate() - 30);
+    return { since: d.toISOString(), until: null };
+  }
+  if (range === "custom" && offerCustomStart) {
+    const start = new Date(`${offerCustomStart}T00:00:00`);
+    const endStr = offerCustomEnd || offerCustomStart;
+    const end = new Date(`${endStr}T00:00:00`); end.setDate(end.getDate() + 1);
+    return { since: start.toISOString(), until: end.toISOString() };
+  }
+  return { since: todayCT.toISOString(), until: null };
+}
+
+async function loadOffers() {
+  const window = offerRangeWindow(currentOfferRange);
+  let q = sb.from("offers_made").select("*")
+    .gte("offered_at", window.since)
+    .order("offered_at", { ascending: false })
+    .limit(5000);
+  if (window.until) q = q.lt("offered_at", window.until);
+  if (currentOfferAgentFilter && currentOfferAgentFilter !== "all") {
+    q = q.eq("agent_email", currentOfferAgentFilter);
+  }
+  const { data, error } = await q;
+  if (error) {
+    if (error.code === "42P01") {
+      // Table doesn't exist yet (migration not applied).
+      DATA.offers = []; DATA.offersByContact = {};
+      return;
+    }
+    console.error("loadOffers:", error);
+    return;
+  }
+  DATA.offers = data || [];
+  // Build per-contact rollup for the row 💰 badge + Deal tab history.
+  DATA.offersByContact = {};
+  for (const o of DATA.offers) {
+    if (!o.contact_id) continue;
+    const cur = DATA.offersByContact[o.contact_id] || {
+      offer_count: 0, last_offer_at: null, last_amount: null, last_outcome: null,
+    };
+    cur.offer_count++;
+    if (!cur.last_offer_at || new Date(o.offered_at) > new Date(cur.last_offer_at)) {
+      cur.last_offer_at = o.offered_at;
+      cur.last_amount   = o.amount;
+      cur.last_outcome  = o.outcome;
+    }
+    DATA.offersByContact[o.contact_id] = cur;
+  }
+}
+
+async function loadOffersTodayByUser() {
+  const { data, error } = await sb.from("offers_made_today_by_user").select("*");
+  if (error) {
+    if (error.code === "42P01") { DATA.offersTodayByUser = {}; return; }
+    console.error("loadOffersTodayByUser:", error);
+    return;
+  }
+  DATA.offersTodayByUser = {};
+  for (const r of (data || [])) {
+    if (r.agent_email) DATA.offersTodayByUser[r.agent_email] = r;
+  }
+}
+
+function setOfferRange(range) {
+  currentOfferRange = range;
+  document.querySelectorAll("[data-offer-range]").forEach(el => {
+    el.classList.toggle("active", el.dataset.offerRange === range);
+  });
+  const customWrap = document.getElementById("offersCustomRange");
+  if (customWrap) customWrap.style.display = range === "custom" ? "flex" : "none";
+  if (range !== "custom") loadOffers().then(renderOffersTab);
+}
+
+function setOfferAgentFilter(email) {
+  currentOfferAgentFilter = email || "all";
+  loadOffers().then(renderOffersTab);
+}
+
+function onOfferCustomRangeChange() {
+  const s = document.getElementById("offerCustomStart")?.value || "";
+  const e = document.getElementById("offerCustomEnd")?.value || "";
+  offerCustomStart = s; offerCustomEnd = e;
+  if (s) loadOffers().then(renderOffersTab);
+}
+
+// Render the offer logger form. Opened from the per-row 💰 button OR
+// from CRM Details → Deal tab "Log this Offer". `suggestedAmount` lets
+// the Deal tab pre-fill with the agent_offer from lead_deal_data.
+function openOfferLogger(contactId, suggestedAmount) {
+  if (!contactId) { alert("Can't log — no contact ID on this lead."); return; }
+  _activeOfferContactId = contactId;
+  // Find the lead row for the subtitle (contact name + address).
+  const lead = (DATA.leads || []).find(r => r.contact_id === contactId)
+    || Object.values(DATA.hitList || {}).find(r => r.contact_id === contactId);
+  const name = lead?.contact_name || "(no name)";
+  const addr = (typeof fullAddressFor === "function" && lead) ? (fullAddressFor(lead) || "") : "";
+  const sub = document.getElementById("offerSubtitle");
+  if (sub) sub.textContent = addr ? `${name} · ${addr}` : name;
+  // Pre-fill amount with the lead's saved agent_offer if present.
+  const dealRow = (DATA.leadDeals || {})[contactId] || {};
+  const prefill = (typeof suggestedAmount === "number" && suggestedAmount > 0)
+    ? suggestedAmount
+    : (Number(dealRow.agent_offer) > 0 ? Number(dealRow.agent_offer) : "");
+  const amtInput = document.getElementById("offerAmountInput");
+  if (amtInput) { amtInput.value = prefill; amtInput.focus(); amtInput.select(); }
+  const outcome = document.getElementById("offerOutcomeInput");
+  if (outcome) outcome.value = "pending";
+  const counter = document.getElementById("offerCounterInput");
+  if (counter) counter.value = "";
+  const notes = document.getElementById("offerNotesInput");
+  if (notes) notes.value = "";
+  onOfferOutcomeChange();
+  document.getElementById("offerBackdrop")?.classList.add("open");
+  document.getElementById("offerModal")?.classList.add("open");
+}
+
+function closeOfferLogger() {
+  _activeOfferContactId = null;
+  document.getElementById("offerBackdrop")?.classList.remove("open");
+  document.getElementById("offerModal")?.classList.remove("open");
+}
+
+function onOfferOutcomeChange() {
+  const outcome = document.getElementById("offerOutcomeInput")?.value;
+  const counterRow = document.getElementById("offerCounterRow");
+  if (counterRow) counterRow.style.display = outcome === "counter" ? "" : "none";
+}
+
+async function commitOfferLog() {
+  const contactId = _activeOfferContactId;
+  if (!contactId) { closeOfferLogger(); return; }
+  const amount = Number(document.getElementById("offerAmountInput")?.value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    alert("Enter a valid offer amount (greater than $0)."); return;
+  }
+  const outcome = document.getElementById("offerOutcomeInput")?.value || "pending";
+  const counterRaw = document.getElementById("offerCounterInput")?.value;
+  const counter = outcome === "counter" && counterRaw ? Number(counterRaw) : null;
+  const notes = (document.getElementById("offerNotesInput")?.value || "").trim() || null;
+  const lead = (DATA.leads || []).find(r => r.contact_id === contactId)
+    || Object.values(DATA.hitList || {}).find(r => r.contact_id === contactId);
+  const conversationId = lead?.conversation_id || null;
+  const myEmail = currentSession?.user?.email || null;
+  const myName = (typeof ASSIGNEES !== "undefined" && Array.isArray(ASSIGNEES))
+    ? (ASSIGNEES.find(a => a.email === myEmail)?.label || null)
+    : null;
+
+  const saveBtn = document.querySelector(".offer-save-btn");
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Logging…"; }
+  const { error } = await sb.from("offers_made").insert({
+    contact_id: contactId,
+    conversation_id: conversationId,
+    agent_email: myEmail,
+    agent_name: myName,
+    amount,
+    outcome,
+    counter_amount: counter,
+    notes,
+  });
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "📨 Log Offer"; }
+  if (error) { alert(`Log failed: ${error.message}`); return; }
+  closeOfferLogger();
+  // Refresh: visible tab + KPI cards + row 💰 badges.
+  await Promise.all([loadOffers(), loadOffersTodayByUser()]);
+  renderOffersTab();
+  renderCallActivityRow();
+  renderLeads();
+}
+
+async function updateOfferOutcome(offerId, newOutcome, counterAmount) {
+  if (!offerId || !newOutcome) return;
+  const patch = { outcome: newOutcome };
+  if (newOutcome === "counter") {
+    const v = (counterAmount != null && counterAmount !== "")
+      ? Number(counterAmount) : null;
+    if (v != null && (!Number.isFinite(v) || v <= 0)) {
+      alert("Counter amount must be a positive number."); return;
+    }
+    patch.counter_amount = v;
+  } else {
+    patch.counter_amount = null;
+  }
+  const { error } = await sb.from("offers_made").update(patch).eq("id", offerId);
+  if (error) { alert(`Outcome update failed: ${error.message}`); return; }
+  await Promise.all([loadOffers(), loadOffersTodayByUser()]);
+  renderOffersTab();
+  renderCallActivityRow();
+  renderLeads();
+}
+
+function renderOffersTab() {
+  // Populate agent <select> with the union of {known assignees, agents who
+  // have logged offers in this window} so a one-off agent still shows up.
+  const sel = document.getElementById("offerAgentSelect");
+  if (sel) {
+    const seen = new Set();
+    if (typeof ASSIGNEES !== "undefined") {
+      for (const a of ASSIGNEES) seen.add(a.email);
+    }
+    for (const o of (DATA.offers || [])) if (o.agent_email) seen.add(o.agent_email);
+    const opts = [`<option value="all">All agents</option>`].concat(
+      [...seen].sort().map(e => {
+        const label = (typeof ASSIGNEES !== "undefined"
+          ? ASSIGNEES.find(a => a.email === e)?.label : null) || e;
+        return `<option value="${escapeHtml(e)}" ${e === currentOfferAgentFilter ? "selected" : ""}>${escapeHtml(label)}</option>`;
+      })
+    );
+    sel.innerHTML = opts.join("");
+  }
+
+  // Per-agent summary cards.
+  const summary = document.getElementById("offersSummaryRow");
+  if (summary) {
+    const byAgent = {};
+    for (const o of (DATA.offers || [])) {
+      const key = o.agent_email || "—";
+      const cur = byAgent[key] || { count: 0, volume: 0, accepted: 0, countered: 0, rejected: 0, agent_name: o.agent_name };
+      cur.count++;
+      cur.volume += Number(o.amount) || 0;
+      if (o.outcome === "accepted") cur.accepted++;
+      else if (o.outcome === "counter") cur.countered++;
+      else if (o.outcome === "rejected") cur.rejected++;
+      if (o.agent_name) cur.agent_name = o.agent_name;
+      byAgent[key] = cur;
+    }
+    const agentsSorted = Object.keys(byAgent).sort();
+    if (agentsSorted.length === 0) {
+      summary.innerHTML = `<div class="offer-summary-card empty">No offers in this range.</div>`;
+    } else {
+      summary.innerHTML = agentsSorted.map(email => {
+        const s = byAgent[email];
+        const label = (typeof ASSIGNEES !== "undefined"
+          ? ASSIGNEES.find(a => a.email === email)?.label : null)
+          || s.agent_name || (email.split("@")[0]);
+        return `
+          <div class="offer-summary-card">
+            <div class="agent">${escapeHtml(label)}</div>
+            <div class="stats">
+              <div><div class="stat-num">${s.count}</div><div class="stat-label">Offers</div></div>
+              <div><div class="stat-num">$${Math.round(s.volume).toLocaleString()}</div><div class="stat-label">Volume</div></div>
+              <div><div class="stat-num">${s.accepted}</div><div class="stat-label">Accepted</div></div>
+              <div><div class="stat-num">${s.countered}</div><div class="stat-label">Countered</div></div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  // Drill-down table.
+  const body = document.getElementById("offersBody");
+  if (!body) return;
+  if (!DATA.offers || DATA.offers.length === 0) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-state">No offers logged in this range. Click 💰 on a lead row or open Details → Deal → Log Offer to record one.</td></tr>`;
+    return;
+  }
+  body.innerHTML = DATA.offers.map(o => {
+    const agentLabel = (typeof ASSIGNEES !== "undefined"
+      ? ASSIGNEES.find(a => a.email === o.agent_email)?.label : null)
+      || o.agent_name
+      || (o.agent_email ? o.agent_email.split("@")[0] : "—");
+    const contactLead = (DATA.leads || []).find(r => r.contact_id === o.contact_id);
+    const contactName = contactLead?.contact_name
+      || (typeof resolveContactName === "function" ? resolveContactName(o.contact_id) : null)
+      || "(unknown contact)";
+    const contactUrl = (typeof contactUrl === "function") ? null : null; // guard against shadowing
+    const openLink = o.contact_id && typeof window.contactUrl === "function"
+      ? window.contactUrl(o.contact_id)
+      : null;
+    const counterStr = o.outcome === "counter" && o.counter_amount
+      ? ` <span style="color:var(--text-muted);font-size:0.72rem">(counter $${Math.round(o.counter_amount).toLocaleString()})</span>`
+      : "";
+    const outcomeChip = `<span class="offer-outcome-chip ${o.outcome}" onclick="openOutcomePicker(event, ${o.id})">${escapeHtml(o.outcome)}${counterStr}</span>`;
+    return `
+      <tr>
+        <td class="col-time" title="${escapeHtml(absTime(o.offered_at))}">
+          <div class="activity-stack">
+            <span class="activity-primary">${escapeHtml(smartDateTime(o.offered_at))}</span>
+            <span class="activity-relative">${escapeHtml(relTime(o.offered_at))}</span>
+          </div>
+        </td>
+        <td>${escapeHtml(agentLabel)}</td>
+        <td><strong>${escapeHtml(contactName)}</strong></td>
+        <td style="text-align:right;font-family:ui-monospace,monospace;font-weight:700">$${Math.round(o.amount).toLocaleString()}</td>
+        <td>${outcomeChip}</td>
+        <td style="color:var(--text-muted);font-size:0.78rem;max-width:280px">${escapeHtml((o.notes || "").slice(0, 200))}</td>
+        <td class="col-actions">${openLink ? `<a class="btn-action" href="${openLink}" target="_blank">Open →</a>` : ""}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// Outcome chip click → small floating menu to update outcome inline.
+function openOutcomePicker(event, offerId) {
+  event.stopPropagation();
+  // Re-use the stage-menu chrome.
+  const existing = document.getElementById("outcomePicker");
+  if (existing) existing.remove();
+  const menu = document.createElement("div");
+  menu.className = "stage-menu";
+  menu.id = "outcomePicker";
+  menu.addEventListener("click", (e) => e.stopPropagation());
+  const outcomes = [
+    { v: "pending",     label: "Pending"     },
+    { v: "accepted",    label: "✅ Accepted" },
+    { v: "rejected",    label: "❌ Rejected" },
+    { v: "counter",     label: "🔁 Counter…" },
+    { v: "no_response", label: "🌫 No response" },
+  ];
+  menu.innerHTML = outcomes.map(o => `
+    <button type="button" onclick="onOutcomePicked(${offerId}, '${o.v}')">${o.label}</button>
+  `).join("");
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+  menu.style.left = `${rect.left + window.scrollX}px`;
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener("click", () => menu.remove(), { once: true });
+  }, 0);
+}
+
+async function onOutcomePicked(offerId, outcome) {
+  const m = document.getElementById("outcomePicker"); if (m) m.remove();
+  let counter = null;
+  if (outcome === "counter") {
+    const v = window.prompt("Counter amount the homeowner offered? (digits only)");
+    if (v === null) return;
+    counter = v.trim();
+    if (!counter) return;
+  }
+  await updateOfferOutcome(offerId, outcome, counter);
+}
+
+function exportOffersCsv() {
+  const rows = DATA.offers || [];
+  if (!rows.length) { alert("No offers in the current range to export."); return; }
+  const escapeCsv = (s) => {
+    const str = String(s ?? "");
+    if (/[,"\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+    return str;
+  };
+  const header = ["offered_at_ct", "agent", "contact_id", "amount", "outcome", "counter_amount", "notes"];
+  const out = [header.join(",")];
+  for (const o of rows) {
+    out.push([
+      absTime(o.offered_at),
+      o.agent_email,
+      o.contact_id,
+      o.amount,
+      o.outcome,
+      o.counter_amount ?? "",
+      o.notes ?? "",
+    ].map(escapeCsv).join(","));
+  }
+  const blob = new Blob([out.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `offers_${currentOfferRange}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function setStage(conversationId, stage) {
   if (!STAGES[stage]) return;
   closeStageMenu();
@@ -7380,6 +8079,27 @@ function subscribeToNewScores() {
         updateFilterCounts();
         renderLeads();
         loadStats();
+      });
+    })
+    // Offers logged or outcome updated (migration 048). Refresh:
+    //  - DATA.offers + per-contact rollup so row 💰 badges + Deal tab list update
+    //  - DATA.offersTodayByUser so the KPI scorecard refreshes per-agent
+    //  - the Offers tab if it's currently open
+    .on("postgres_changes", {
+      event: "*",
+      schema: "public",
+      table: "offers_made",
+    }, (payload) => {
+      Promise.all([loadOffers(), loadOffersTodayByUser()]).then(() => {
+        renderLeads();
+        renderCallActivityRow();
+        if (currentTab === "offers") renderOffersTab();
+        // If the open CRM panel matches the affected contact, re-render its
+        // Deal tab so the new offer / outcome appears in the history list.
+        const cid = payload?.new?.contact_id || payload?.old?.contact_id;
+        if (crmOpen && crmActiveTab === "deal" && crmContactId && cid === crmContactId) {
+          renderDealTab(crmContactId);
+        }
       });
     })
     // Task synced from REI Reply (Created or Updated webhook). Refresh the
@@ -8969,6 +9689,59 @@ function renderDealTab(contactId) {
     </div>
 
     ${row.updated_at ? `<div style="color:var(--text-muted);font-size:0.72rem;margin-top:14px">Last edited ${escapeHtml(new Date(row.updated_at).toLocaleString())}</div>` : ""}
+
+    ${renderDealOffersBlock(contactId)}
+  `;
+}
+
+// Offers history + Log Offer button rendered at the bottom of the Deal
+// tab. Pulls from DATA.offers (loaded in current range — usually today)
+// PLUS any rows we have for this specific contact_id from prior loads.
+// Stage moves in REI Reply stay manual.
+function renderDealOffersBlock(contactId) {
+  const offersForContact = (DATA.offers || [])
+    .filter(o => o.contact_id === contactId)
+    .sort((a, b) => new Date(b.offered_at) - new Date(a.offered_at));
+  const row = getDealRow(contactId);
+  const suggested = Number(row.agent_offer) > 0 ? Number(row.agent_offer) : null;
+  const logBtnLabel = offersForContact.length
+    ? "📨 Log another offer"
+    : "📨 Log this Offer";
+
+  const items = offersForContact.length === 0
+    ? `<div style="color:var(--text-muted);font-size:0.82rem;font-style:italic;padding:8px 2px">No offers logged on this contact yet${suggested ? ` — click above to log $${Math.round(suggested).toLocaleString()}` : ""}.</div>`
+    : offersForContact.map(o => {
+        const counter = o.outcome === "counter" && o.counter_amount
+          ? ` <span style="color:var(--text-muted);font-size:0.72rem">→ $${Math.round(o.counter_amount).toLocaleString()}</span>`
+          : "";
+        const agentLabel = (typeof ASSIGNEES !== "undefined"
+          ? ASSIGNEES.find(a => a.email === o.agent_email)?.label : null)
+          || o.agent_name
+          || (o.agent_email ? o.agent_email.split("@")[0] : "—");
+        return `
+          <div class="deal-offer-item">
+            <div class="ts" title="${escapeHtml(absTime(o.offered_at))}">${escapeHtml(smartDateTime(o.offered_at))}</div>
+            <div>
+              <span class="amt">$${Math.round(o.amount).toLocaleString()}</span>${counter}
+              ${o.notes ? `<div style="color:var(--text-muted);font-size:0.74rem;margin-top:2px">${escapeHtml(o.notes.slice(0, 200))}</div>` : ""}
+            </div>
+            <div class="agent">${escapeHtml(agentLabel)}</div>
+            <span class="offer-outcome-chip ${o.outcome}" onclick="openOutcomePicker(event, ${o.id})">${escapeHtml(o.outcome)}</span>
+          </div>
+        `;
+      }).join("");
+
+  return `
+    <div class="deal-offers-block">
+      <div class="deal-offers-head">
+        <h4>📨 Offers on this contact</h4>
+        <button type="button" class="deal-offers-log-btn"
+                onclick="openOfferLogger('${escapeHtml(contactId)}'${suggested ? `, ${suggested}` : ""})">
+          ${logBtnLabel}
+        </button>
+      </div>
+      <div class="deal-offers-list">${items}</div>
+    </div>
   `;
 }
 
