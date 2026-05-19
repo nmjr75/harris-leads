@@ -1788,6 +1788,57 @@
   .stage-menu button:hover { background: var(--surface2); }
   .stage-menu button .stage-pill { margin-right: 8px; }
 
+  /* Score override menu — two-step inline form. Step 1 is the standard
+     stage-menu look; step 2 swaps to a textarea + Save/Cancel. The
+     .with-form modifier widens the menu so the textarea breathes. */
+  .stage-menu.score-menu.with-form { min-width: 320px; padding: 12px 14px; }
+  .score-reason-form { display: flex; flex-direction: column; gap: 10px; }
+  .score-reason-head {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .score-reason-back {
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 2px 8px; cursor: pointer; font-size: 0.85rem;
+    line-height: 1;
+  }
+  .score-reason-back:hover { color: var(--text); border-color: var(--accent); }
+  .score-reason-title {
+    flex: 1; font-size: 0.84rem; font-weight: 600; color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .score-reason-label {
+    font-size: 0.72rem; color: var(--text);
+    font-weight: 500;
+  }
+  .score-reason-label .muted {
+    color: var(--text-muted); font-weight: 400; font-size: 0.7rem;
+  }
+  .score-reason-input {
+    width: 100%; box-sizing: border-box;
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px;
+    font-family: inherit; font-size: 0.85rem;
+    resize: vertical; min-height: 64px;
+  }
+  .score-reason-input:focus { outline: none; border-color: var(--accent); }
+  .score-reason-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .score-reason-cancel,
+  .score-reason-save {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 14px; cursor: pointer; font-size: 0.82rem;
+    font-weight: 500; font-family: inherit;
+  }
+  .score-reason-cancel:hover { border-color: var(--text-muted); }
+  .score-reason-save {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .score-reason-save:hover { filter: brightness(1.12); }
+
   /* Conversation transcript panel (inline expanded under a row) */
   .transcript-panel {
     background: var(--surface2);
@@ -6961,21 +7012,12 @@ function openScoreMenu(event, contactId) {
   closeStageMenu();
   closeAssignMenu();
   const menu = document.createElement("div");
-  menu.className = "stage-menu";
+  menu.className = "stage-menu score-menu";
   menu.id = "scoreMenu";
-  const ov = DATA.scoreOverrides?.[contactId];
-  const buttons = SCORE_CHOICES.map(s => `
-    <button onclick="setScoreOverride('${escapeHtml(contactId)}', '${s}'); closeScoreMenu();">
-      <span class="score-badge score-${s}">${s}</span>
-    </button>
-  `).join("");
-  const clearBtn = ov
-    ? `<button onclick="clearScoreOverride('${escapeHtml(contactId)}'); closeScoreMenu();"
-                style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text-muted)">
-         ↺ Clear override (revert to AI score)
-       </button>`
-    : "";
-  menu.innerHTML = buttons + clearBtn;
+  // Internal clicks must not bubble to the outside-click closer.
+  menu.addEventListener("click", (e) => e.stopPropagation());
+  menu.dataset.contactId = contactId;
+  renderScoreChoiceStep(menu, contactId);
   const rect = event.currentTarget.getBoundingClientRect();
   menu.style.top  = `${rect.bottom + window.scrollY + 4}px`;
   menu.style.left = `${rect.left + window.scrollX}px`;
@@ -6985,36 +7027,94 @@ function openScoreMenu(event, contactId) {
   }, 0);
 }
 
+// Step 1: list of score choices + clear option. Clicking a score
+// transitions to the reason step (does NOT save immediately).
+function renderScoreChoiceStep(menu, contactId) {
+  const ov = DATA.scoreOverrides?.[contactId];
+  const buttons = SCORE_CHOICES.map(s => `
+    <button type="button" onclick="renderScoreReasonStep('${escapeHtml(contactId)}', '${s}')">
+      <span class="score-badge score-${s}">${s}</span>
+    </button>
+  `).join("");
+  const clearBtn = ov
+    ? `<button type="button"
+                onclick="clearScoreOverride('${escapeHtml(contactId)}'); closeScoreMenu();"
+                style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text-muted)">
+         ↺ Clear override (revert to AI score)
+       </button>`
+    : "";
+  menu.innerHTML = buttons + clearBtn;
+}
+
+// Step 2: reason input. Pre-fills with any existing reason on the row
+// so re-editing an override is just adjusting prior text. Save +
+// Back / Cancel buttons explicit; no auto-save on blur.
+function renderScoreReasonStep(contactId, score) {
+  const menu = document.getElementById("scoreMenu");
+  if (!menu) return;
+  const existing = DATA.scoreOverrides?.[contactId];
+  const priorReason = existing?.reason || "";
+  // Match the JS string literal escape for placement inside an attribute
+  // generated below (apostrophes break the onclick handler otherwise).
+  const cidJs = (contactId || "").replace(/'/g, "\\'");
+  menu.classList.add("with-form");
+  menu.innerHTML = `
+    <div class="score-reason-form">
+      <div class="score-reason-head">
+        <button type="button" class="score-reason-back" onclick="renderScoreChoiceStep(document.getElementById('scoreMenu'), '${escapeHtml(contactId)}')" title="Back to score choices">←</button>
+        <span class="score-reason-title">Set score to <span class="score-badge score-${score}">${score}</span></span>
+      </div>
+      <label class="score-reason-label" for="scoreReasonInput">Why are you changing this? <span class="muted">(optional, visible only to you)</span></label>
+      <textarea id="scoreReasonInput"
+                class="score-reason-input"
+                placeholder="e.g. 'Talked to homeowner — actually a tenant, no authority to sell.' Ctrl+Enter to save."
+                rows="3">${escapeHtml(priorReason)}</textarea>
+      <div class="score-reason-actions">
+        <button type="button" class="score-reason-cancel" onclick="closeScoreMenu()">Cancel</button>
+        <button type="button" class="score-reason-save" onclick="commitScoreOverrideFromForm('${cidJs}', '${score}')">Save</button>
+      </div>
+    </div>
+  `;
+  const ta = menu.querySelector("#scoreReasonInput");
+  if (ta) {
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); closeScoreMenu(); }
+      else if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); commitScoreOverrideFromForm(contactId, score); }
+    });
+  }
+}
+
+// Read the reason out of the form, then commit. Pulled into a named
+// function so the inline button + Ctrl+Enter handler can share it.
+function commitScoreOverrideFromForm(contactId, score) {
+  const ta = document.getElementById("scoreReasonInput");
+  const reason = (ta?.value || "").trim() || null;
+  closeScoreMenu();
+  setScoreOverride(contactId, score, reason);
+}
+
 function closeScoreMenu() {
   const m = document.getElementById("scoreMenu");
   if (m) m.remove();
 }
 
-async function setScoreOverride(contactId, score) {
+// Commit a score override. The two-step inline form (renderScoreReasonStep)
+// collects the optional reason and passes it in here. Reason is null when
+// the user left the textarea blank.
+async function setScoreOverride(contactId, score, reason) {
   if (currentRole !== "nelson") return;
   if (!contactId || !SCORE_CHOICES.includes(score)) return;
   const email = currentSession?.user?.email || "nmjr75@gmail.com";
-
-  // Prompt for an optional reason — only Nelson sees this stored on the
-  // override row; not displayed inline anywhere. He can read it back by
-  // clicking the override date stamp under the score badge.
-  const existing = DATA.scoreOverrides?.[contactId];
-  const prior = existing?.reason || "";
-  const reasonInput = window.prompt(
-    `Why are you changing this score to ${score}?\n\n` +
-    `Optional — leave blank to skip. Visible only to you when you click the override date stamp.`,
-    prior
-  );
-  // Cancel = abort the override entirely (don't write).
-  if (reasonInput === null) return;
-  const reason = reasonInput.trim() || null;
+  const cleanReason = (typeof reason === "string" && reason.trim()) ? reason.trim() : null;
 
   // Upsert on contact_id PK so a second edit replaces the first.
   const nowIso = new Date().toISOString();
   const { error } = await sb.from("ghl_score_overrides").upsert({
     contact_id: contactId,
     score,
-    reason,
+    reason: cleanReason,
     set_by_email: email,
     set_at: nowIso,
   }, { onConflict: "contact_id" });
@@ -7027,7 +7127,7 @@ async function setScoreOverride(contactId, score) {
   DATA.scoreOverrides[contactId] = {
     contact_id: contactId,
     score,
-    reason,
+    reason: cleanReason,
     set_by_email: email,
     set_at: nowIso,
   };
