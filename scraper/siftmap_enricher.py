@@ -422,12 +422,89 @@ def parse_panel(text: str) -> dict[str, Any]:
 
 # ── DB ───────────────────────────────────────────────────────────────
 def fetch_pending_addresses(sb, limit: int) -> list[dict[str, Any]]:
+    """Returns the next batch of un-enriched addresses for the cron run.
+
+    Two sources:
+      1) The existing addresses_needing_enrichment(p_limit) RPC — covers the
+         snapshot-derived universe (scored leads, etc.).
+      2) public.ghl_contact_address_overrides (migration 043) — covers Hit
+         List slim contacts populated by enrich-hitlist-contacts, which the
+         RPC doesn't see. The RPC's SQL was written before this table
+         existed and updating it requires a migration we don't want to
+         force on the cron right now.
+
+    Results are merged, deduped on normalized_address, and capped at limit.
+    """
+    pending: list[dict[str, Any]] = []
+    seen_norm: set[str] = set()
+
+    # Source 1 — the original RPC.
     try:
         res = sb.rpc("addresses_needing_enrichment", {"p_limit": limit}).execute()
-        return res.data or []
+        for r in (res.data or []):
+            norm = r.get("normalized_address")
+            if not norm or norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            pending.append(r)
     except Exception as e:
         log.error("addresses_needing_enrichment RPC failed: %s", e)
-        return []
+
+    # Source 2 — overrides table. Pull more than we need then filter out the
+    # ones that already have a real (non-stub, non-cached-miss) row in
+    # property_enrichment, mirroring the per-contact skip logic below.
+    remaining = max(0, limit - len(pending))
+    if remaining > 0:
+        try:
+            ov = sb.from_("ghl_contact_address_overrides").select(
+                "contact_id, address, city, state, postal_code"
+            ).execute()
+            ov_rows = ov.data or []
+            # Collect candidate norms and fetch enrichment status in bulk.
+            candidates: list[dict[str, Any]] = []
+            norms: list[str] = []
+            for r in ov_rows:
+                raw = (r.get("address") or "").strip()
+                if not raw:
+                    continue
+                norm = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
+                if not norm or norm in seen_norm:
+                    continue
+                candidates.append({
+                    "raw_address": raw,
+                    "city": r.get("city"),
+                    "state": r.get("state"),
+                    "postal_code": r.get("postal_code"),
+                    "normalized_address": norm,
+                })
+                norms.append(norm)
+            # Look up which of these already have real enrichment or cached
+            # miss rows — skip those.
+            already_enriched: set[str] = set()
+            if norms:
+                # Chunk the IN clause to avoid URL-length limits.
+                for i in range(0, len(norms), 100):
+                    chunk = norms[i:i+100]
+                    pe = sb.from_("property_enrichment").select(
+                        "normalized_address, source, bedrooms, sqft, estimated_value"
+                    ).in_("normalized_address", chunk).execute()
+                    for row in (pe.data or []):
+                        src = row.get("source") or ""
+                        has_data = any(row.get(k) is not None for k in ("bedrooms", "sqft", "estimated_value"))
+                        miss_cached = src in ("siftmap_address_mismatch", "siftmap_no_panel")
+                        if has_data or miss_cached:
+                            already_enriched.add(row["normalized_address"])
+            for c in candidates:
+                if c["normalized_address"] in already_enriched:
+                    continue
+                pending.append(c)
+                seen_norm.add(c["normalized_address"])
+                if len(pending) >= limit:
+                    break
+        except Exception as e:
+            log.error("address_overrides fallback failed: %s", e)
+
+    return pending[:limit]
 
 
 def fetch_one_by_contact_id(sb, contact_id: str) -> list[dict[str, Any]]:
