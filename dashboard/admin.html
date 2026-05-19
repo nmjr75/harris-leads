@@ -1464,6 +1464,266 @@
     .my-tasks-pill .kbd { display: none; }
   }
 
+  /* ── Call Mode pill (header entry point) + slide-out panel ────────
+     Same visual family as My Tasks. Triggered with keyboard "Q" or
+     by clicking the pill. Snapshots the current filtered+sorted
+     leads list at open time so changing filters mid-call doesn't
+     reshuffle the queue under the agent.                            */
+  .call-mode-pill {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    transition: border-color 0.12s, transform 0.08s, box-shadow 0.12s;
+    margin-left: 6px;
+  }
+  .call-mode-pill:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .call-mode-pill:active { transform: translateY(0); }
+  .call-mode-pill .kbd {
+    margin-left: 4px;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    line-height: 1.4;
+  }
+
+  .cm-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 900;
+    opacity: 0; pointer-events: none;
+    transition: opacity .18s ease;
+  }
+  .cm-backdrop.open { opacity: 1; pointer-events: auto; }
+  .cm-panel {
+    position: fixed; top: 0; right: 0;
+    width: 540px; max-width: 96vw; height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 32px rgba(0,0,0,0.45);
+    z-index: 950;
+    transform: translateX(110%);
+    transition: transform .22s cubic-bezier(0.32, 0.72, 0.24, 1);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .cm-panel.open { transform: translateX(0); }
+  .cm-header {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface2) 0%, var(--surface) 100%);
+    flex-shrink: 0;
+  }
+  .cm-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .cm-title {
+    margin: 0; font-size: 1.05rem; font-weight: 700;
+    color: var(--text); display: flex; align-items: center; gap: 9px;
+  }
+  .cm-close {
+    background: transparent; color: var(--text-muted);
+    border: 0; cursor: pointer; font-size: 1.5rem; line-height: 1;
+    padding: 0 4px;
+  }
+  .cm-close:hover { color: var(--text); }
+  .cm-progress {
+    margin-top: 10px; display: flex; align-items: center;
+    justify-content: space-between; gap: 10px;
+    font-size: 0.78rem; color: var(--text-muted);
+  }
+  .cm-progress .pos {
+    font-family: ui-monospace, monospace;
+    color: var(--text); font-weight: 600;
+  }
+  .cm-progress-bar {
+    margin-top: 8px; height: 3px; background: var(--surface2);
+    border-radius: 2px; overflow: hidden;
+  }
+  .cm-progress-bar .fill {
+    height: 100%; background: var(--accent);
+    transition: width .18s ease;
+  }
+  .cm-body {
+    flex: 1; overflow-y: auto;
+    padding: 18px 22px; display: flex; flex-direction: column; gap: 16px;
+  }
+  .cm-hero {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .cm-hero-name {
+    font-size: 1.32rem; font-weight: 700; color: var(--text);
+    line-height: 1.2; margin-bottom: 8px;
+  }
+  .cm-hero-chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-bottom: 12px;
+  }
+  .cm-hero-chip {
+    font-size: 0.7rem; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .cm-hero-chip.hot { background: rgba(239,68,68,.16); color: var(--red); border-color: rgba(239,68,68,.45); }
+  .cm-hero-chip.warm { background: rgba(251,191,36,.16); color: #fbbf24; border-color: rgba(251,191,36,.45); }
+  .cm-hero-chip.cool { background: rgba(59,130,246,.16); color: #93c5fd; border-color: rgba(59,130,246,.45); }
+  .cm-hero-chip.cold { background: rgba(148,163,184,.16); color: #94a3b8; border-color: rgba(148,163,184,.45); }
+  .cm-phone-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+  }
+  .cm-phone-num {
+    font-family: ui-monospace, monospace;
+    font-size: 1.22rem; font-weight: 700; color: var(--text);
+    cursor: pointer;
+    padding: 4px 10px; border-radius: 6px;
+    background: rgba(124,92,252,.08);
+    border: 1px solid rgba(124,92,252,.32);
+    transition: background .12s;
+  }
+  .cm-phone-num:hover { background: rgba(124,92,252,.15); }
+  .cm-phone-empty {
+    font-style: italic; color: var(--text-muted);
+    font-size: 0.92rem;
+  }
+  .cm-address {
+    font-size: 0.84rem; color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+  .cm-meta-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px 14px; margin-top: 10px;
+    font-size: 0.76rem;
+  }
+  .cm-meta-grid .k { color: var(--text-muted); }
+  .cm-meta-grid .v { color: var(--text); font-weight: 500; }
+  .cm-meta-grid .v.muted { color: var(--text-muted); font-style: italic; }
+  .cm-section-h {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); font-weight: 600;
+    margin: 4px 0 6px;
+  }
+  .cm-reasoning {
+    font-size: 0.84rem; color: var(--text);
+    background: rgba(124,92,252,.06);
+    border-left: 3px solid var(--accent);
+    padding: 9px 12px; border-radius: 0 8px 8px 0;
+    line-height: 1.45;
+  }
+  .cm-notes-list { display: flex; flex-direction: column; gap: 8px; }
+  .cm-note-item {
+    font-size: 0.8rem; color: var(--text);
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 8px 11px; border-radius: 7px;
+    line-height: 1.4;
+  }
+  .cm-note-item .meta {
+    font-size: 0.68rem; color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+  .cm-cta {
+    width: 100%;
+    background: var(--accent); color: #fff;
+    border: 0; border-radius: 10px;
+    padding: 14px; cursor: pointer;
+    font-size: 0.95rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: filter .12s;
+  }
+  .cm-cta:hover { filter: brightness(1.12); }
+  .cm-cta:disabled { background: var(--surface2); color: var(--text-muted); cursor: not-allowed; }
+  .cm-cta .kbd {
+    font-family: ui-monospace, monospace; font-size: 0.7rem;
+    background: rgba(255,255,255,.18); padding: 1px 6px; border-radius: 3px;
+  }
+  .cm-disposition-h {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); font-weight: 600;
+    margin: 14px 0 6px;
+  }
+  .cm-disposition-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .cm-disp-btn {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; cursor: pointer;
+    font-size: 0.83rem; font-weight: 500;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: border-color .12s, background .12s;
+  }
+  .cm-disp-btn:hover { border-color: var(--accent); background: rgba(124,92,252,.06); }
+  .cm-disp-btn .kbd {
+    font-family: ui-monospace, monospace; font-size: 0.66rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 0 5px; line-height: 1.4;
+  }
+  .cm-disp-btn.dnc { color: var(--red); border-color: rgba(239,68,68,.4); }
+  .cm-disp-btn.dnc:hover { background: rgba(239,68,68,.08); }
+  .cm-note-input {
+    width: 100%; min-height: 70px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 11px; font-family: inherit; font-size: 0.86rem;
+    box-sizing: border-box; resize: vertical;
+  }
+  .cm-note-input:focus { outline: none; border-color: var(--accent); }
+  .cm-note-hint {
+    font-size: 0.68rem; color: var(--text-muted);
+    margin-top: 4px; font-style: italic;
+  }
+  .cm-footer {
+    padding: 14px 22px; border-top: 1px solid var(--border);
+    background: var(--surface2);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+  }
+  .cm-nav-btn {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; cursor: pointer;
+    font-size: 0.82rem; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .cm-nav-btn:hover:not(:disabled) { border-color: var(--accent); }
+  .cm-nav-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .cm-nav-btn .kbd {
+    font-family: ui-monospace, monospace; font-size: 0.66rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 0 5px; line-height: 1.4;
+  }
+  .cm-end-state {
+    text-align: center; padding: 40px 24px; color: var(--text-muted);
+  }
+  .cm-end-state h3 { color: var(--text); font-size: 1.1rem; margin: 0 0 8px; }
+  .cm-end-state p { font-size: 0.88rem; line-height: 1.5; margin: 0 0 14px; }
+  @media (max-width: 768px) {
+    .cm-panel { width: 100vw; max-width: 100vw; }
+    .call-mode-pill .kbd { display: none; }
+    .cm-disposition-row { grid-template-columns: 1fr; }
+  }
+
   /* Stage selection menu (floating dropdown) */
   .stage-menu {
     position: absolute;
@@ -2671,8 +2931,46 @@
       <span class="count" id="myTasksPillCount">0</span>
       <span class="kbd">T</span>
     </button>
+    <button id="callModePill" class="call-mode-pill" onclick="openCallMode()" style="display:none" title="Power-dial the current filtered list — keyboard shortcut: Q">
+      <span>📞</span>
+      <span class="label">Call Mode</span>
+      <span class="kbd">Q</span>
+    </button>
   </div>
 </header>
+
+<!-- Call Mode slide-out panel (power-dialer queue). Snapshots the current
+     filtered+sorted leads at open time so changing filters mid-call doesn't
+     reshuffle the queue. Opens REI Reply in a new tab per call; user logs
+     a disposition + optional note and auto-advances to the next lead. -->
+<div class="cm-backdrop" id="cmBackdrop" onclick="closeCallMode()"></div>
+<aside class="cm-panel" id="cmPanel" role="dialog" aria-label="Call Mode">
+  <div class="cm-header">
+    <div class="cm-title-row">
+      <h2 class="cm-title">📞 Call Mode</h2>
+      <button class="cm-close" onclick="closeCallMode()" title="Close (Esc)">×</button>
+    </div>
+    <div class="cm-progress">
+      <span id="cmProgressLabel">—</span>
+      <span class="pos" id="cmProgressPos">—</span>
+    </div>
+    <div class="cm-progress-bar"><div class="fill" id="cmProgressFill" style="width:0%"></div></div>
+  </div>
+  <div class="cm-body" id="cmBody">
+    <div class="cm-end-state">Loading queue…</div>
+  </div>
+  <div class="cm-footer" id="cmFooter">
+    <button class="cm-nav-btn" id="cmPrevBtn" onclick="cmGoPrev()" disabled>
+      ← Prev <span class="kbd">P</span>
+    </button>
+    <span style="color:var(--text-muted);font-size:0.72rem;text-align:center;flex:1">
+      Space / N to advance · C to open in REI Reply · 1–5 dispositions
+    </span>
+    <button class="cm-nav-btn" id="cmNextBtn" onclick="cmGoNext()">
+      Skip <span class="kbd">N</span> →
+    </button>
+  </div>
+</aside>
 
 <!-- My Tasks slide-out panel (the agent's morning workflow surface) -->
 <div class="mtp-backdrop" id="mtpBackdrop" onclick="closeMyTasksPanel()"></div>
@@ -5932,6 +6230,9 @@ function renderLeads() {
   // Apply assignment filter (admin/owner only — no-op for assignees).
   rows = rows.filter(matchesAssignmentFilter);
   rows = sortLeads(rows);
+  // Expose the final filtered+sorted result so Call Mode can snapshot it
+  // as the dial queue. Updated on every renderLeads tick.
+  DATA.visibleLeads = rows;
 
   const body = document.getElementById("leadsBody");
   if (!rows.length) {
@@ -8795,6 +9096,359 @@ async function pushCompAverageToArv(contactId) {
     if (contactId) renderCompsTab(contactId);
   };
 })();
+
+// ── Call Mode (two-click power dialer) ──────────────────────────────
+// Snapshots the current filtered+sorted leads list at open time as a
+// dial queue. Per contact: one click opens REI Reply (where the actual
+// call happens), a second click logs a disposition + advances. Owner,
+// admins, and assignees all see the pill — everyone who calls leads.
+
+let cmOpen = false;
+let cmQueue = [];       // frozen snapshot of leads at open time
+let cmIndex = 0;
+let cmCalled = new Set(); // contact_ids the agent has touched this session
+
+function showCallModePillIfCaller() {
+  const btn = document.getElementById("callModePill");
+  if (!btn) return;
+  // All three roles (owner, admin, assignee) make calls. Don't show to
+  // signed-out / unknown roles.
+  const visible = currentRole === "nelson"
+               || currentRole === "admin"
+               || currentRole === "assignee";
+  btn.style.display = visible ? "" : "none";
+}
+// Hook into the existing role-visibility pass so the pill toggles
+// whenever the rest of the dashboard re-applies role gates.
+(function wireCallModeVisibility() {
+  if (typeof applyRoleVisibility !== "function") return;
+  const orig = applyRoleVisibility;
+  applyRoleVisibility = function() {
+    orig.apply(this, arguments);
+    showCallModePillIfCaller();
+  };
+})();
+
+function openCallMode() {
+  // Snapshot the visible leads (filtered + sorted exactly like the table).
+  // Drop slim Hit-List rows with no phone — pointless to dial them.
+  const source = (DATA.visibleLeads || []).slice();
+  cmQueue = source.filter(r => {
+    const ph = (r.phone || "").trim();
+    return !!ph;
+  });
+  if (cmQueue.length === 0) {
+    if (!confirm("No leads in the current filter set have a phone number. Open Call Mode anyway?")) return;
+  }
+  cmIndex = 0;
+  cmOpen = true;
+  document.getElementById("cmBackdrop").classList.add("open");
+  document.getElementById("cmPanel").classList.add("open");
+  cmRenderCurrent();
+}
+
+function closeCallMode() {
+  cmOpen = false;
+  document.getElementById("cmBackdrop").classList.remove("open");
+  document.getElementById("cmPanel").classList.remove("open");
+}
+
+function cmCurrentLead() {
+  if (cmIndex < 0 || cmIndex >= cmQueue.length) return null;
+  return cmQueue[cmIndex];
+}
+
+function cmRenderCurrent() {
+  const body = document.getElementById("cmBody");
+  const label = document.getElementById("cmProgressLabel");
+  const pos = document.getElementById("cmProgressPos");
+  const fill = document.getElementById("cmProgressFill");
+  const prevBtn = document.getElementById("cmPrevBtn");
+  const nextBtn = document.getElementById("cmNextBtn");
+  if (!body) return;
+
+  // End-of-queue state.
+  if (cmIndex >= cmQueue.length) {
+    label.textContent = "Queue complete";
+    pos.textContent = `${cmCalled.size} of ${cmQueue.length}`;
+    fill.style.width = "100%";
+    prevBtn.disabled = cmQueue.length === 0;
+    nextBtn.disabled = true;
+    body.innerHTML = `
+      <div class="cm-end-state">
+        <h3>✅ You worked the queue</h3>
+        <p>
+          Logged ${cmCalled.size} touch${cmCalled.size === 1 ? '' : 'es'}
+          across ${cmQueue.length} lead${cmQueue.length === 1 ? '' : 's'}.
+          Close Call Mode (Esc) or step backward to revisit a contact.
+        </p>
+        <button class="cm-nav-btn" onclick="closeCallMode()" style="margin:0 auto">Close <span class="kbd">Esc</span></button>
+      </div>
+    `;
+    return;
+  }
+
+  const lead = cmCurrentLead();
+  if (!lead) {
+    body.innerHTML = `<div class="cm-end-state"><p>Queue is empty.</p></div>`;
+    return;
+  }
+
+  label.textContent = cmCalled.has(lead.contact_id) ? "Touched · skip-back available" : "Up next";
+  pos.textContent = `${cmIndex + 1} of ${cmQueue.length}`;
+  fill.style.width = `${((cmIndex) / cmQueue.length) * 100}%`;
+  prevBtn.disabled = cmIndex === 0;
+  nextBtn.disabled = false;
+
+  const name = lead.contact_name || "(no name)";
+  const phoneRaw = (lead.phone || "").trim();
+  const phoneStr = phoneRaw ? formatPhone(phoneRaw) : null;
+  const addr = (typeof fullAddressFor === "function") ? (fullAddressFor(lead) || null) : null;
+  const score = lead.score || "—";
+  const scoreClass = ({ HOT: "hot", WARM: "warm", COOL: "cool", COLD: "cold" })[score] || "";
+  const stageKey = (typeof getStageKey === "function") ? getStageKey(lead) : null;
+  const stageLabel = stageKey && typeof STAGES !== "undefined" && STAGES[stageKey] ? STAGES[stageKey].label : (lead.stage || "—");
+  const act = (typeof activityFor === "function") ? (activityFor(lead) || {}) : {};
+
+  const reasoning = lead.reasoning || lead.score_reasoning || null;
+  const askingPrice = lead.asking_price || lead.price || null;
+  const lastOutboundCall = act.last_outbound_call_at;
+  const lastInboundCall = act.last_inbound_call_at;
+  const lastText = act.last_text_at;
+  const outboundCount = act.call_count_outbound || 0;
+  const inboundCount = act.call_count_inbound || 0;
+
+  // 1-2 most recent notes (if loaded — notes lazy-load on row expand,
+  // so this is best-effort; we still render the rest of the card).
+  const cid = lead.conversation_id;
+  const noteRows = cid && DATA.notes && DATA.notes[cid] ? DATA.notes[cid].slice(0, 2) : [];
+
+  const phoneCell = phoneStr
+    ? `<span class="cm-phone-num" onclick="copyToClipboard('${escapeHtml(phoneRaw).replace(/'/g, "\\'")}', '${escapeHtml(phoneStr).replace(/'/g, "\\'")}')" title="Click to copy">${escapeHtml(phoneStr)}</span>`
+    : `<span class="cm-phone-empty">No phone on file</span>`;
+
+  const reasoningBlock = reasoning
+    ? `<div>
+         <div class="cm-section-h">Why ${escapeHtml(score)}</div>
+         <div class="cm-reasoning">${escapeHtml(reasoning)}</div>
+       </div>`
+    : "";
+
+  const notesBlock = noteRows.length
+    ? `<div>
+         <div class="cm-section-h">Recent notes</div>
+         <div class="cm-notes-list">
+           ${noteRows.map(n => `
+             <div class="cm-note-item">
+               <div class="meta">${escapeHtml(n.created_by_email || "—")} · ${escapeHtml(relTime(n.created_at))}</div>
+               ${escapeHtml((n.body || "").slice(0, 240))}
+             </div>
+           `).join("")}
+         </div>
+       </div>`
+    : `<div class="cm-note-hint">Open Details (📋) on the row to see full note history.</div>`;
+
+  body.innerHTML = `
+    <div class="cm-hero">
+      <div class="cm-hero-name">${escapeHtml(name)}</div>
+      <div class="cm-hero-chips">
+        <span class="cm-hero-chip ${scoreClass}">${escapeHtml(score)}</span>
+        <span class="cm-hero-chip">${escapeHtml(stageLabel)}</span>
+        ${askingPrice ? `<span class="cm-hero-chip">Asking $${escapeHtml(String(askingPrice))}</span>` : ""}
+      </div>
+      <div class="cm-phone-row">${phoneCell}</div>
+      ${addr ? `<div class="cm-address">📍 ${escapeHtml(addr)}</div>` : ""}
+      <div class="cm-meta-grid">
+        <div class="k">Last outbound</div>
+        <div class="v ${lastOutboundCall ? '' : 'muted'}">${lastOutboundCall ? escapeHtml(relTime(lastOutboundCall)) + ' · ' + outboundCount + ' total' : 'Never called'}</div>
+        <div class="k">Last inbound</div>
+        <div class="v ${lastInboundCall ? '' : 'muted'}">${lastInboundCall ? escapeHtml(relTime(lastInboundCall)) + ' · ' + inboundCount + ' total' : '—'}</div>
+        <div class="k">Last text</div>
+        <div class="v ${lastText ? '' : 'muted'}">${lastText ? escapeHtml(relTime(lastText)) : '—'}</div>
+      </div>
+    </div>
+
+    <button class="cm-cta" onclick="cmOpenInReiReply()">
+      📞 Open in REI Reply &amp; dial <span class="kbd">C</span>
+    </button>
+
+    ${reasoningBlock}
+    ${notesBlock}
+
+    <div>
+      <div class="cm-disposition-h">After the call, log a disposition (auto-advances)</div>
+      <div class="cm-disposition-row">
+        <button class="cm-disp-btn" onclick="cmLogDisposition('CONNECTED')"><span>✅ Connected</span><span class="kbd">1</span></button>
+        <button class="cm-disp-btn" onclick="cmLogDisposition('VOICEMAIL')"><span>📨 Voicemail</span><span class="kbd">2</span></button>
+        <button class="cm-disp-btn" onclick="cmLogDisposition('NO_ANSWER')"><span>📵 No answer</span><span class="kbd">3</span></button>
+        <button class="cm-disp-btn" onclick="cmLogDisposition('WRONG_NUMBER')"><span>❌ Wrong #</span><span class="kbd">4</span></button>
+        <button class="cm-disp-btn dnc" onclick="cmLogDisposition('DNC')" style="grid-column:1/-1"><span>🚫 Do not contact</span><span class="kbd">5</span></button>
+      </div>
+    </div>
+
+    <div>
+      <div class="cm-section-h">Optional note (saves with the disposition)</div>
+      <textarea class="cm-note-input" id="cmNoteInput" placeholder="What happened? Asking price, motivation, next step…&#10;Ctrl+Enter to save + advance"></textarea>
+      <div class="cm-note-hint">Ctrl+Enter saves the note + advances. Disposition buttons also save whatever's in this box.</div>
+    </div>
+  `;
+
+  // Ctrl+Enter on the note input → save as a generic touch + advance.
+  const ta = document.getElementById("cmNoteInput");
+  if (ta) {
+    ta.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.key === "Enter") {
+        e.preventDefault();
+        cmLogDisposition("TOUCH");
+      }
+    });
+  }
+}
+
+function cmGoNext() {
+  if (cmIndex < cmQueue.length) cmIndex++;
+  cmRenderCurrent();
+}
+function cmGoPrev() {
+  if (cmIndex > 0) cmIndex--;
+  cmRenderCurrent();
+}
+
+function cmOpenInReiReply() {
+  const lead = cmCurrentLead();
+  if (!lead) return;
+  const url = (typeof contactUrl === "function") ? contactUrl(lead.contact_id) : null;
+  if (!url) {
+    alert("No REI Reply contact URL available for this lead.");
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+  // Also copy phone to clipboard as a safety net (some dialer flows
+  // expect a paste). Best-effort, fail silently.
+  if (lead.phone) {
+    try { navigator.clipboard.writeText(lead.phone); } catch {}
+  }
+}
+
+// Log a disposition by writing a tagged note to ghl_contact_notes (via
+// create-ghl-note, so it appears in REI Reply with the agent's name).
+// Then auto-advance. The note body is prefixed with [Call: TYPE] so
+// the disposition is greppable in the contact's note history.
+async function cmLogDisposition(type) {
+  const lead = cmCurrentLead();
+  if (!lead) return;
+  const ta = document.getElementById("cmNoteInput");
+  const userNote = (ta?.value || "").trim();
+  const label = ({
+    CONNECTED:   "Connected",
+    VOICEMAIL:   "Voicemail",
+    NO_ANSWER:   "No answer",
+    WRONG_NUMBER:"Wrong number",
+    DNC:         "DO NOT CONTACT — requested removal",
+    TOUCH:       "Touch",
+  })[type] || type;
+
+  const body = userNote
+    ? `[Call: ${label}]\n${userNote}`
+    : `[Call: ${label}]`;
+
+  const contactId = lead.contact_id;
+  const conversationId = lead.conversation_id || null;
+  if (!contactId) {
+    alert("Can't log — no contact ID on this lead.");
+    return;
+  }
+
+  // Visual lockout while saving.
+  const buttons = document.querySelectorAll(".cm-disp-btn, .cm-cta, #cmNextBtn, #cmPrevBtn");
+  buttons.forEach(b => b.disabled = true);
+
+  let ok = false;
+  let errMsg = "";
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-ghl-note`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession?.access_token || ""}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({ contactId, conversationId, body }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (resp.ok && result.ok) ok = true;
+    else errMsg = result.detail || result.error || `HTTP ${resp.status}`;
+  } catch (e) {
+    errMsg = String(e);
+  }
+  buttons.forEach(b => b.disabled = false);
+
+  if (!ok) {
+    alert(`Disposition not saved — REI Reply rejected the note: ${errMsg}\n\nNothing was saved. Try again or open the contact in REI Reply and log manually.`);
+    return;
+  }
+
+  cmCalled.add(contactId);
+  // Refresh dashboard state in the background so the row reflects the new
+  // note count and last-touched timestamp next time the table re-renders.
+  if (typeof loadNotesCounts === "function") loadNotesCounts();
+  if (conversationId && typeof loadNotesFor === "function") loadNotesFor(conversationId);
+  cmGoNext();
+}
+
+// Keyboard shortcuts. Global "Q" opens Call Mode from anywhere. Inside
+// the panel: Space/N advances, P goes back, C opens REI Reply, 1-5 are
+// disposition shortcuts, Esc closes.
+document.addEventListener("keydown", (e) => {
+  // Don't hijack typing in inputs.
+  const tag = (e.target?.tagName || "").toUpperCase();
+  const isTyping = tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+
+  if (!cmOpen) {
+    if (e.key === "q" || e.key === "Q") {
+      if (isTyping) return;
+      const btn = document.getElementById("callModePill");
+      if (btn && btn.style.display !== "none") {
+        e.preventDefault();
+        openCallMode();
+      }
+    }
+    return;
+  }
+
+  // Esc always closes Call Mode (takes precedence over other panels).
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeCallMode();
+    return;
+  }
+  // Skip the rest if user is typing in the note box (so Space etc.
+  // works normally inside it). Ctrl+Enter inside the textarea is
+  // handled by the textarea's own listener.
+  if (isTyping) return;
+
+  if (e.key === " " || e.key === "n" || e.key === "N" || e.key === "ArrowRight") {
+    e.preventDefault(); cmGoNext(); return;
+  }
+  if (e.key === "p" || e.key === "P" || e.key === "ArrowLeft") {
+    e.preventDefault(); cmGoPrev(); return;
+  }
+  if (e.key === "c" || e.key === "C") {
+    e.preventDefault(); cmOpenInReiReply(); return;
+  }
+  // Disposition shortcuts 1-5
+  const dispoByKey = {
+    "1": "CONNECTED",
+    "2": "VOICEMAIL",
+    "3": "NO_ANSWER",
+    "4": "WRONG_NUMBER",
+    "5": "DNC",
+  };
+  if (dispoByKey[e.key]) {
+    e.preventDefault();
+    cmLogDisposition(dispoByKey[e.key]);
+  }
+});
 </script>
 </body>
 </html>
