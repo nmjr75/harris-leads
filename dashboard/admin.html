@@ -3929,13 +3929,29 @@ function stopActivityTracking() {
 
 // ── Data loaders ──────────────────────────────────────────────────
 async function loadStats() {
-  // ghl_latest_scores already deduplicates per conversation
-  const { data: latest, error: e1 } = await sb
-    .from("ghl_latest_scores")
-    .select("score");
+  // ghl_latest_scores already deduplicates per conversation, but the
+  // Supabase JS client silently caps .select() at 1000 rows by default.
+  // .range(0, 99999) forces it to return everything; without it, larger
+  // accounts undercount badly (verified case: 1127 rows → 1000 returned →
+  // top stat card showed 86 HOT vs the override-aware filter pill's 97).
+  // Override map is fetched in parallel so the counts reflect what Nelson
+  // sees on the dashboard, not the AI's raw classifications.
+  const [{ data: latest, error: e1 }, { data: overrides, error: e1b }] = await Promise.all([
+    sb.from("ghl_latest_scores").select("contact_id, score").range(0, 99999),
+    sb.from("ghl_score_overrides").select("contact_id, score"),
+  ]);
   if (e1) { console.error("loadStats ghl_latest_scores:", e1); return; }
+  if (e1b && e1b.code !== "42P01") {
+    // Real error (not just "table doesn't exist yet").
+    console.error("loadStats ghl_score_overrides:", e1b);
+  }
+  const ovMap = {};
+  for (const o of (overrides || [])) ovMap[o.contact_id] = o.score;
   const counts = { HOT: 0, WARM: 0, COOL: 0, COLD: 0, DEAD: 0 };
-  for (const r of (latest || [])) counts[r.score] = (counts[r.score] || 0) + 1;
+  for (const r of (latest || [])) {
+    const eff = ovMap[r.contact_id] || r.score;
+    if (counts[eff] !== undefined) counts[eff]++;
+  }
   document.getElementById("statHot").textContent = counts.HOT;
   document.getElementById("statWarm").textContent = counts.WARM;
 
@@ -7133,6 +7149,10 @@ async function setScoreOverride(contactId, score, reason) {
   };
   updateFilterCounts();
   renderLeads();
+  // Refresh the HOT LEADS / WARM LEADS top cards so they match the pill
+  // count instantly instead of waiting on the realtime subscription
+  // round-trip (~1s).
+  loadStats();
 }
 
 async function clearScoreOverride(contactId) {
@@ -7146,6 +7166,7 @@ async function clearScoreOverride(contactId) {
   delete DATA.scoreOverrides[contactId];
   updateFilterCounts();
   renderLeads();
+  loadStats();
 }
 
 // Show the reason Nelson typed when overriding this score, plus the
@@ -7320,13 +7341,18 @@ function subscribeToNewScores() {
     })
     // Score override added/updated/cleared (migration 045). Owner-only writes;
     // reload the override map across every browser tab the moment Nelson
-    // (or another tab of Nelson's) edits a score.
+    // (or another tab of Nelson's) edits a score. Also re-runs loadStats so
+    // the HOT LEADS / WARM LEADS top cards stay in sync with the pill counts.
     .on("postgres_changes", {
       event: "*",
       schema: "public",
       table: "ghl_score_overrides",
     }, () => {
-      loadScoreOverrides().then(() => { updateFilterCounts(); renderLeads(); });
+      loadScoreOverrides().then(() => {
+        updateFilterCounts();
+        renderLeads();
+        loadStats();
+      });
     })
     // Task synced from REI Reply (Created or Updated webhook). Refresh the
     // summary so the badge + severity color update on the affected row.
