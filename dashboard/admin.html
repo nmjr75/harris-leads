@@ -3965,6 +3965,7 @@ async function applyBulkAssign() {
   const apply = document.getElementById("bulkApplyBtn");
   if (apply) apply.disabled = true;
   let okCount = 0, failCount = 0;
+  let firstError = "";
 
   for (const cid of ids) {
     if (status) status.textContent = `Assigning ${okCount + failCount + 1}/${ids.length}…`;
@@ -3972,16 +3973,21 @@ async function applyBulkAssign() {
               || Object.values(DATA.hitList || {}).find((o) => o.contact_id === cid);
     const conversationId = (DATA.leads || []).find((r) => r.contact_id === cid)?.conversation_id || null;
     const contactName = lead?.contact_name || null;
+    // reason MUST match the value the single-row Assign menu uses ("manual")
+    // — ghl_lead_assignments has a CHECK constraint on this column and any
+    // unrecognized value (e.g. "bulk") gets rejected by the DB, which is
+    // what caused the silent-no-op bug on first ship.
     const { error } = await sb.from("ghl_lead_assignments").insert({
       contact_id: cid,
       conversation_id: conversationId,
       contact_name: contactName,
       assigned_to_email: email,
       assigned_by_email: currentSession?.user?.email || null,
-      reason: "bulk",
+      reason: "manual",
     });
     if (error) {
       failCount++;
+      if (!firstError) firstError = error.message;
       console.error(`bulk assign failed for ${cid}: ${error.message}`);
     } else {
       okCount++;
@@ -3990,7 +3996,7 @@ async function applyBulkAssign() {
         assigned_to_email: email,
         assigned_at: new Date().toISOString(),
         assigned_by_email: currentSession?.user?.email || null,
-        reason: "bulk",
+        reason: "manual",
       };
     }
   }
@@ -3998,11 +4004,25 @@ async function applyBulkAssign() {
   if (status) {
     status.textContent = failCount === 0
       ? `✓ Assigned ${okCount} to ${agentLabel}`
-      : `Assigned ${okCount}, failed ${failCount} — check console`;
-    setTimeout(() => { if (status) status.textContent = ""; }, 6000);
+      : `Assigned ${okCount}, failed ${failCount} — see alert`;
+    setTimeout(() => { if (status) status.textContent = ""; }, 8000);
+  }
+  // Loud alert on systemic failure so a silent "nothing happened" outcome
+  // becomes impossible — the first commit shipped that bug. If even one
+  // row failed, surface the underlying error so we can act on it.
+  if (failCount > 0) {
+    alert(
+      `Bulk assign result:\n` +
+      `  ✓ Assigned: ${okCount}\n` +
+      `  ✗ Failed:   ${failCount}\n\n` +
+      (firstError ? `First error from Supabase:\n${firstError}` : "")
+    );
   }
   clearBulkSelection();
   if (sel) sel.value = "";
+  // Reload assignments from DB so the UI reflects what actually persisted
+  // (instead of trusting only the optimistic local-state writes).
+  await loadAssignments();
   renderLeads();
 }
 
