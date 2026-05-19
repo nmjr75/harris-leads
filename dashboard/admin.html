@@ -416,6 +416,14 @@
     letter-spacing: 0.4px;
     white-space: nowrap;
   }
+  /* Small footer note inside Hit List slim rows — signals "this row is from
+     the Hit List opp source" without dominating the cell. */
+  .hit-list-note {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.72rem;
+  }
   /* Sticky bulk-actions bar — appears at the bottom of the leads table
      whenever one or more rows are selected. Manager-only. */
   .bulk-bar {
@@ -3582,13 +3590,19 @@ async function loadContactAddresses() {
   const { data, error } = await sb.from("ghl_latest_contact_address").select("*");
   if (error) { console.error("loadContactAddresses:", error); return; }
   DATA.contactAddress = {};
+  DATA.contactAddressByContact = {};
   for (const r of (data || [])) {
-    DATA.contactAddress[r.conversation_id] = {
+    const a = {
       address: r.contact_address || null,
       city: r.contact_city || null,
       state: r.contact_state || null,
       postal_code: r.contact_postal_code || null,
     };
+    DATA.contactAddress[r.conversation_id] = a;
+    // Also index by contact_id so Hit List slim rows (which have a synthetic
+    // or aged-out conversation_id) can still resolve an address. The view
+    // joins on contact_id internally so the address is identical regardless.
+    if (r.contact_id) DATA.contactAddressByContact[r.contact_id] = a;
   }
 }
 
@@ -4096,7 +4110,12 @@ function assigneeColor(email) {
 // structured fields aren't yet populated (e.g. older snapshots that
 // pre-date migration 006 and haven't been backfilled).
 function fullAddressFor(row) {
-  const a = DATA.contactAddress[row.conversation_id];
+  // Try conversation_id first (the normal path for scored leads), then fall
+  // back to contact_id (covers Hit List slim rows whose conversation_id is
+  // synthetic / aged out of our snapshot table). Both indexes are populated
+  // in loadContactAddresses().
+  let a = DATA.contactAddress?.[row.conversation_id];
+  if (!a && row.contact_id) a = DATA.contactAddressByContact?.[row.contact_id];
   if (a && (a.address || a.city || a.state || a.postal_code)) {
     const cityState = [a.city, a.state].filter(Boolean).join(", ");
     const tail = [cityState, a.postal_code].filter(Boolean).join(" ");
@@ -5788,7 +5807,11 @@ function renderLeads() {
     if (!isHitList && !isAppointment && currentStageFilter !== "all") {
       rows = rows.filter(r => getStageKey(r) === currentStageFilter);
     }
-    if (!isHitList && currentTouchedBucket !== "any") {
+    if (currentTouchedBucket !== "any") {
+      // Touched-bucket filter applies to Hit List too — activity data is
+      // keyed by contact_id and exists for Hit List contacts that have
+      // been called. Was previously gated behind !isHitList which lied
+      // about "Never called" counts on the Hit List view.
       rows = rows.filter(r => {
         const a = activityFor(r) || {};
         const last = a.last_outbound_call_at;
@@ -5857,16 +5880,58 @@ function renderLeads() {
           <td class="col-phone">
             ${r.phone ? `<span class="phone-primary" onclick="copyToClipboard('${escapeHtml(r.phone)}', '${escapeHtml(r.phone)}')" title="Click to copy">${escapeHtml(r.phone)}</span>` : "—"}
           </td>
-          <td class="col-time" title="Moved to Hit List: ${escapeHtml(stageMoveFull)}">
-            ${stageMoveAt ? `
-              <div class="activity-stack">
-                <span class="activity-primary">${escapeHtml(smartDateTime(stageMoveAt))}</span>
-                <span class="activity-relative">moved to hit list · ${escapeHtml(relTime(stageMoveAt))}</span>
-              </div>
-            ` : `<span class="activity-empty">—</span>`}
-          </td>
+          ${(() => {
+            // LAST ACTIVITY cell — now reads real call/text activity from
+            // ghl_contact_activity_summary (keyed by contact_id), same as
+            // scored leads. Falls back to the Hit-List move timestamp only
+            // when the contact has no recorded activity at all. This is the
+            // fix for "Walter called this person twice but the dashboard
+            // says Never Called" — slim rows were ignoring activity data
+            // even though it was in the DB.
+            const lastAct = lastActivityFor(r);
+            if (lastAct) {
+              return `
+                <td class="col-time" title="Last message activity: ${escapeHtml(absTime(lastAct))}">
+                  <div class="activity-stack">
+                    <span class="activity-primary">${escapeHtml(smartDateTime(lastAct))}</span>
+                    <span class="activity-relative">${escapeHtml(relTime(lastAct))}</span>
+                  </div>
+                </td>`;
+            }
+            if (stageMoveAt) {
+              return `
+                <td class="col-time" title="Moved to Hit List: ${escapeHtml(stageMoveFull)}">
+                  <div class="activity-stack">
+                    <span class="activity-primary">${escapeHtml(smartDateTime(stageMoveAt))}</span>
+                    <span class="activity-relative">moved to hit list · ${escapeHtml(relTime(stageMoveAt))}</span>
+                  </div>
+                </td>`;
+            }
+            return `<td class="col-time"><span class="activity-empty">—</span></td>`;
+          })()}
           <td title="No motivation score — not in our snapshot universe"><span class="score-badge" style="background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)">—</span></td>
-          <td class="signals-cell" style="color:var(--text-muted);font-style:italic">In REI Reply Hit List · No transcript captured · Use Open → to view conversation directly</td>
+          <td class="signals-cell">
+            ${(() => {
+              // Build the same signals-cell structure scored leads use:
+              // address line + property chips + activity chips. Anything we
+              // don't have falls back to the "in Hit List, no transcript"
+              // legacy note so the row still says something useful.
+              const fullAddr = fullAddressFor(r);
+              const propChips = renderPropertyChips(r);
+              const actChips = renderActivityChips(r);
+              const hasAny = fullAddr || propChips || actChips;
+              const hitListNote = stageMoveAt
+                ? `<div class="hit-list-note">In REI Reply Hit List · moved ${escapeHtml(relTime(stageMoveAt))}</div>`
+                : "";
+              if (!hasAny) {
+                return `<div style="color:var(--text-muted);font-style:italic">In REI Reply Hit List · No data captured yet · Use Open → to view conversation directly</div>${hitListNote}`;
+              }
+              const addrLine = fullAddr
+                ? `<div><a class="address-link" onclick="event.stopPropagation(); openInReiAiLeads('${escapeHtml(fullAddr).replace(/'/g, "\\'")}')" title="Open in REI AI Leads">🏠 ${escapeHtml(fullAddr)}</a></div>`
+                : "";
+              return `${addrLine}${propChips}${actChips}${hitListNote}`;
+            })()}
+          </td>
           <td class="col-actions">
             <div class="action-group">
               ${url ? `<a class="btn-action primary" href="${url}" target="_blank">Open →</a>` : ""}
