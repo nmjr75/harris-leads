@@ -2521,7 +2521,7 @@
   .acl-modal {
     position: fixed; top: 50%; left: 50%;
     transform: translate(-50%, -50%) scale(.97);
-    width: min(640px, 94vw); max-height: 84vh;
+    width: min(960px, 94vw); max-height: 84vh;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 14px; z-index: 111;
     opacity: 0; pointer-events: none;
@@ -2557,43 +2557,103 @@
   .acl-loading { text-align: center; color: var(--text-muted); padding: 30px; }
   .acl-row {
     display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 12px; align-items: center;
+    grid-template-columns: minmax(180px, 2fr) auto minmax(140px, auto) auto auto auto;
+    gap: 14px; align-items: center;
     padding: 12px 10px; border-radius: 8px;
     border: 1px solid transparent;
   }
   .acl-row:hover { background: var(--surface2); border-color: var(--border); }
   .acl-row.is-suspended { background: rgba(239, 68, 68, 0.06); }
   .acl-row .name { font-weight: 600; color: var(--text); font-size: 0.88rem; }
-  .acl-row .email { color: var(--text-muted); font-size: 0.74rem; margin-top: 2px; }
+  .acl-row .email {
+    color: var(--text-muted); font-size: 0.74rem; margin-top: 2px;
+    font-family: ui-monospace, monospace;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 280px;
+  }
+  .acl-row .email-copy {
+    cursor: pointer; user-select: text;
+  }
+  .acl-row .email-copy:hover { color: var(--accent-light); }
   .acl-row .role-chip {
     font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--text-muted); background: var(--surface2);
     border: 1px solid var(--border); padding: 2px 7px;
-    border-radius: 6px; margin-right: 10px;
+    border-radius: 6px;
   }
   .acl-row .role-chip.owner { color: var(--accent-light); border-color: var(--accent); }
+  .acl-row .role-chip.admin { color: #93c5fd; border-color: rgba(59,130,246,.45); }
+  .acl-row .role-chip.assignee { color: #fcd34d; border-color: rgba(251,191,36,.45); }
+  .acl-last-login {
+    display: flex; flex-direction: column; gap: 1px;
+    min-width: 140px;
+  }
+  .acl-last-login .primary {
+    font-size: 0.8rem; color: var(--text);
+    font-family: ui-monospace, monospace;
+  }
+  .acl-last-login .relative {
+    font-size: 0.7rem; color: var(--text-muted);
+  }
+  .acl-last-login .never { color: var(--text-muted); font-style: italic; font-size: 0.78rem; }
+  .acl-lead-count {
+    text-align: right; min-width: 56px;
+    font-family: ui-monospace, monospace;
+  }
+  .acl-lead-count .num { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+  .acl-lead-count .lbl {
+    font-size: 0.62rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px;
+  }
+  .acl-lead-count.zero .num { color: var(--text-muted); font-weight: 500; }
   .acl-status-chip {
     display: inline-block; padding: 4px 10px; border-radius: 14px;
     font-size: 0.72rem; font-weight: 600; min-width: 80px; text-align: center;
   }
   .acl-status-chip.active   { background: rgba(34,197,94,.14); color: rgb(74,222,128); border: 1px solid rgba(34,197,94,.45); }
   .acl-status-chip.suspended { background: rgba(239,68,68,.14); color: var(--red); border: 1px solid rgba(239,68,68,.45); }
+  .acl-actions {
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: stretch; min-width: 132px;
+  }
   .acl-toggle-btn {
     padding: 7px 14px; border-radius: 8px; cursor: pointer;
-    font-size: 0.78rem; font-weight: 600; min-width: 110px;
+    font-size: 0.78rem; font-weight: 600;
     border: 1px solid var(--border); background: var(--surface2);
-    color: var(--text);
+    color: var(--text); white-space: nowrap;
   }
   .acl-toggle-btn:hover { border-color: var(--accent); }
   .acl-toggle-btn.suspend-action { color: var(--red); border-color: rgba(239,68,68,.45); }
   .acl-toggle-btn.suspend-action:hover { background: rgba(239,68,68,.12); }
   .acl-toggle-btn.activate-action { color: rgb(74,222,128); border-color: rgba(34,197,94,.45); }
   .acl-toggle-btn.activate-action:hover { background: rgba(34,197,94,.12); }
+  .acl-toggle-btn.reset-action { color: var(--accent-light); border-color: rgba(124,92,252,.45); }
+  .acl-toggle-btn.reset-action:hover { background: rgba(124,92,252,.12); }
   .acl-toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
   .acl-self-tag {
     color: var(--text-muted); font-size: 0.7rem; font-style: italic;
-    padding: 7px 12px;
+    padding: 7px 12px; text-align: center;
+  }
+  .acl-header-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 2fr) auto minmax(140px, auto) auto auto auto;
+    gap: 14px; align-items: center;
+    padding: 8px 10px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .acl-header-row .h {
+    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); font-weight: 600;
+  }
+  .acl-header-row .h.right { text-align: right; }
+  @media (max-width: 720px) {
+    .acl-row, .acl-header-row {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .acl-header-row { display: none; }
+    .acl-actions { flex-direction: row; }
+    .acl-row .email { max-width: 100%; }
   }
 </style>
 </head>
@@ -2971,7 +3031,7 @@
     <h2 class="acl-title">🔐 Access Control</h2>
     <button class="acl-close" onclick="closeAccessControl()" title="Close (Esc)">×</button>
   </div>
-  <div class="acl-subtitle">Toggle dashboard access for each VA. Suspended users are signed out on their next page load and shown an "Account suspended" screen.</div>
+  <div class="acl-subtitle">Every team member with dashboard access. Click an email to copy it. Use 📧 Reset to send a password-reset email — Supabase stores passwords as bcrypt hashes and they can never be retrieved in plaintext. Suspended users are signed out on their next page load.</div>
   <div class="acl-body" id="aclBody">
     <div class="acl-loading">Loading…</div>
   </div>
@@ -6837,21 +6897,37 @@ async function renderActivityLog() {
 }
 
 async function loadAccessProfiles() {
-  // Owner can read everyone thanks to caller_is_owner() in the
-  // "profiles self read" policy (migration 032). Auth role is
-  // injected by the publishable key + session JWT automatically.
-  const { data, error } = await sb.from("profiles")
+  // Owner-only RPC (migration 043) joins profiles + auth.users so we can
+  // show email and last_sign_in_at alongside role/is_active. Falls back
+  // to the direct profiles read if the RPC isn't deployed yet so the
+  // modal degrades gracefully on a stale environment.
+  const { data, error } = await sb.rpc("get_team_users");
+  if (!error) {
+    aclProfiles = data || [];
+    return;
+  }
+  console.warn("get_team_users RPC unavailable, falling back to profiles:", error.message);
+  const fb = await sb.from("profiles")
     .select("id, display_name, role, is_active, suspended_at, suspended_by")
     .order("display_name", { ascending: true });
-  if (error) {
-    console.error("loadAccessProfiles:", error);
+  if (fb.error) {
+    console.error("loadAccessProfiles fallback:", fb.error);
     aclProfiles = [];
     return;
   }
-  // Pull emails from auth.users via RPC — but we don't have one yet,
-  // so fall back to the display_name as the primary identifier.
-  // Most VAs already have display_name = first name; that's enough.
-  aclProfiles = data || [];
+  aclProfiles = fb.data || [];
+}
+
+// Last-login cell: smartDateTime primary + relative time secondary.
+// Matches the activity-stack pattern used in the leads table.
+function fmtAccessLogin(iso) {
+  if (!iso) {
+    return `<span class="never" title="No sign-in recorded">Never signed in</span>`;
+  }
+  return `
+    <span class="primary" title="${escapeHtml(absTime(iso))}">${escapeHtml(smartDateTime(iso))}</span>
+    <span class="relative">${escapeHtml(relTime(iso))}</span>
+  `;
 }
 
 function renderAccessControlBody() {
@@ -6862,37 +6938,109 @@ function renderAccessControlBody() {
     return;
   }
   const myId = currentSession?.user?.id;
-  body.innerHTML = aclProfiles.map(p => {
+  const header = `
+    <div class="acl-header-row">
+      <span class="h">Name / Email</span>
+      <span class="h">Role</span>
+      <span class="h">Last sign-in (CT)</span>
+      <span class="h right">Leads</span>
+      <span class="h" style="text-align:center">Status</span>
+      <span class="h" style="text-align:center">Actions</span>
+    </div>
+  `;
+  const rows = aclProfiles.map(p => {
     const active = p.is_active !== false;
     const isSelf = p.id === myId;
-    const isOwnerRow = (p.role || "").toLowerCase() === "owner";
+    const roleKey = (p.role || "viewer").toLowerCase();
+    const isOwnerRow = roleKey === "owner" || roleKey === "nelson";
+    const roleClass = isOwnerRow ? "owner"
+                    : (roleKey === "admin" || roleKey === "editor") ? "admin"
+                    : (roleKey === "assignee" || roleKey === "viewer") ? "assignee"
+                    : "";
     const rowCls = active ? "acl-row" : "acl-row is-suspended";
-    const roleChip = `<span class="role-chip ${isOwnerRow ? 'owner' : ''}">${escapeHtml(p.role || 'viewer')}</span>`;
+    const email = p.email || "";
+    const emailCell = email
+      ? `<span class="email email-copy" onclick="copyToClipboard('${escapeHtml(email).replace(/'/g, "\\'")}', '${escapeHtml(email).replace(/'/g, "\\'")}')" title="Click to copy">${escapeHtml(email)}</span>`
+      : `<span class="email" style="opacity:.5">(no email)</span>`;
+    const roleChip = `<span class="role-chip ${roleClass}">${escapeHtml(p.role || 'viewer')}</span>`;
+    const loginCell = `<div class="acl-last-login">${fmtAccessLogin(p.last_sign_in_at)}</div>`;
+    const leadCount = Number(p.assigned_lead_count ?? 0);
+    const leadCell = `
+      <div class="acl-lead-count ${leadCount === 0 ? 'zero' : ''}" title="Currently assigned leads">
+        <div class="num">${leadCount}</div>
+        <div class="lbl">leads</div>
+      </div>
+    `;
     const statusChip = active
       ? `<span class="acl-status-chip active">Active</span>`
-      : `<span class="acl-status-chip suspended">Suspended</span>`;
-    // The owner can NEVER be suspended (would lock himself out). Self also
-    // can't be toggled — defense in depth (Nelson IS the owner, so this
-    // overlaps, but keeps the UI honest).
-    let action;
+      : `<span class="acl-status-chip suspended" title="${p.suspended_at ? `Suspended ${escapeHtml(new Date(p.suspended_at).toLocaleString('en-US', { timeZone: 'America/Chicago' }))} CT${p.suspended_by_email ? ` by ${escapeHtml(p.suspended_by_email)}` : ''}` : 'Suspended'}">Suspended</span>`;
+
+    // Actions:
+    //   - Owner row → "(owner)" tag, no destructive actions (lockout safety).
+    //   - Self row (non-owner case is theoretical here but defended) → "(you)".
+    //   - Otherwise → Reset password + Suspend/Reactivate.
+    let actions;
     if (isSelf || isOwnerRow) {
-      action = `<span class="acl-self-tag">${isSelf ? '(you)' : 'owner'}</span>`;
-    } else if (active) {
-      action = `<button class="acl-toggle-btn suspend-action" onclick="toggleAccess('${p.id}', false, this)">Suspend</button>`;
+      actions = `<span class="acl-self-tag">${isSelf ? '(you)' : 'owner'}</span>`;
     } else {
-      action = `<button class="acl-toggle-btn activate-action" onclick="toggleAccess('${p.id}', true, this)">Reactivate</button>`;
+      const resetBtn = email
+        ? `<button class="acl-toggle-btn reset-action" onclick="sendResetPassword('${escapeHtml(email).replace(/'/g, "\\'")}', this)" title="Email a password-reset link to this user">📧 Reset password</button>`
+        : `<button class="acl-toggle-btn reset-action" disabled title="No email on file">📧 Reset password</button>`;
+      const accessBtn = active
+        ? `<button class="acl-toggle-btn suspend-action" onclick="toggleAccess('${p.id}', false, this)">Suspend</button>`
+        : `<button class="acl-toggle-btn activate-action" onclick="toggleAccess('${p.id}', true, this)">Reactivate</button>`;
+      actions = `<div class="acl-actions">${resetBtn}${accessBtn}</div>`;
     }
     return `
       <div class="${rowCls}">
         <div>
           <div class="name">${escapeHtml(p.display_name || '(no name)')}</div>
-          <div class="email">${roleChip}${!active && p.suspended_at ? `<span style="color:var(--text-muted);font-size:0.7rem"> · suspended ${escapeHtml(new Date(p.suspended_at).toLocaleDateString())}</span>` : ''}</div>
+          ${emailCell}
         </div>
+        ${roleChip}
+        ${loginCell}
+        ${leadCell}
         ${statusChip}
-        ${action}
+        ${actions}
       </div>
     `;
   }).join("");
+  body.innerHTML = header + rows;
+}
+
+// Send a password-reset email via Supabase Auth. The user clicks the link
+// in their inbox and lands on /reset-password.html where they choose a
+// new password. This is the same flow as "Forgot password?" on the
+// sign-in screen — admin-initiated just means an owner clicked it on
+// behalf of the user. No plaintext password is ever exposed.
+async function sendResetPassword(email, btn) {
+  if (currentRole !== "nelson") return;
+  if (!email) {
+    alert("No email on file for this user.");
+    return;
+  }
+  if (!confirm(`Send a password-reset email to ${email}?\n\nThey'll get a link to set a new password. The current password keeps working until they click it.`)) {
+    return;
+  }
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+  try {
+    const redirectTo = new URL("reset-password.html", window.location.href).toString();
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      alert("Reset failed: " + error.message);
+      if (btn) { btn.disabled = false; btn.textContent = original; }
+      return;
+    }
+    if (btn) {
+      btn.textContent = "✓ Sent";
+      // Revert label after a few seconds so the action is repeatable.
+      setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 4000);
+    }
+  } catch (err) {
+    alert("Reset failed: " + (err.message || err));
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
 }
 
 async function openAccessControl() {
