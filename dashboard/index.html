@@ -1141,8 +1141,11 @@
     <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
       <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
       <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:0.88rem;outline:none">
-      <div id="loginError" style="color:var(--red);font-size:0.78rem;min-height:18px"></div>
+      <div id="loginError" style="font-size:0.78rem;min-height:18px;color:var(--red)"></div>
       <button type="submit" id="loginBtn" style="padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;font-size:0.88rem;font-weight:600;cursor:pointer">Sign In</button>
+      <div style="text-align:center;margin-top:4px">
+        <a href="#" id="forgotPasswordLink" style="font-size:0.78rem;color:var(--accent-light);text-decoration:none">Forgot password?</a>
+      </div>
     </form>
   </div>
 </div>
@@ -1295,6 +1298,7 @@ async function handleLogin(e) {
   const password = document.getElementById("loginPassword").value;
   const errEl = document.getElementById("loginError");
   const btn = document.getElementById("loginBtn");
+  errEl.style.color = "var(--red)";
   errEl.textContent = "";
   btn.disabled = true; btn.textContent = "Signing in…";
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
@@ -1318,8 +1322,42 @@ async function handleLogout() {
   showLogin();
 }
 
+async function handleForgotPassword(e) {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const errEl = document.getElementById("loginError");
+  const link = document.getElementById("forgotPasswordLink");
+  errEl.textContent = "";
+  if (!email) {
+    errEl.style.color = "var(--red)";
+    errEl.textContent = "Type your email above first, then click Forgot password.";
+    document.getElementById("loginEmail").focus();
+    return;
+  }
+  link.textContent = "Sending…";
+  link.style.pointerEvents = "none";
+  try {
+    const redirectTo = new URL("reset-password.html", window.location.href).toString();
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      errEl.style.color = "var(--red)";
+      errEl.textContent = error.message;
+    } else {
+      errEl.style.color = "var(--green)";
+      errEl.textContent = "Reset email sent. Check your inbox + spam in the next minute.";
+    }
+  } catch (err) {
+    errEl.style.color = "var(--red)";
+    errEl.textContent = err.message || "Failed to send reset email";
+  } finally {
+    link.textContent = "Forgot password?";
+    link.style.pointerEvents = "";
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("loginForm").addEventListener("submit", handleLogin);
+  document.getElementById("forgotPasswordLink").addEventListener("click", handleForgotPassword);
 });
 
 // ── Save edit to Supabase ────────────────────────────────────────
