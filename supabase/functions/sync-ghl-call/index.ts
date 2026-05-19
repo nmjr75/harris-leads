@@ -25,6 +25,19 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GHL_WEBHOOK_SECRET = Deno.env.get("GHL_WEBHOOK_SECRET") ?? "";
 const GHL_API_TOKEN = Deno.env.get("GHL_API_TOKEN") ?? "";
 
+// Some agents log into REI Reply with a different email than their canonical
+// dashboard identity. Without normalization, their per-VA cards show 0 calls
+// because the dashboard looks up by the canonical email but rows are keyed
+// by the REI Reply login email returned from /users/{id}.
+const AGENT_EMAIL_ALIASES: Record<string, string> = {
+  "tcdept.gamc@gmail.com": "mark.realdealsource@gmail.com",  // Walter
+};
+
+function normalizeAgentEmail(email: string | null): string | null {
+  if (!email) return null;
+  return AGENT_EMAIL_ALIASES[email.toLowerCase()] ?? email;
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -162,7 +175,7 @@ serve(async (req: Request) => {
     from_number:      fromNumber,
     to_number:        toNumber,
     agent_user_id:    userId,
-    agent_email:      agent.email,
+    agent_email:      normalizeAgentEmail(agent.email),
     agent_name:       agent.name ?? userName,
     started_at:       startedAt,
     ended_at:         endedAt,
