@@ -3603,7 +3603,7 @@ async function loadDeletions() {
 // correct stage badge — they don't have a conversation_id but they always
 // have a contact_id.
 async function loadStages() {
-  const { data, error } = await sb.from("ghl_current_stage_by_contact").select("*");
+  const { data, error } = await sb.from("ghl_current_stage_by_contact").select("*").range(0, 99999);
   if (error) { console.error("loadStages:", error); return; }
   DATA.stages = {};
   for (const r of (data || [])) {
@@ -3651,7 +3651,9 @@ async function loadContactAddresses() {
   DATA.contactAddressByContact = {};
 
   // Source 1: the snapshot-derived view (most scored leads come from here).
-  const { data, error } = await sb.from("ghl_latest_contact_address").select("*");
+  // Bump beyond Supabase's 1000-row default — same silent-drop bug that
+  // hit ghl_contact_activity_summary will hit this view if we don't.
+  const { data, error } = await sb.from("ghl_latest_contact_address").select("*").range(0, 99999);
   if (error) {
     console.error("loadContactAddresses:", error);
   } else {
@@ -3741,7 +3743,7 @@ async function loadPropertyEnrichment() {
     "structure_type, ownership_type, estimated_value, equity_pct, " +
     "mls_status, days_on_market, owner_occupied, off_market, source, " +
     "mortgage_balance, county_assessed_value, last_sale_price, last_sale_date"
-  );
+  ).range(0, 99999);
   if (error) {
     if (error.code === "42P01") {
       // Migration 027 not applied yet — skip silently.
@@ -3802,20 +3804,32 @@ function renderPropertyChips(row) {
 // ghl_conversation_snapshots (batch worker). Powers the activity chips
 // on each lead row + the Communication section in CRM Details.
 async function loadContactActivity() {
-  const { data, error } = await sb.from("ghl_contact_activity_summary").select("*");
-  if (error) {
-    if (error.code === "42P01") {
-      // Migration 037 not applied yet — skip silently so the rest of
-      // the dashboard still renders.
-      DATA.contactActivity = {};
+  // Supabase JS client caps each .select() at 1000 rows by default. Our
+  // activity_summary view easily exceeds that across all contacts in the
+  // CRM, so without explicit pagination we silently drop rows — verified
+  // by browser-console diagnostic on Roque Castanon (contact id exists in
+  // the view via SQL, missing from DATA.contactActivity in the dashboard).
+  // Page through in 1000-row batches until the server returns < 1000.
+  DATA.contactActivity = {};
+  const BATCH = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from("ghl_contact_activity_summary")
+      .select("*")
+      .range(from, from + BATCH - 1);
+    if (error) {
+      if (error.code === "42P01") return; // migration 037 not applied
+      console.error("loadContactActivity:", error);
       return;
     }
-    console.error("loadContactActivity:", error);
-    return;
-  }
-  DATA.contactActivity = {};
-  for (const r of (data || [])) {
-    if (r.contact_id) DATA.contactActivity[r.contact_id] = r;
+    const rows = data || [];
+    for (const r of rows) {
+      if (r.contact_id) DATA.contactActivity[r.contact_id] = r;
+    }
+    if (rows.length < BATCH) break;
+    from += BATCH;
+    if (from > 100000) break; // safety cap
   }
 }
 
@@ -3954,7 +3968,7 @@ function renderActivityChips(row) {
 // the ghl_conversation_metadata view (migration 011). Rendered under the
 // contact name in the leads table.
 async function loadMetadata() {
-  const { data, error } = await sb.from("ghl_conversation_metadata").select("*");
+  const { data, error } = await sb.from("ghl_conversation_metadata").select("*").range(0, 99999);
   if (error) { console.error("loadMetadata:", error); return; }
   DATA.metadata = {};
   for (const r of (data || [])) {
@@ -4217,7 +4231,7 @@ function fullAddressFor(row) {
 // 024) which groups by contact_id. Hit List slim rows can have a count
 // without needing a conversation_id.
 async function loadNotesCounts() {
-  const { data, error } = await sb.from("ghl_notes_count_by_contact").select("*");
+  const { data, error } = await sb.from("ghl_notes_count_by_contact").select("*").range(0, 99999);
   if (error) { console.error("loadNotesCounts:", error); return; }
   DATA.notesCount = {};
   for (const r of (data || [])) {
