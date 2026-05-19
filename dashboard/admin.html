@@ -3587,22 +3587,51 @@ async function loadOutboundNumbers() {
 }
 
 async function loadContactAddresses() {
-  const { data, error } = await sb.from("ghl_latest_contact_address").select("*");
-  if (error) { console.error("loadContactAddresses:", error); return; }
   DATA.contactAddress = {};
   DATA.contactAddressByContact = {};
-  for (const r of (data || [])) {
-    const a = {
-      address: r.contact_address || null,
-      city: r.contact_city || null,
-      state: r.contact_state || null,
-      postal_code: r.contact_postal_code || null,
-    };
-    DATA.contactAddress[r.conversation_id] = a;
-    // Also index by contact_id so Hit List slim rows (which have a synthetic
-    // or aged-out conversation_id) can still resolve an address. The view
-    // joins on contact_id internally so the address is identical regardless.
-    if (r.contact_id) DATA.contactAddressByContact[r.contact_id] = a;
+
+  // Source 1: the snapshot-derived view (most scored leads come from here).
+  const { data, error } = await sb.from("ghl_latest_contact_address").select("*");
+  if (error) {
+    console.error("loadContactAddresses:", error);
+  } else {
+    for (const r of (data || [])) {
+      const a = {
+        address: r.contact_address || null,
+        city: r.contact_city || null,
+        state: r.contact_state || null,
+        postal_code: r.contact_postal_code || null,
+      };
+      DATA.contactAddress[r.conversation_id] = a;
+      if (r.contact_id) DATA.contactAddressByContact[r.contact_id] = a;
+    }
+  }
+
+  // Source 2: contact-keyed address overrides table (migration 043). Covers
+  // Hit List slim contacts that aren't in the snapshot universe — addresses
+  // populated by the enrich-hitlist-contacts Edge Function from GHL's API.
+  // Loaded AFTER the snapshot view so a fresh override beats a stale snapshot.
+  const { data: overrides, error: overrideErr } = await sb
+    .from("ghl_contact_address_overrides")
+    .select("contact_id, address, city, state, postal_code");
+  if (overrideErr) {
+    // Migration 043 may not be applied yet — log and move on.
+    console.warn("loadContactAddresses(overrides):", overrideErr.message);
+  } else {
+    for (const r of (overrides || [])) {
+      if (!r.contact_id) continue;
+      const a = {
+        address: r.address || null,
+        city: r.city || null,
+        state: r.state || null,
+        postal_code: r.postal_code || null,
+      };
+      // Only fill if the snapshot view didn't already have something for
+      // this contact — snapshot data is generally fresher when present.
+      if (!DATA.contactAddressByContact[r.contact_id]) {
+        DATA.contactAddressByContact[r.contact_id] = a;
+      }
+    }
   }
 }
 
@@ -5938,7 +5967,7 @@ function renderLeads() {
               ${slimCid ? renderTasksButton(r) : ""}
               ${slimCid ? `<button class="btn-notes" onclick="event.stopPropagation(); toggleNotesPanel('${slimCidEsc}')" title="View / add notes">📝 Notes${slimNoteCount ? ` <span class="badge">${slimNoteCount}</span>` : ""}</button>` : ""}
               ${r.contact_id ? `<button class="btn-crm-details" onclick="event.stopPropagation(); openCrmPanel('${escapeHtml(r.contact_id)}')" title="Open lead details">📋 Details</button>` : ""}
-              ${slimCid ? `<button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${slimCidEsc}')" title="Change pipeline stage">${renderStageBadge(slimStageKey)} ▾</button>` : ""}
+              ${r.contact_id ? `<button class="btn-stage" onclick="event.stopPropagation(); openStageMenu(event, '${escapeHtml(slimCid || ('contact:' + r.contact_id))}')" title="Change pipeline stage — write goes through contact_id, conversation_id is synthetic for slim rows">${renderStageBadge(slimStageKey)} ▾</button>` : ""}
               ${renderAssignmentControl(r)}
             </div>
           </td>
