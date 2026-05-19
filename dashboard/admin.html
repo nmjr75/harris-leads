@@ -3929,28 +3929,40 @@ function stopActivityTracking() {
 
 // ── Data loaders ──────────────────────────────────────────────────
 async function loadStats() {
-  // ghl_latest_scores already deduplicates per conversation, but the
-  // Supabase JS client silently caps .select() at 1000 rows by default.
-  // .range(0, 99999) forces it to return everything; without it, larger
-  // accounts undercount badly (verified case: 1127 rows → 1000 returned →
-  // top stat card showed 86 HOT vs the override-aware filter pill's 97).
-  // Override map is fetched in parallel so the counts reflect what Nelson
-  // sees on the dashboard, not the AI's raw classifications.
-  const [{ data: latest, error: e1 }, { data: overrides, error: e1b }] = await Promise.all([
-    sb.from("ghl_latest_scores").select("contact_id, score").range(0, 99999),
-    sb.from("ghl_score_overrides").select("contact_id, score"),
-  ]);
-  if (e1) { console.error("loadStats ghl_latest_scores:", e1); return; }
-  if (e1b && e1b.code !== "42P01") {
-    // Real error (not just "table doesn't exist yet").
-    console.error("loadStats ghl_score_overrides:", e1b);
-  }
-  const ovMap = {};
-  for (const o of (overrides || [])) ovMap[o.contact_id] = o.score;
+  // Server-side aggregation via the get_effective_score_counts() RPC
+  // (migration 047). The function does the GROUP BY on the database
+  // side and returns at most 5 rows — one per score bucket — so no
+  // row-cap can ever apply. Override wins over AI score inside the
+  // function via coalesce(override.score, ai.score), so the top card
+  // matches the override-aware filter pill exactly.
   const counts = { HOT: 0, WARM: 0, COOL: 0, COLD: 0, DEAD: 0 };
-  for (const r of (latest || [])) {
-    const eff = ovMap[r.contact_id] || r.score;
-    if (counts[eff] !== undefined) counts[eff]++;
+  const { data: countRows, error: e1 } = await sb.rpc("get_effective_score_counts");
+  if (e1) {
+    if (e1.code === "42883") {
+      // RPC doesn't exist yet (migration 047 not applied). Fall back to
+      // the pre-047 logic so the card still renders something rather
+      // than going blank. This branch goes away once the migration is in.
+      const [{ data: latest, error: e1f }, { data: overrides }] = await Promise.all([
+        sb.from("ghl_latest_scores").select("contact_id, score").range(0, 99999),
+        sb.from("ghl_score_overrides").select("contact_id, score"),
+      ]);
+      if (e1f) { console.error("loadStats fallback ghl_latest_scores:", e1f); return; }
+      const ovMap = {};
+      for (const o of (overrides || [])) ovMap[o.contact_id] = o.score;
+      for (const r of (latest || [])) {
+        const eff = ovMap[r.contact_id] || r.score;
+        if (counts[eff] !== undefined) counts[eff]++;
+      }
+    } else {
+      console.error("loadStats get_effective_score_counts:", e1);
+      return;
+    }
+  } else {
+    for (const row of (countRows || [])) {
+      if (counts[row.effective_score] !== undefined) {
+        counts[row.effective_score] = row.n;
+      }
+    }
   }
   document.getElementById("statHot").textContent = counts.HOT;
   document.getElementById("statWarm").textContent = counts.WARM;
