@@ -7712,9 +7712,54 @@ async function commitOfferLog() {
   });
   if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "📨 Log Offer"; }
   if (error) { alert(`Log failed: ${error.message}`); return; }
+
+  // Mirror the offer into the contact's general notes (ghl_contact_notes
+  // + REI Reply contact detail) via the existing create-ghl-note Edge
+  // Function. Same pattern Call Mode dispositions use. The note is
+  // tagged with [📨 Offer …] so it's greppable in the contact's note
+  // history. Best-effort — failure here doesn't roll back the offer
+  // row (which is the source of truth for reporting); we just surface
+  // the warning to the agent.
+  const outcomeLabel = ({
+    pending:     "Pending",
+    accepted:    "ACCEPTED",
+    rejected:    "Rejected",
+    counter:     `Counter at $${counter ? Math.round(counter).toLocaleString() : "—"}`,
+    no_response: "No response",
+  })[outcome] || outcome;
+  const noteBody =
+    `[📨 Offer logged: $${Math.round(amount).toLocaleString()} — ${outcomeLabel}]` +
+    (notes ? `\n${notes}` : "");
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-ghl-note`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${currentSession?.access_token || ""}`,
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        contactId,
+        conversationId,
+        body: noteBody,
+      }),
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || !result.ok) {
+      // Soft-warn rather than alert(), so the agent can keep working.
+      // The offer row is already saved; the note mirror is what failed.
+      console.warn("Offer logged, but mirroring to GHL notes failed:", result);
+      showToast?.("Offer logged · note sync to REI Reply failed (see console)");
+    }
+  } catch (e) {
+    console.warn("Offer logged, but mirroring to GHL notes threw:", e);
+  }
+
   closeOfferLogger();
-  // Refresh: visible tab + KPI cards + row 💰 badges.
+  // Refresh: visible tab + KPI cards + row 💰 badges + notes count.
   await Promise.all([loadOffers(), loadOffersTodayByUser()]);
+  if (typeof loadNotesCounts === "function") loadNotesCounts();
+  if (conversationId && typeof loadNotesFor === "function") loadNotesFor(conversationId);
   renderOffersTab();
   renderCallActivityRow();
   renderLeads();
