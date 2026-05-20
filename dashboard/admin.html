@@ -7728,8 +7728,15 @@ async function commitOfferLog() {
     counter:     `Counter at $${counter ? Math.round(counter).toLocaleString() : "—"}`,
     no_response: "No response",
   })[outcome] || outcome;
+  // Include the agent's display name in the note body so it's visible
+  // regardless of how created_by_email gets populated by the GHL webhook
+  // loopback (which currently labels round-tripped notes as "REI Reply"
+  // for all VAs). Falls back to email prefix if the user isn't in the
+  // ASSIGNEES list.
+  const myDisplayName = myName
+    || (myEmail ? myEmail.split("@")[0] : "agent");
   const noteBody =
-    `[📨 Offer logged: $${Math.round(amount).toLocaleString()} — ${outcomeLabel}]` +
+    `[📨 ${myDisplayName} logged offer: $${Math.round(amount).toLocaleString()} — ${outcomeLabel}]` +
     (notes ? `\n${notes}` : "");
   try {
     const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-ghl-note`, {
