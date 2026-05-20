@@ -7869,7 +7869,9 @@ function renderOffersTab() {
     const contactName = contactLead?.contact_name
       || (typeof resolveContactName === "function" ? resolveContactName(o.contact_id) : null)
       || "(unknown contact)";
-    const contactUrl = (typeof contactUrl === "function") ? null : null; // guard against shadowing
+    // window.contactUrl() returns the REI Reply contact-detail deep-link.
+    // Reading it via window.* avoids the temporal-dead-zone trap that hits
+    // when a same-named const is declared in the same scope.
     const openLink = o.contact_id && typeof window.contactUrl === "function"
       ? window.contactUrl(o.contact_id)
       : null;
